@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 
-# will output a dot file for dependency graph
+# this script will output a .dot file for a dependency graph
 
-# first run
+# first, run
 #  python -c 'import sys; print sys.stdin.read().replace("\\\n", "")' < .depend > depend
-# in SKS source directory after make dep
+# in the SKS source directory after make dep
 
-# then put depend and test.py in common directory, adapt this:
+# then put depend and depend.py in a common directory, choose which module to analyze the dependencies for:
 module = "client"
 # and execute
 #  python test.py > graph.dot
-# after that, (make sure you have graphviz installed)
+# after that
 # do a
 #  dot -Tpng graph.dot > graph.png
+# (make sure you have graphviz installed)
 
 deps = {}
 
