@@ -2,6 +2,9 @@
 /.depend
 /prepared
 
+# database directory
+/PTree/
+
 # objects
 *.annot
 *.cmi
