@@ -23,9 +23,9 @@
 #define False 0
 
 
-void bzero(void* addr,size_t n) {
+/*void bzero(void* addr,size_t n) {
   memset(addr,0,n);
-}
+}*/
 
 #define test_cursor_closed(cursor) \
   if (UW_cursor_closed(cursor)) \
