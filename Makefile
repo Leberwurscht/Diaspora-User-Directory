@@ -53,9 +53,9 @@ CAMLLIBS=unix.cma str.cma bdb.cma nums.cma bigarray.cma cryptokit.cma
 OCAMLFLAGS=$(COMMONCAMLFLAGS) -g $(CAMLLIBS)
 OCAMLOPTFLAGS=$(COMMONCAMLFLAGS) -inline 40 $(CAMLLIBS:.cma=.cmxa) 
 
-EXE=sks sks_add_mail
-ALL=$(EXE) sks.8.gz
-ALL.bc=$(EXE:=.bc) sks.8.gz
+EXE=
+ALL=$(EXE)
+ALL.bc=$(EXE:=.bc)
 
 all: $(ALL) 
 all.bc: $(ALL.bc) 
