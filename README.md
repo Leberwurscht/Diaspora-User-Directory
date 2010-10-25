@@ -1,1 +1,1 @@
-There is no code yet, only some ideas at the wiki.
+This branch contains some files used to get a first overview of the sks source code.
