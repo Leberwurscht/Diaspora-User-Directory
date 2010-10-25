@@ -413,7 +413,7 @@ cleanall: clean bdbclean
 dep: 
 	$(OCAMLDEP) $(INCLUDES) *.ml *.mli > .depend
 
-include .depend
+-include .depend
 
 
 # DO NOT DELETE
