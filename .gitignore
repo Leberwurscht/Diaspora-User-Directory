@@ -1,1 +1,21 @@
-Makefile.local
+/Makefile.local
+/prepared
+
+# objects
+*.annot
+*.cmi
+*.cmo
+*.cma
+*.cmx
+*.cmxa
+*.o
+*.a
+*.bc
+
+# executables
+/bdb/ocextr
+/cryptokit-1.0/
+/lib/
+/testadd
+/testlist
+/sks
