@@ -53,7 +53,7 @@ CAMLLIBS=unix.cma str.cma bdb.cma nums.cma bigarray.cma cryptokit.cma
 OCAMLFLAGS=$(COMMONCAMLFLAGS) -g $(CAMLLIBS)
 OCAMLOPTFLAGS=$(COMMONCAMLFLAGS) -inline 40 $(CAMLLIBS:.cma=.cmxa) 
 
-EXE=testadd
+EXE=testadd testlist
 ALL=$(EXE)
 ALL.bc=$(EXE:=.bc)
 
@@ -170,6 +170,12 @@ testadd: $(LIBS) $(ALLOBJS) testadd.cmx
 
 testadd.bc: $(LIBS.bc) $(ALLOBJS.bc) testadd.cmo
 	$(OCAMLC) -o testadd.bc $(OCAMLFLAGS) $(ALLOBJS.bc) testadd.cmo
+
+testlist: $(LIBS) $(ALLOBJS) testlist.cmx
+	$(OCAMLOPT) -o testlist $(OCAMLOPTFLAGS) $(ALLOBJS) testlist.cmx
+
+testlist.bc: $(LIBS.bc) $(ALLOBJS.bc) testlist.cmo
+	$(OCAMLC) -o testlist.bc $(OCAMLFLAGS) $(ALLOBJS.bc) testlist.cmo
 
 nbtest.bc: $(LIBS.bc) $(ALLOBJS.bc) nbtest.cmo 
 	$(OCAMLC) -o nbtest.bc $(OCAMLFLAGS) $(ALLOBJS.bc) nbtest.cmo 
