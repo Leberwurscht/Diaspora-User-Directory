@@ -1,4 +1,5 @@
 /Makefile.local
+/.depend
 /prepared
 
 # objects
