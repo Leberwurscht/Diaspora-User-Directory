@@ -25,6 +25,7 @@
 /testserver
 /testclient
 /sks
+/sks_add_mail
 
 # vim
 .*.swp
