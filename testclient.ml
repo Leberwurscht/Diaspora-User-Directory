@@ -25,16 +25,20 @@ let add_number number =
                 PTree.clean txn (get_ptree ());
                 commit_txnopt txn
 
-let socket = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0;;
+let test addr cin cout =
+	let cin = (new Channel.sys_in_channel cin)
+	and cout = (new Channel.sys_out_channel cout) in
+		let data = Server.handle (get_ptree ()) cin cout in
+		ZSet.iter ~f:add_number data;
 
-let sockaddr_to = Unix.ADDR_INET(Unix.inet_addr_of_string "127.0.0.1", 20000);;
+	Common.plerror 1 "did synchronisation as client as requested by %s" (ReconMessages.sockaddr_to_string addr);
+	[];;
 
-Unix.connect socket sockaddr_to;;
+let unixsockaddr = "client.ocaml2py.sock";;
+let () = try Unix.unlink unixsockaddr with Unix.Unix_error _ -> ();;
+let addr = Unix.ADDR_UNIX unixsockaddr;;
+let sock = Eventloop.create_sock addr;;
 
-let cin = Channel.sys_in_from_fd socket;;
-let cout = Channel.sys_out_from_fd socket;;
+let timeout = !Settings.reconciliation_config_timeout;;
 
-let data = Server.handle (get_ptree ()) cin cout;;
-ZSet.iter ~f:add_number data;
-
-Unix.close socket;;
+Eventloop.evloop [] [sock, Eventloop.make_th ~name:"test" ~cb:test ~timeout:timeout];;

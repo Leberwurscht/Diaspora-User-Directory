@@ -6,14 +6,18 @@ decentralized PGP public key directory, which is already solved by the
 SKS key server, it looks like a good idea to take the sks key server and
 transform it into a diaspora user directory server.
 
-Currently, this is only a test for efficient synchronisation. If you build
-this test, you will get four executables:
+This is to become a first proof of concept. If you build it, you will get
+four executables:
 
    * testadd: lets you add numbers to your local set (simply pass a number
               as a command line option)
    * testlist: lists the local set
    * testserver: creates unix socket needed for testserver.py
-   * testclient: connects to other servers' testserver.py. Union of local
+   * testclient: creates unix socket needed for testclient.py
+
+Python scripts:
+   * testserver.py: waits for other servers to connect
+   * testclient.py: connects to other servers' testserver.py. Union of local
                  set and remote set will be computed and distributed to
                  both servers in an efficient manner, using the sks
                  reconciliation algorithm.
