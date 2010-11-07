@@ -27,5 +27,8 @@
 /sks
 /sks_add_mail
 
+# sockets
+server.ocaml2py.sock
+
 # vim
 .*.swp

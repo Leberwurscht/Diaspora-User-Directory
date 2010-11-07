@@ -25,7 +25,9 @@ let add_number number =
 		PTree.clean txn (get_ptree ());
 		commit_txnopt txn
 
-let addr = Unix.ADDR_INET (Unix.inet_addr_of_string "0.0.0.0", 20000);; 
+let unixsockaddr = "server.ocaml2py.sock";;
+let () = try Unix.unlink unixsockaddr with Unix.Unix_error _ -> ();;
+let addr = Unix.ADDR_UNIX unixsockaddr;;
 let sock = Eventloop.create_sock addr;;
 
 let timeout = !Settings.reconciliation_config_timeout;;
