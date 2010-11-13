@@ -31,6 +31,8 @@
 # sockets
 server.ocaml2py.sock
 client.ocaml2py.sock
+add.ocaml2py.sock
+hashes.ocaml2py.sock
 
 # vim
 .*.swp

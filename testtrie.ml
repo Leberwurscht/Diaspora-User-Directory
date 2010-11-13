@@ -43,8 +43,8 @@ let () = try Unix.unlink unixsockaddr with Unix.Unix_error _ -> ();;
 let addr = Unix.ADDR_UNIX unixsockaddr;;
 let addsock = Eventloop.create_sock addr;;
 
-(* other server's hashes socket *)
-let othersockaddr = "other.ocaml2py.sock";;
+(* socket to transmit the hashes received from other servers to python *)
+let othersockaddr = "hashes.ocaml2py.sock";;
 
 let timeout = !Settings.reconciliation_config_timeout;;
 
@@ -54,6 +54,7 @@ let send_number cout number =
 	cout#flush;;
 
 let send_numbers numbers =
+	(* the python part should only accept one connection at a time for this socket *)
 	let socket = Unix.socket Unix.PF_UNIX Unix.SOCK_STREAM 0 in
 	let addr = Unix.ADDR_UNIX othersockaddr in
 	let cout = Channel.sys_out_from_fd socket in
