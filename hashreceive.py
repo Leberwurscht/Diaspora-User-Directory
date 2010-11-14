@@ -5,14 +5,7 @@ import logging
 import threading
 import binascii
 
-def addhashes(l):
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.connect("client.ocaml2py.sock")
-
-    for h in l:
-        s.sendall(h+"\n")
-
-    s.close()
+import addhashes
 
 class HandleHashes(threading.Thread):
     def __init__(self):
@@ -46,4 +39,4 @@ class HandleHashes(threading.Thread):
         # ...process list...
 
         # add hashes to own trie
-        addhashes(l)
+        addhashes.addhashes(l)
