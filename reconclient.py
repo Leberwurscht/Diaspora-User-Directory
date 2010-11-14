@@ -9,7 +9,7 @@ import select
 
 import hashreceive
 
-def connect(host="localhost", port=20000):
+def connect(host, port):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((host,port))
 
@@ -47,3 +47,6 @@ def connect(host="localhost", port=20000):
     s.close()
 
     return True
+
+if __name__=="__main__":
+    connect("localhost", 20000)
