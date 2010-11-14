@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 import socket
 import select
 
@@ -10,6 +13,13 @@ serversocket.listen(5)
 
 while True:
     (clientsocket, address) = serversocket.accept()
+
+    try:
+        hashreceive.HandleHashes()
+    except:
+        logging.debug("Busy. Rejected reconciliation attempt.")
+        clientsocket.close()
+        continue
 
     print "accepted", address
 
@@ -38,3 +48,4 @@ while True:
                     s.sendall(b)
 
     clientsocket.close()
+    s.close()

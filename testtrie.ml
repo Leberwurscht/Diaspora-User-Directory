@@ -121,7 +121,7 @@ let testadd addr cin cout =
 			PTree.insert (get_ptree ()) txn n;
 			PTree.clean txn (get_ptree ());
 			commit_txnopt txn;
-		cout#write_string "Added number ";
+(*		cout#write_string "Added number ";
 		cout#write_string (Number.to_string (ZZp.to_number n));
 		cout#write_string "\n";
 (*		read_line cin cout;*)
@@ -132,7 +132,7 @@ let testadd addr cin cout =
 (* need to convert hash string to a zset number -- zzp from bytes, to bytes, see recoverlist *)
 (* other way round: hashconvert, see reconserver:189 *)
 		cout#write_string "test\n"; *)
-		cout#flush;
+		cout#flush;*)
 
 (*	Common.plerror 1 "did synchronisation as client as requested by %s" (ReconMessages.sockaddr_to_string addr);*)
 	[];;
