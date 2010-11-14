@@ -3,12 +3,7 @@
 import logging
 
 import threading
-
-def hexify(s):
-    r = ""
-    for i in s:
-        r += "%x" % ord(i)
-    return r
+import binascii
 
 def addhashes(l):
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -41,7 +36,7 @@ class HandleHashes(threading.Thread):
             h = f.read(17)
             assert h[-1]=='\n'
             h = h[:-1]   # remove newline
-            logging.debug("Received hash %s" % hexify(h))
+            logging.debug("Received hash %s" % binascii.hexlify(h))
             l.append(h)
 
         f.close()
