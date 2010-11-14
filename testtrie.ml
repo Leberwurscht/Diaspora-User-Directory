@@ -121,6 +121,7 @@ let testadd addr cin cout =
 			PTree.insert (get_ptree ()) txn n;
 			PTree.clean txn (get_ptree ());
 			commit_txnopt txn;
+		ignore(cout);
 (*		cout#write_string "Added number ";
 		cout#write_string (Number.to_string (ZZp.to_number n));
 		cout#write_string "\n";
