@@ -34,5 +34,8 @@ client.ocaml2py.sock
 add.ocaml2py.sock
 hashes.ocaml2py.sock
 
+# python objects
+*.pyc
+
 # vim
 .*.swp
