@@ -4,7 +4,7 @@ import socket
 
 def addhashes(l):
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.connect("client.ocaml2py.sock")
+    s.connect("add.ocaml2py.sock")
 
     for h in l:
         s.sendall(h+"\n")
