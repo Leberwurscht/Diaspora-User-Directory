@@ -22,8 +22,14 @@ let tree = get_ptree ();;
 
 let root = PrefixTree.root tree;;
 
-print_string "Elements:\n";;
+print_string "\n";;
+print_string "Elements (as numbers):\n";;
 
 let elements = PrefixTree.elements tree root;;
 
 ZSet.iter ~f:(fun s -> Printf.printf "%s\n" (Number.to_string (ZZp.to_number s))) elements;;
+
+print_string "\n";;
+Printf.printf "Elements (as hashes in hexadecimal representation):\n";;
+
+ZSet.iter ~f:(fun s -> Printf.printf "%s\n" (KeyHash.hexify (ZZp.to_bytes s))) elements;;
