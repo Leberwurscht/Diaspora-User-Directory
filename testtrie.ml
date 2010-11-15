@@ -68,15 +68,17 @@ let send_numbers numbers =
 	Common.plerror 1 "Connection to hashes.ocaml2py.sock closed";;
 
 let testserver addr cin cout =
+	Common.plerror 1 "connection on server.ocaml2py.sock";
 	let cin = (new Channel.sys_in_channel cin)
 	and cout = (new Channel.sys_out_channel cout) in
 		let data = Client.handle (get_ptree ()) cin cout in
 		send_numbers data;
 
-	Common.plerror 1 "talked with %s" (ReconMessages.sockaddr_to_string addr);
+	Common.plerror 1 "did synchronisation as server as requested by %s" (ReconMessages.sockaddr_to_string addr);
 	[];;
 
 let testclient addr cin cout =
+	Common.plerror 1 "connection on client.ocaml2py.sock";
 	let cin = (new Channel.sys_in_channel cin)
 	and cout = (new Channel.sys_out_channel cout) in
 		let data = Server.handle (get_ptree ()) cin cout in
@@ -123,6 +125,7 @@ let add_hash hexhash =
 	)
 
 let testadd addr cin cout =
+	Common.plerror 1 "connection on add.ocaml2py.sock";
 	let cin = (new Channel.sys_in_channel cin)
 	and cout = (new Channel.sys_out_channel cout) in
 		iter_lines cin add_hash;
