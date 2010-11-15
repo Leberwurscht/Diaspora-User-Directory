@@ -49,7 +49,8 @@ let othersockaddr = "hashes.ocaml2py.sock";;
 let timeout = !Settings.reconciliation_config_timeout;;
 
 let send_number cout number =
-	let hexhash = KeyHash.hexify (ZZp.to_bytes number) in
+	let hash = RMisc.truncate (ZZp.to_bytes number) KeyHash.hash_bytes in
+	let hexhash = KeyHash.hexify hash in
 	cout#write_string hexhash;
 	cout#write_string "\n";
 	cout#flush;

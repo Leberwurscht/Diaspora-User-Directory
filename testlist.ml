@@ -32,4 +32,4 @@ ZSet.iter ~f:(fun s -> Printf.printf "%s\n" (Number.to_string (ZZp.to_number s))
 print_string "\n";;
 Printf.printf "Elements (as hashes in hexadecimal representation):\n";;
 
-ZSet.iter ~f:(fun s -> Printf.printf "%s\n" (KeyHash.hexify (ZZp.to_bytes s))) elements;;
+ZSet.iter ~f:(fun s -> Printf.printf "%s\n" (KeyHash.hexify (RMisc.truncate (ZZp.to_bytes s) KeyHash.hash_bytes))) elements;;
