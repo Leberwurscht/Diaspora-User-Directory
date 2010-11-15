@@ -6,18 +6,25 @@ logging.basicConfig(level=logging.DEBUG)
 import socket
 import select
 
+import hashreceive
+
+interface = "localhost"
+port = 20000
+
 serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-serversocket.bind(("localhost", 20000))
+serversocket.bind((interface, port))
 serversocket.listen(5)
+logging.info("Listening on %s:%d." % (interface, port))
 
 while True:
     (clientsocket, address) = serversocket.accept()
+    logging.info("Client %s connected." % str(address))
 
     try:
         hashreceive.HandleHashes()
     except:
-        logging.debug("Busy. Rejected reconciliation attempt.")
+        logging.warning("Busy. Rejected reconciliation attempt.")
         clientsocket.close()
         continue
 
