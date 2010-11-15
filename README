@@ -7,13 +7,11 @@ SKS key server, it looks like a good idea to take the sks key server and
 transform it into a diaspora user directory server.
 
 This is to become a first proof of concept. If you build it, you will get
-four executables:
+two executables:
 
-   * testadd: lets you add numbers to your local set (simply pass a number
-              as a command line option)
+   * testtrie: A server providing the unix domain sockets the python scripts
+               need
    * testlist: lists the local set
-   * testserver: creates unix socket needed for testserver.py
-   * testclient: creates unix socket needed for testclient.py
 
 Python scripts:
    * testserver.py: waits for other servers to connect
@@ -21,6 +19,10 @@ Python scripts:
                  set and remote set will be computed and distributed to
                  both servers in an efficient manner, using the sks
                  reconciliation algorithm.
+   * addhashes.py: Pass 16-byte hashes in hexadecimal representation to have
+                 them added to the database. Be careful not to add hashes 
+                 that are already in the database, this will make the test-
+                 trie server fail.
 
 -- Build instructions for Ubuntu -----------
 
