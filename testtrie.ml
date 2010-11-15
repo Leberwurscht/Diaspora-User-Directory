@@ -108,19 +108,47 @@ let read_line cin cout len =
 	let s = String.create len in
 *)	
 
+let rec readline_rec cin buffer = 
+	let c = cin#read_char in (* read character *)
+	if c='\n' then (
+		buffer (* if it's a newline, return the buffer obtained by now *)
+	) else (
+		Buffer.add_char buffer c; (* otherwise, add the character to the buffer *)
+		readline_rec cin buffer (* and continue reading *)
+	);;	
 
+let readline cin = 
+	let buffer = Buffer.create 32 in (* create empty buffer with size estimation *)
+	let buffer = readline_rec cin buffer in (* fill buffer with received characters *)
+	let str	= Buffer.sub buffer 0 (Buffer.length buffer) in (* convert buffer to string *)
+	str (* return string *)
+
+let rec iter_lines cin callback =
+	try (
+		let line = readline cin in (* read a line *)
+			callback line; (* call the callback *)
+			iter_lines cin callback (* and continue reading lines *)
+	) with End_of_file -> ();; (* except end of file is reached *)
+
+let add_hash hexhash =
+	let l = String.length hexhash in
+	if (l=32) then (
+		Common.plerror 1 "adding hash %s to database" hexhash;
+		let binary = KeyHash.dehexify hexhash in
+		let modulo = ZZp.of_bytes binary in
+		let txn = new_txnopt () in
+			PTree.insert (get_ptree ()) txn modulo;
+			PTree.clean txn (get_ptree ());
+			commit_txnopt txn;
+		Common.plerror 1 "added hash %s to database." hexhash;
+	) else (
+		Common.plerror 1 "received line with invalid length %d" l;
+	)
 
 let testadd addr cin cout =
 	let cin = (new Channel.sys_in_channel cin)
 	and cout = (new Channel.sys_out_channel cout) in
-		let str = cin#read_string 16 in
-		let t = cin#read_char in
-		let n = ZZp.of_bytes str in
-		ignore(t);
-		let txn = new_txnopt () in
-			PTree.insert (get_ptree ()) txn n;
-			PTree.clean txn (get_ptree ());
-			commit_txnopt txn;
+		iter_lines cin add_hash;
 		ignore(cout);
 (*		cout#write_string "Added number ";
 		cout#write_string (Number.to_string (ZZp.to_number n));
