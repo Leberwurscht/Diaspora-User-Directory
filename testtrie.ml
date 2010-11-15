@@ -49,25 +49,28 @@ let othersockaddr = "hashes.ocaml2py.sock";;
 let timeout = !Settings.reconciliation_config_timeout;;
 
 let send_number cout number =
-	cout#write_string (ZZp.to_bytes number);
+	let hexhash = KeyHash.hexify (ZZp.to_bytes number) in
+	cout#write_string hexhash;
 	cout#write_string "\n";
-	cout#flush;;
+	cout#flush;
+	Common.plerror 1 "sent hash %s to hashes.ocaml2py.sock" hexhash;;
 
 let send_numbers numbers =
 	(* the python part should only accept one connection at a time for this socket *)
+	Common.plerror 1 "send_numbers called; connecting to hashes.ocaml2py.sock";
 	let socket = Unix.socket Unix.PF_UNIX Unix.SOCK_STREAM 0 in
 	let addr = Unix.ADDR_UNIX othersockaddr in
 	let cout = Channel.sys_out_from_fd socket in
 	Unix.connect socket addr;
+	Common.plerror 1 "Connection to hashes.ocaml2py.sock established";
 	ZSet.iter ~f:(send_number cout) numbers;
-	Unix.close socket;;
-(*	ZSet.iter ~f:(fun number -> send_number cout number) numbers;; *)
+	Unix.close socket;
+	Common.plerror 1 "Connection to hashes.ocaml2py.sock closed";;
 
 let testserver addr cin cout =
 	let cin = (new Channel.sys_in_channel cin)
 	and cout = (new Channel.sys_out_channel cout) in
 		let data = Client.handle (get_ptree ()) cin cout in
-(*		ZSet.iter ~f:add_number data; *)
 		send_numbers data;
 
 	Common.plerror 1 "talked with %s" (ReconMessages.sockaddr_to_string addr);
@@ -77,36 +80,10 @@ let testclient addr cin cout =
 	let cin = (new Channel.sys_in_channel cin)
 	and cout = (new Channel.sys_out_channel cout) in
 		let data = Server.handle (get_ptree ()) cin cout in
-(*		ZSet.iter ~f:add_number data; *)
 		send_numbers data;
 
 	Common.plerror 1 "did synchronisation as client as requested by %s" (ReconMessages.sockaddr_to_string addr);
 	[];;
-
-(*
-
-	Number <-> Hash conversion
-	==========================
-	Number -> ZZp.to_bytes -> hexadecimal representation
-	
-
-*)
-
-(*let rec read_line_rec cin cout len = 
-	let c = cin#read_char in
-	if c='\n'
-	then (
-		cout#write_string "got line.";
-		cout#flush
-	) else (
-		cout#write_string "got char.";
-		cout#flush;
-		read_line cin cout
-	);;
-
-let read_line cin cout len = 
-	let s = String.create len in
-*)	
 
 let rec readline_rec cin buffer = 
 	let c = cin#read_char in (* read character *)
@@ -150,34 +127,8 @@ let testadd addr cin cout =
 	and cout = (new Channel.sys_out_channel cout) in
 		iter_lines cin add_hash;
 		ignore(cout);
-(*		cout#write_string "Added number ";
-		cout#write_string (Number.to_string (ZZp.to_number n));
-		cout#write_string "\n";
-(*		read_line cin cout;*)
-		(* read 16 bytes each *)
-(*		let hash = cin#read_string 33 in
-		cout#write_string "got\n";
-		cout#write_string hash;
-(* need to convert hash string to a zset number -- zzp from bytes, to bytes, see recoverlist *)
-(* other way round: hashconvert, see reconserver:189 *)
-		cout#write_string "test\n"; *)
-		cout#flush;*)
 
-(*	Common.plerror 1 "did synchronisation as client as requested by %s" (ReconMessages.sockaddr_to_string addr);*)
 	[];;
-
-(*Common.plerror 1 "" RecoverList;; *)
-(*
-let tree = get_ptree ();;
-
-let root = PrefixTree.root tree;;
-
-let elements = PrefixTree.elements tree root;;
-let ele = ZSet.elements elements;;
-
-let hashes = RecoverList.hashconvert ele;; 
-
-RecoverList.print_hashes "bla" hashes;; *)
 
 Eventloop.evloop [] [
 	(serversock, Eventloop.make_th ~name:"testserver" ~cb:testserver ~timeout:timeout);
