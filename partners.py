@@ -65,18 +65,12 @@ class Client:
     def check_password(self, password):
         comparehash = hashlib.sha1(password).hexdigest()
         
-        return comparehash == self.passwordhash
+        return comparehash==self.passwordhash
 
     def __str__(self):
         return self.username
 
 for line in open(partners_file):
-    try:
-        direction = line.split()[0]
-    except IndexError:
-        logging.error("Invalid line in partners file!")
-        continue
-
     # check if line is empty
     if not line.strip(): continue
 
@@ -88,11 +82,13 @@ for line in open(partners_file):
             direction, address, port, username, password = line.split()
         except ValueError:
             logging.error("Invalid server line in partners file!")
+            continue
 
         try:
             port = int(port)
         except ValueError:
             logging.error("Invalid port for server %s in partners file!" % address)
+            continue
 
         servers[address] = Server(address, port, username, password)
 
@@ -101,6 +97,7 @@ for line in open(partners_file):
             direction, username, passwordhash = line.split()
         except ValueError:
             logging.error("Invalid client line in partners file!")
+            continue
 
         clients[username] = Client(username, passwordhash)
 
