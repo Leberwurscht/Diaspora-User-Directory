@@ -49,7 +49,7 @@ $ ./sduds.py
 For the other copy, do:
 
 $ ./partners.py -a -s localhost 20000 test
- ... type the password you chose for the other copy ...
+ ... type the password you chose for the first copy ...
 $ ./trieserver &
 $ ./addhashes.py ff000000000000000000000000000001
 $ ./addhashes.py ff000000000000000000000000000002
@@ -57,7 +57,7 @@ $ ./addhashes.py ff000000000000000000000000000003
 $ ./sduds.py localhost 20000
 
 Now, you can see log messages that tell you that both copies exchanged
-the hashes.
+hashes with each other.
 
 ============================================================================
  ORIGINAL SKS README
