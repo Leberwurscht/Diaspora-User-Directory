@@ -9,7 +9,7 @@ import os, socket, select
 import binascii
 
 import partners
-import addhashes
+import entries
 
 class HashServer(threading.Thread):
     """ Creates a unix domain socket listening for incoming hashes from the
