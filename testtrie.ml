@@ -80,7 +80,7 @@ let send_number cout number =
 	cout#flush;
 	Common.plerror 1 "sent hash %s to hashes.ocaml2py.sock" hexhash;;
 
-let send_numbers numbers =
+let send_numbers source numbers =
 	(* the python part should only accept one connection at a time for this socket *)
 	Common.plerror 1 "send_numbers called; connecting to hashes.ocaml2py.sock";
 	let socket = Unix.socket Unix.PF_UNIX Unix.SOCK_STREAM 0 in
@@ -88,6 +88,10 @@ let send_numbers numbers =
 	let cout = Channel.sys_out_from_fd socket in
 	Unix.connect socket addr;
 	Common.plerror 1 "Connection to hashes.ocaml2py.sock established";
+	cout#write_string source;
+	cout#write_string "\n";
+	cout#flush;
+	Common.plerror 1 "Sent source %s to hashes.ocaml2py.sock" source;
 	ZSet.iter ~f:(send_number cout) numbers;
 	Unix.close socket;
 	Common.plerror 1 "Connection to hashes.ocaml2py.sock closed";;
@@ -115,8 +119,9 @@ let servercb addr cin cout =
 	Common.plerror 1 "connection on server.ocaml2py.sock";
 	let cin = (new Channel.sys_in_channel cin)
 	and cout = (new Channel.sys_out_channel cout) in
+		let source = readline cin in
 		let data = Client.handle (get_ptree ()) cin cout in
-		send_numbers data;
+		send_numbers source data;
 
 	Common.plerror 1 "did synchronisation as server as requested by %s" (ReconMessages.sockaddr_to_string addr);
 	[];;
@@ -125,8 +130,9 @@ let clientcb addr cin cout =
 	Common.plerror 1 "connection on client.ocaml2py.sock";
 	let cin = (new Channel.sys_in_channel cin)
 	and cout = (new Channel.sys_out_channel cout) in
+		let source = readline cin in
 		let data = Server.handle (get_ptree ()) cin cout in
-		send_numbers data;
+		send_numbers source data;
 
 	Common.plerror 1 "did synchronisation as client as requested by %s" (ReconMessages.sockaddr_to_string addr);
 	[];;

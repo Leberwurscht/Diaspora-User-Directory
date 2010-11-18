@@ -8,6 +8,7 @@ import logging
 
 import sys
 import hashlib
+import socket
 
 # config file path
 partners_file = "partners"
@@ -30,24 +31,22 @@ class Server:
         return "server "+self.address[0]+" "+str(self.address[1])+" "+self.username+" "+self.password
 
     def authenticated_socket(self):
-        socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        socket.connect(self.address)
+        asocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        asocket.connect(self.address)
 
-        f = socket.makefile()
+        asocket.sendall(self.username+"\n")
+        asocket.sendall(self.password+"\n")
 
-        f.write(self.username+"\n")
-        f.write(self.password+"\n")
-
+        f = asocket.makefile()
         answer = f.readline().strip()
-
         f.close()
 
         if answer=="OK":
-            logging.info("Successfully authenticated with server %s." % str(self.address))
-            return socket
+            logging.info("Successfully authenticated to server %s." % str(self.address))
+            return asocket
         else:
-            logging.error("Authentication with server %s failed." % str(self.address))
-            socket.close()
+            logging.error("Authentication to server %s failed." % str(self.address))
+            asocket.close()
             return False
 
     def __str__(self):
