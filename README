@@ -9,20 +9,17 @@ transform it into a diaspora user directory server.
 This is to become a first proof of concept. If you build it, you will get
 two executables:
 
-   * testtrie: A server providing the unix domain sockets the python scripts
-               need
-   * testlist: lists the local set
+   * trieserver: A server providing the unix domain sockets the python
+                 scripts need
 
 Python scripts:
-   * testserver.py: waits for other servers to connect
-   * testclient.py: connects to other servers' testserver.py. Union of local
-                 set and remote set will be computed and distributed to
-                 both servers in an efficient manner, using the sks
-                 reconciliation algorithm.
-   * addhashes.py: Pass 16-byte hashes in hexadecimal representation to have
-                 them added to the database. Be careful not to add hashes 
-                 that are already in the database, this will make the test-
-                 trie server fail.
+   * partners.py: manages the partners list
+   * sduds.py: waits for other servers to connect. If you pass host and
+               port, however, it will connect to another server and syn-
+               chronise with it, using the sks reconciliation algorithm.
+   * addhashes.py: Pass 16-byte hashes in hexadecimal representation
+                   (that means 32 characters) to have them added to the
+                   database.
 
 -- Build instructions for Ubuntu -----------
 
@@ -34,6 +31,33 @@ make dep
 make all
 
 (tested with Ubuntu 10.04 - Lucid Lynx)
+
+-- Trying it out -----------------
+
+Make two copies, compile each.
+
+For one copy, do:
+
+$ ./partners.py -a -c test
+ ... type password ...
+$ ./trieserver &
+$ ./addhashes.py 00000000000000000000000000000001
+$ ./addhashes.py 00000000000000000000000000000002
+$ ./addhashes.py 00000000000000000000000000000003
+$ ./sduds.py
+
+For the other copy, do:
+
+$ ./partners.py -a -s localhost 20000 test
+ ... type the password you chose for the other copy ...
+$ ./trieserver &
+$ ./addhashes.py ff000000000000000000000000000001
+$ ./addhashes.py ff000000000000000000000000000002
+$ ./addhashes.py ff000000000000000000000000000003
+$ ./sduds.py localhost 20000
+
+Now, you can see log messages that tell you that both copies exchanged
+the hashes.
 
 ============================================================================
  ORIGINAL SKS README
