@@ -20,9 +20,10 @@ table_exists = cur.fetchone()[0]
 
 if not table_exists:
     cur.execute("PRAGMA legacy_file_format=0")
-    cur.execute("CREATE TABLE entries (hash BLOB, webfinger_address TEXT, full_name TEXT, hometown TEXT, "
+    cur.execute("CREATE TABLE entries (hash BLOB UNIQUE, webfinger_address TEXT UNIQUE, full_name TEXT, hometown TEXT, "
                +"country_code CHARACTER(2), captcha_signature BLOB, timestamp INTEGER)")
-    cur.execute("CREATE INDEX entries_index ON entries (hash)")
+    cur.execute("CREATE UNIQUE INDEX entries_hashes ON entries (hash)")
+    cur.execute("CREATE UNIQUE INDEX entries_addresses ON entries (webfinger_address)")
 
 cur.close()
 con.close()
