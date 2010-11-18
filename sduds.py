@@ -6,6 +6,8 @@ logging.basicConfig(level=logging.DEBUG)
 import threading
 import os, socket, select
 
+import binascii
+
 import partners
 import addhashes
 
@@ -159,6 +161,7 @@ def handle_connection(hashserver, clientsocket, address):
     clientsocket.close()
 
     # await received hashes from the ocaml component (will block)
+    logging.debug("Waiting for hashes for username %s" % username)
     hashlist = hashserver.get(username)
 
     process_hashes(hashlist)
