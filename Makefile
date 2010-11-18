@@ -53,7 +53,7 @@ CAMLLIBS=unix.cma str.cma bdb.cma nums.cma bigarray.cma cryptokit.cma
 OCAMLFLAGS=$(COMMONCAMLFLAGS) -g $(CAMLLIBS)
 OCAMLOPTFLAGS=$(COMMONCAMLFLAGS) -inline 40 $(CAMLLIBS:.cma=.cmxa) 
 
-EXE=testlist testtrie
+EXE=testtrie
 ALL=$(EXE)
 ALL.bc=$(EXE:=.bc)
 
@@ -164,30 +164,6 @@ sks: $(LIBS) $(ALLOBJS) sks.cmx
 
 sks.bc: $(LIBS.bc) $(ALLOBJS.bc) sks.cmo
 	$(OCAMLC) -o sks.bc $(OCAMLFLAGS) $(ALLOBJS.bc) sks.cmo
-
-testadd: $(LIBS) $(ALLOBJS) testadd.cmx
-	$(OCAMLOPT) -o testadd $(OCAMLOPTFLAGS) $(ALLOBJS) testadd.cmx
-
-testadd.bc: $(LIBS.bc) $(ALLOBJS.bc) testadd.cmo
-	$(OCAMLC) -o testadd.bc $(OCAMLFLAGS) $(ALLOBJS.bc) testadd.cmo
-
-testlist: $(LIBS) $(ALLOBJS) testlist.cmx
-	$(OCAMLOPT) -o testlist $(OCAMLOPTFLAGS) $(ALLOBJS) testlist.cmx
-
-testlist.bc: $(LIBS.bc) $(ALLOBJS.bc) testlist.cmo
-	$(OCAMLC) -o testlist.bc $(OCAMLFLAGS) $(ALLOBJS.bc) testlist.cmo
-
-testserver: $(LIBS) $(ALLOBJS) testserver.cmx
-	$(OCAMLOPT) -o testserver $(OCAMLOPTFLAGS) $(ALLOBJS) testserver.cmx
-
-testserver.bc: $(LIBS.bc) $(ALLOBJS.bc) testserver.cmo
-	$(OCAMLC) -o testserver.bc $(OCAMLFLAGS) $(ALLOBJS.bc) testserver.cmo
-
-testclient: $(LIBS) $(ALLOBJS) testclient.cmx
-	$(OCAMLOPT) -o testclient $(OCAMLOPTFLAGS) $(ALLOBJS) testclient.cmx
-
-testclient.bc: $(LIBS.bc) $(ALLOBJS.bc) testclient.cmo
-	$(OCAMLC) -o testclient.bc $(OCAMLFLAGS) $(ALLOBJS.bc) testclient.cmo
 
 testtrie: $(LIBS) $(ALLOBJS) testtrie.cmx
 	$(OCAMLOPT) -o testtrie $(OCAMLOPTFLAGS) $(ALLOBJS) testtrie.cmx

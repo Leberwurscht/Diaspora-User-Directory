@@ -146,10 +146,15 @@ let addcb addr cin cout =
 
 	[];;
 
-(***** start the event loop *****)
+(***** main loop *****)
+let run () = Eventloop.evloop [] [
+		(serversock, Eventloop.make_th ~name:"serverhandler" ~cb:servercb ~timeout:timeout);
+		(clientsock, Eventloop.make_th ~name:"clienthandler" ~cb:clientcb ~timeout:timeout);
+		(addsock, Eventloop.make_th ~name:"addhandler" ~cb:addcb ~timeout:timeout)
+	];;
 
-Eventloop.evloop [] [
-	(serversock, Eventloop.make_th ~name:"serverhandler" ~cb:servercb ~timeout:timeout);
-	(clientsock, Eventloop.make_th ~name:"clienthandler" ~cb:clientcb ~timeout:timeout);
-	(addsock, Eventloop.make_th ~name:"addhandler" ~cb:addcb ~timeout:timeout)
-];;
+(***** run the main loop *****)
+Common.protect ~f:run ~finally:(fun () -> 
+	closedb (); (* close db to prevent bdb "fatal region errors" *)
+	Common.plerror 2 "DB closed"
+)
