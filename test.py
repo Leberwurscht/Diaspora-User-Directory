@@ -33,10 +33,8 @@ entry = entries.Entry(webfinger_address, full_name, hometown, country_code, capt
 assert entry.captcha_signature_valid()
 
 # save it
-con = entries.get_db_connection()
-
 try:
-    entry.save(con.cursor(), con)
+    entry.save()
 except sqlite3.IntegrityError:
     print "already in db"
 
@@ -46,7 +44,7 @@ hexhash = binascii.hexlify(binhash)
 print hexhash
 
 # test loading from database
-entry2 = entries.Entry.from_database(con.cursor(), binhash)
+entry2 = entries.Entry.from_database(binhash)
 hexhash2 = binascii.hexlify(entry2.hash)
 assert hexhash2==hexhash
 
@@ -62,7 +60,7 @@ hexhash3 = binascii.hexlify(entry3.hash)
 assert hexhash3==hexhash
 
 # run a EntryServer
-entryserver = entries.EntryServer(con)
+entryserver = entries.EntryServer()
 
 # get a EntryList from the EntryServer
 entrylist3 = entries.EntryList.from_server([binhash], "localhost")

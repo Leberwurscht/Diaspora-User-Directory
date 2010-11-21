@@ -11,12 +11,10 @@ import json
 
 import sqlite3 as db
 
-def get_db_connection():
-    return db.connect("entries.sqlite", check_same_thread=False)
+con = db.connect("entries.sqlite", check_same_thread=False)
 
 # check if table exists and create it if not
 
-con = get_db_connection()
 cur = con.cursor()
 cur.execute("SELECT count(1) FROM sqlite_master WHERE type='table' AND name='entries'")
 table_exists = cur.fetchone()[0]
@@ -29,7 +27,6 @@ if not table_exists:
     cur.execute("CREATE UNIQUE INDEX entries_addresses ON entries (webfinger_address)")
 
 cur.close()
-con.close()
 
 # load public key for verifying captcha signatures
 
@@ -60,10 +57,8 @@ def signature_valid(public_key, signature, text):
 import threading
 
 class EntryServer(threading.Thread):
-    def __init__(self, con, interface="localhost", port=20001):
+    def __init__(self, interface="localhost", port=20001):
             threading.Thread.__init__(self)
-
-            self.con = con
 
             entrysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             entrysocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -87,7 +82,7 @@ class EntryServer(threading.Thread):
             thread.start()
 
     def handle_connection(self, clientsocket, address):
-        cur = self.con.cursor()
+        cur = con.cursor()
         f = clientsocket.makefile()
 
         # build list of entries to be transmitted
@@ -98,7 +93,7 @@ class EntryServer(threading.Thread):
             if not hexhash: break
 
             binhash = binascii.unhexlify(hexhash)
-            entry = Entry.from_database(cur, binhash)
+            entry = Entry.from_database(binhash)
 
             if entry: entrylist.append(entry)
 
@@ -178,7 +173,8 @@ class Entry:
     """ represents a database entry for a webfinger address """
 
     @classmethod
-    def from_database(cls, cur, binhash):
+    def from_database(cls, binhash):
+        cur = con.cursor()
         cur.execute(
             "SELECT webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp FROM entries WHERE hash=?",
             (buffer(binhash), )
@@ -219,7 +215,8 @@ class Entry:
     def captcha_signature_valid(self):
         return signature_valid(captcha_key, self.captcha_signature, self.webfinger_address.encode("utf-8"))
 
-    def save(self, cur, con=None):
+    def save(self, commit=True):
+        cur = con.cursor()
         cur.execute("INSERT INTO entries (hash, webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp) VALUES (?,?,?,?,?,?,?)",
             (buffer(self.hash),
             self.webfinger_address,
@@ -230,7 +227,7 @@ class Entry:
             self.timestamp)
         )
 
-        if con: con.commit()
+        if commit: con.commit()
 
 class DatabaseOperation:
     def verify(self):
