@@ -92,10 +92,18 @@ class EntryServer(threading.Thread):
             hexhash = f.readline().strip()
             if not hexhash: break
 
-            binhash = binascii.unhexlify(hexhash)
+            try:
+                binhash = binascii.unhexlify(hexhash)
+            except Exception,e:
+                logging.warning("Invalid request for hash \"%s\" by %s: %s" % (hexhash, str(address), str(e)))
+                continue
+
             entry = Entry.from_database(binhash)
 
-            if entry: entrylist.append(entry)
+            if entry:
+                entrylist.append(entry)
+            else:
+                logging.warning("Hash \"%s\" was requested by %s, but it does not exist." % (hexhash, str(address)))
 
         # serve requested hashes
         json_string = entrylist.json()
