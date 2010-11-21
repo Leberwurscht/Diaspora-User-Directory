@@ -13,6 +13,7 @@ def get_db_connection():
     return db.connect("entries.sqlite")
 
 # check if table exists and create it if not
+
 con = get_db_connection()
 cur = con.cursor()
 cur.execute("SELECT count(1) FROM sqlite_master WHERE type='table' AND name='entries'")
@@ -28,9 +29,45 @@ if not table_exists:
 cur.close()
 con.close()
 
+# load public key for verifying captcha signatures
+
+import base64, paramiko
+
+f = open("captchakey.pub")
+content = f.read()
+f.close()
+
+keytype, key = content.split()[:2]
+
+if not keytype=="ssh-rsa":
+    raise Exception, "Need keytype ssh-rsa."
+
+data=base64.decodestring(key)
+captcha_key = paramiko.RSAKey(data=data)
+
+def signature_valid(public_key, signature, text):
+    sig_message = paramiko.Message()
+    sig_message.add_string("ssh-rsa")
+    sig_message.add_string(signature)
+    sig_message.rewind()
+
+    return public_key.verify_ssh_sig(text, sig_message)
+
+######
+
 class Entry:
+    """ represents a database entry for a webfinger address """
+
     @classmethod
-    def from_address(cls, webfinger_address):
+    def from_hash(cls, entryhash):
+        raise NotImplementedError, "Not implemented yet."
+
+    @classmethod
+    def from_webfinger_address(cls, webfinger_address):
+        raise NotImplementedError, "Not implemented yet."
+
+    @classmethod
+    def fetch(cls, webfinger_address):
         # https://github.com/jcarbaugh/python-webfinger
         raise NotImplementedError, "Not implemented yet."
 
@@ -54,6 +91,9 @@ class Entry:
 
         # is it unsecure to take only 16 bytes of the hash?
         self.hash = combinedhash.digest()[:16]
+
+    def captcha_signature_valid(self):
+        return signature_valid(captcha_key, self.captcha_signature, self.webfinger_address)
 
     def save(self, cur, con=None):
         cur.execute("INSERT INTO entries (hash, webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp) VALUES (?,?,?,?,?,?,?)",
