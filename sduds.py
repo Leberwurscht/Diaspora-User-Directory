@@ -47,7 +47,7 @@ class HashServer(threading.Thread):
             thread.start()
 
     def get_event(self, identifier):
-        """ Create event for identifier if it does not exists and return it,
+        """ Create event for an identifier if it does not exist and return it,
             otherwise return existing one. Does not lock the dicts, you must
             do this yourself! """
 
@@ -114,8 +114,8 @@ def link_sockets(socket1, socket2):
             other_socket = sockets[ ( sockets.index(input_socket) + 1 ) % 2 ]
             other_socket.sendall(buf)
 
-def process_hashes(hashlist):
-
+def process_hashes(hashlist, entryserver_address):
+    
     # ... get database entries, take control samples etc. ...
 
     # ... add valid entries to database ...
@@ -141,6 +141,8 @@ def handle_connection(hashserver, clientsocket, address):
         clientsocket.close()
         return False
 
+    client = partners.clients[username]
+
     logging.debug("%s (from %s) authenticated successfully." % (username, str(address)))
     clientsocket.sendall("OK\n")
 
@@ -164,7 +166,7 @@ def handle_connection(hashserver, clientsocket, address):
     logging.debug("Waiting for hashes for username %s" % username)
     hashlist = hashserver.get(username)
 
-    process_hashes(hashlist)
+    process_hashes(hashlist, client.entryserver_address)
 
 def connect(hashserver, server):
     logging.debug("Connecting to server %s" % str(server))
@@ -197,12 +199,13 @@ def connect(hashserver, server):
     logging.debug("Waiting for hashes for identifier %s" % identifier)
     hashlist = hashserver.get(identifier)
 
-    process_hashes(hashlist)
+    process_hashes(hashlist, server.entryserver_address)
 
 if __name__=="__main__":
     import sys
 
     hashserver = HashServer()
+    entryserver = entries.EntryServer()
 
     if len(sys.argv)>1:
         # initiate connection if host and port are passed

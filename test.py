@@ -63,7 +63,7 @@ assert hexhash3==hexhash
 entryserver = entries.EntryServer()
 
 # get a EntryList from the EntryServer
-entrylist3 = entries.EntryList.from_server([binhash], "localhost")
+entrylist3 = entries.EntryList.from_server([binhash], ("localhost",20001))
 entry4 = entrylist3[0]
 hexhash4 = binascii.hexlify(entry4.hash)
 assert hexhash4==hexhash

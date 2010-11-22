@@ -117,9 +117,9 @@ class InvalidHashError(Exception): pass
 
 class EntryList(list):
     @classmethod
-    def from_server(cls, binhashes, host, port=20001):
+    def from_server(cls, binhashes, address):
         asocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        asocket.connect((host, port))
+        asocket.connect(address)
 
         for binhash in binhashes:
             hexhash = binascii.hexlify(binhash)
