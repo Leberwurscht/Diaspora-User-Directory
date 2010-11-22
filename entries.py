@@ -177,6 +177,36 @@ class EntryList(list):
 
         return json_string
 
+    def save(self):
+        cur = con.cursor()
+
+        # open unix domain socket for adding hashes to the prefix tree
+        logging.debug("Connect to unix socket add.ocaml2py.sock.")
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect("add.ocaml2py.sock")
+
+        for entry in self:
+            # add entry to database
+            cur.execute("INSERT INTO entries (hash, webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp) VALUES (?,?,?,?,?,?,?)",
+                (buffer(entry.hash),
+                entry.webfinger_address,
+                entry.full_name,
+                entry.hometown,
+                entry.country_code,
+                buffer(entry.captcha_signature),
+                entry.timestamp)
+            )
+
+            # add hash to prefix tree
+            hexhash = binascii.hexlify(entry.hash)
+            s.sendall(hexhash+"\n")
+            logging.debug("Sent hash %s to unix socket add.ocaml2py.sock." % hexhash)
+
+        s.close()
+        logging.debug("Closed unix socket add.ocaml2py.sock.")
+
+        con.commit()
+
 class Entry:
     """ represents a database entry for a webfinger address """
 
@@ -223,20 +253,6 @@ class Entry:
     def captcha_signature_valid(self):
         return signature_valid(captcha_key, self.captcha_signature, self.webfinger_address.encode("utf-8"))
 
-    def save(self, commit=True):
-        cur = con.cursor()
-        cur.execute("INSERT INTO entries (hash, webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp) VALUES (?,?,?,?,?,?,?)",
-            (buffer(self.hash),
-            self.webfinger_address,
-            self.full_name,
-            self.hometown,
-            self.country_code,
-            buffer(self.captcha_signature),
-            self.timestamp)
-        )
-
-        if commit: con.commit()
-
 class DatabaseOperation:
     def verify(self):
         raise NotImplementedError, "Override this function in subclasses."
@@ -257,26 +273,3 @@ class DeleteEntry(DatabaseOperation):
 
     def verify():
         raise NotImplementedError, "Not implemented yet."
-
-#####################
-
-def addhashes(l):
-    logging.debug("Connect to unix socket add.ocaml2py.sock.")
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.connect("add.ocaml2py.sock")
-
-    for h in l:
-        hexhash = binascii.hexlify(h)
-        s.sendall(hexhash+"\n")
-        logging.debug("Sent hash %s to unix socket add.ocaml2py.sock." % hexhash)
-
-    s.close()
-    logging.debug("Closed unix socket add.ocaml2py.sock.")
-
-if __name__=="__main__":
-    import sys
-
-    logging.basicConfig(level=logging.DEBUG)
-
-    hashes = [binascii.unhexlify(i) for i in sys.argv[1:]]
-    addhashes(hashes)

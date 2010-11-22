@@ -32,9 +32,11 @@ timestamp = 1290117971
 entry = entries.Entry(webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp)
 assert entry.captcha_signature_valid()
 
+entrylist = entries.EntryList([entry])
+
 # save it
 try:
-    entry.save()
+    entrylist.save()
 except sqlite3.IntegrityError:
     print "already in db"
 
@@ -49,13 +51,13 @@ hexhash2 = binascii.hexlify(entry2.hash)
 assert hexhash2==hexhash
 
 # test exporting a EntryList as JSON
-entrylist = entries.EntryList([entry])
-json_string = entrylist.json()
+entrylist2 = entries.EntryList([entry])
+json_string = entrylist2.json()
 print json_string
 
 # test loading a EntryList from JSON
-entrylist2 = entries.EntryList.from_json(json_string)
-entry3 = entrylist2[0]
+entrylist3 = entries.EntryList.from_json(json_string)
+entry3 = entrylist3[0]
 hexhash3 = binascii.hexlify(entry3.hash)
 assert hexhash3==hexhash
 
@@ -63,7 +65,7 @@ assert hexhash3==hexhash
 entryserver = entries.EntryServer()
 
 # get a EntryList from the EntryServer
-entrylist3 = entries.EntryList.from_server([binhash], ("localhost",20001))
-entry4 = entrylist3[0]
+entrylist4 = entries.EntryList.from_server([binhash], ("localhost",20001))
+entry4 = entrylist4[0]
 hexhash4 = binascii.hexlify(entry4.hash)
 assert hexhash4==hexhash
