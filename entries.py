@@ -85,8 +85,8 @@ class EntryServer(threading.Thread):
         cur = con.cursor()
         f = clientsocket.makefile()
 
-        # build list of entries to be transmitted
-        entrylist = EntryList()
+        # get list of hashes to be transmitted
+        binhashes = []
 
         while True:
             hexhash = f.readline().strip()
@@ -98,12 +98,9 @@ class EntryServer(threading.Thread):
                 logging.warning("Invalid request for hash \"%s\" by %s: %s" % (hexhash, str(address), str(e)))
                 continue
 
-            entry = Entry.from_database(binhash)
+            binhashes.append(binhash)
 
-            if entry:
-                entrylist.append(entry)
-            else:
-                logging.warning("Hash \"%s\" was requested by %s, but it does not exist." % (hexhash, str(address)))
+        entrylist = EntryList.from_database(binhashes)
 
         # serve requested hashes
         json_string = entrylist.json()
@@ -116,6 +113,29 @@ class EntryServer(threading.Thread):
 class InvalidHashError(Exception): pass
 
 class EntryList(list):
+    @classmethod
+    def from_database(cls, binhashes):
+        entrylist = EntryList()
+
+        cur = con.cursor()
+
+        for binhash in binhashes:
+            cur.execute(
+                "SELECT webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp FROM entries WHERE hash=?",
+                (buffer(binhash), )
+            )
+            args = cur.fetchone()
+            if not args: return None
+
+            entry = Entry(*args)
+
+            if entry:
+                entrylist.append(entry)
+            else:
+                logging.warning("Requested hash \"%s\" does not exist." % binascii.hexlify(binhash))
+
+        return entrylist
+
     @classmethod
     def from_server(cls, binhashes, address):
         asocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -209,20 +229,6 @@ class EntryList(list):
 
 class Entry:
     """ represents a database entry for a webfinger address """
-
-    @classmethod
-    def from_database(cls, binhash):
-        cur = con.cursor()
-        cur.execute(
-            "SELECT webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp FROM entries WHERE hash=?",
-            (buffer(binhash), )
-        )
-        args = cur.fetchone()
-        if not args: return None
-
-        entry = cls(*args)
-
-        return entry
 
     @classmethod
     def from_webfinger_profile(cls, webfinger_address):

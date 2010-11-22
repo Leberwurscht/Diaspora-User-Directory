@@ -46,12 +46,12 @@ hexhash = binascii.hexlify(binhash)
 print hexhash
 
 # test loading from database
-entry2 = entries.Entry.from_database(binhash)
+entrylist2 = entries.EntryList.from_database([binhash])
+entry2 = entrylist2[0]
 hexhash2 = binascii.hexlify(entry2.hash)
 assert hexhash2==hexhash
 
 # test exporting a EntryList as JSON
-entrylist2 = entries.EntryList([entry])
 json_string = entrylist2.json()
 print json_string
 
