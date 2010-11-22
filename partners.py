@@ -22,13 +22,14 @@ servers = {} # server address -> Server object mapping, where address=(host, por
 clients = {} # username -> Client object mapping
 
 class Server:
-    def __init__(self, host, port, username, password):
+    def __init__(self, host, port, entryserverport, username, password):
         self.address = (host, port)
+        self.entryserver_address = (host, entryserverport)
         self.username = username
         self.password = password
 
     def config_line(self):
-        return "server "+self.address[0]+" "+str(self.address[1])+" "+self.username+" "+self.password
+        return "server "+self.address[0]+" "+str(self.address[1])+" "+str(self.entryserver_address[1])+" "+self.username+" "+self.password
 
     def authenticated_socket(self):
         asocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -53,12 +54,13 @@ class Server:
         return self.username+"@"+self.address[0]+":"+str(self.address[1])
 
 class Client:
-    def __init__(self, username, passwordhash):
+    def __init__(self, host, entryserverport, username, passwordhash):
+        self.entryserver_address = (host, entryserverport)
         self.username = username
         self.passwordhash = passwordhash
 
     def config_line(self):
-        return "client "+self.username+" "+self.passwordhash
+        return "client "+self.entryserver_address[0]+" "+str(self.entryserver_address[1])+" "+self.username+" "+self.passwordhash
 
     def password_valid(self, password):
         comparehash = hashlib.sha1(password).hexdigest()
@@ -66,7 +68,7 @@ class Client:
         return comparehash==self.passwordhash
 
     def __str__(self):
-        return self.username
+        return self.entryserver_address[0]+" (username: "+self.username+")"
 
 for line in open(partners_file):
     # check if line is empty
@@ -77,7 +79,7 @@ for line in open(partners_file):
 
     if direction=="server":
         try:
-            direction, host, port, username, password = line.split()
+            direction, host, port, entryserverport, username, password = line.split()
         except ValueError:
             logging.error("Invalid server line in partners file!")
             continue
@@ -88,17 +90,29 @@ for line in open(partners_file):
             logging.error("Invalid port %s for server %s in partners file!" % (port, host))
             continue
 
-        server = Server(host, port, username, password)
+        try:
+            entryserverport = int(entryserverport)
+        except ValueError:
+            logging.error("Invalid port %s for entry server %s in partners file!" % (entryserverport, host))
+            continue
+
+        server = Server(host, port, entryserverport, username, password)
         servers[server.address] = server
 
     elif direction=="client":
         try:
-            direction, username, passwordhash = line.split()
+            direction, host, entryserverport, username, passwordhash = line.split()
         except ValueError:
             logging.error("Invalid client line in partners file!")
             continue
 
-        clients[username] = Client(username, passwordhash)
+        try:
+            entryserverport = int(entryserverport)
+        except ValueError:
+            logging.error("Invalid port %s for entry server %s in partners file!" % (entryserverport, host))
+            continue
+
+        clients[username] = Client(host, entryserverport, username, passwordhash)
 
     else:
         logging.error("Invalid line in partners file: first word must be 'server' or 'client'.")
@@ -133,7 +147,7 @@ if __name__=="__main__":
         configfile.close()
 
     parser = optparse.OptionParser(
-        usage = "%prog -a -s HOST PORT USERNAME\nOr: %prog -d -s HOST PORT\nOr: %prog (-a|-d) -c USERNAME\nOr: %prog -l [-s|-c]",
+        usage = "%prog -a -s HOST PORT ENTRYSERVERPORT USERNAME\nOr: %prog -d -s HOST PORT\nOr: %prog -a -c USERNAME HOST ENTRYSERVERPORT\nOr: %prog -d -c USERNAME\nOr: %prog -l [-s|-c]",
         description="manage the synchronisation partners list"
     )
     
@@ -153,20 +167,20 @@ if __name__=="__main__":
             options.client = True
 
         if options.server:
-            print "Server addresses:"
+            print "Servers:"
             for server in servers.values(): print server
             print
 
         if options.client:
-            print "Client usernames:"
+            print "Clients:"
             for client in clients.values(): print client
             print
 
     elif options.add and options.server:
         try:
-            host,port,username = args
+            host,port,entryserverport,username = args
         except ValueError:
-            print >>sys.stderr, "ERROR: Need host, port and username."
+            print >>sys.stderr, "ERROR: Need host, port, EntryServer port and username."
             sys.exit(1)
             
         try:
@@ -174,26 +188,38 @@ if __name__=="__main__":
         except ValueError:
             print >>sys.stderr, "ERROR: Invalid port."
             sys.exit(1)
+            
+        try:
+            entryserverport = int(entryserverport)
+        except ValueError:
+            print >>sys.stderr, "ERROR: Invalid EntryServer port."
+            sys.exit(1)
 
         print "Adding server \"%s\"." % host
 
         password = read_password()
-        server = Server(host, port, username, password)
+        server = Server(host, port, entryserverport, username, password)
         servers[server.address] = server
         write_partners()
 
     elif options.add and options.client:
         try:
-            username, = args
+            username,host,entryserverport = args
         except ValueError:
-            print >>sys.stderr, "ERROR: Need username."
+            print >>sys.stderr, "ERROR: Need username, host and EntryServer port."
+            sys.exit(1)
+
+        try:
+            entryserverport = int(entryserverport)
+        except ValueError:
+            print >>sys.stderr, "ERROR: Invalid EntryServer port."
             sys.exit(1)
 
         print "Adding client \"%s\"." % username
 
         password = read_password()
         passwordhash = hashlib.sha1(password).hexdigest()
-        clients[username] = Client(username, passwordhash)
+        clients[username] = Client(host, entryserverport, username, passwordhash)
         write_partners()
 
     elif options.add:
@@ -218,7 +244,7 @@ if __name__=="__main__":
         del servers[address]
         write_partners()
 
-    elif options.delete and options.server:
+    elif options.delete and options.client:
         try:
             username, = args
         except ValueError:
