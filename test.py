@@ -1,5 +1,22 @@
 #!/usr/bin/env python
 
+"""
+This module tests the functions provided by the entries module. It
+will create a test database entry, run some checks and output some
+information.
+
+Two notes:
+ - Do not run this while sduds.py is running, as both will try to
+   run the trieserver executable.
+ - This script does not only need the public key of the captcha
+   provider, but also the private one. It must be placed at the path
+   './captchakey'.
+"""
+
+# run the trieserver executable
+import trieserver
+
+# cryptography functions
 import paramiko
 
 def get_private_key(path="captchakey"):

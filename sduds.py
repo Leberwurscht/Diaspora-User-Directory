@@ -207,43 +207,10 @@ def connect(hashserver, server):
     process_hashes(hashlist, server.entryserver_address)
 
 if __name__=="__main__":
-    import os, sys, time, subprocess, signal
+    import sys, time
 
-    # delete remaining unix domain sockets
-    os.remove("server.ocaml2py.sock")
-    os.remove("client.ocaml2py.sock")
-    os.remove("add.ocaml2py.sock")
-
-    # run trieserver
-    trieserver = subprocess.Popen("./trieserver")
-
-    # define exitfunc
-    def exit():
-        global trieserver
-
-        trieserver.terminate()
-        sys.exit(0)
-
-    sys.exitfunc = exit
-
-    # call exitfunc also for signals
-    def signal_handler(signal, frame):
-        print >>sys.stderr, "Server terminated by signal %d." % signal
-        exit()
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGHUP, signal_handler)
-
-    # wait until all unix domain sockets are set up by trieserver
-    while True:
-        time.sleep(1)
-
-        if not os.path.exists("server.ocaml2py.sock"): continue
-        if not os.path.exists("client.ocaml2py.sock"): continue
-        if not os.path.exists("add.ocaml2py.sock"): continue
-
-        break
+    # run the trieserver executable
+    import trieserver
 
     # run hashserver and entryserver
     hashserver = HashServer()
@@ -277,7 +244,9 @@ if __name__=="__main__":
             print >>sys.stderr, "Connecting to %s failed: %s" % (str(server), str(e))
             sys.exit(1)
 
+        # give trieserver some time to process the data
         time.sleep(3)
+
         sys.exit(0)
 
     # otherwise simply run a server
