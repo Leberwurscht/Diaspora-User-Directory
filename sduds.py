@@ -234,8 +234,13 @@ if __name__=="__main__":
 
         server = partners.servers[address]
 
-        connect(hashserver, server)
+        try:
+            connect(hashserver, server)
+        except socket.error,e:
+            print >>sys.stderr, "Connecting to %s failed: %s" % (str(server), str(e))
+            sys.exit(1)
 
+        time.sleep(3)
         sys.exit(0)
 
     # otherwise simply run a server
