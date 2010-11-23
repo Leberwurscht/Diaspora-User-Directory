@@ -16,8 +16,8 @@ con = db.connect("entries.sqlite", check_same_thread=False)
 # check if table exists and create it if not
 
 cur = con.cursor()
-cur.execute("SELECT count(1) FROM sqlite_master WHERE type='table' AND name='entries'")
-table_exists = cur.fetchone()[0]
+cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='entries'")
+table_exists = cur.fetchone()
 
 if not table_exists:
     cur.execute("PRAGMA legacy_file_format=0")
@@ -82,6 +82,8 @@ class EntryServer(threading.Thread):
             thread.start()
 
     def handle_connection(self, clientsocket, address):
+        global con
+
         cur = con.cursor()
         f = clientsocket.makefile()
 
@@ -115,6 +117,8 @@ class InvalidHashError(Exception): pass
 class EntryList(list):
     @classmethod
     def from_database(cls, binhashes):
+        global con
+
         entrylist = EntryList()
 
         cur = con.cursor()
@@ -198,6 +202,8 @@ class EntryList(list):
         return json_string
 
     def save(self):
+        global con
+
         cur = con.cursor()
 
         # open unix domain socket for adding hashes to the prefix tree
@@ -257,6 +263,8 @@ class Entry:
         self.hash = combinedhash.digest()[:16]
 
     def captcha_signature_valid(self):
+        global captcha_key
+
         return signature_valid(captcha_key, self.captcha_signature, self.webfinger_address.encode("utf-8"))
 
 class DatabaseOperation:
