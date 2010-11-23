@@ -115,14 +115,19 @@ def link_sockets(socket1, socket2):
             other_socket.sendall(buf)
 
 def process_hashes(hashlist, entryserver_address):
-    
-    # ... get database entries, take control samples etc. ...
+    # get database entries
+    entrylist = entries.EntryList.from_server(hashlist, entryserver_address)
 
-    # ... add valid entries to database ...
+    # verify captcha signatures
+    for entry in entrylist:
+        if not entry.captcha_signature_valid():
+            entrylist.remove(entry)
+            # ... kick the partner ...
 
-    # add hashes for valid entries to own prefix tree
-    logging.debug("Calling addhashes on the processed hashes.")
-    addhashes.addhashes(hashlist)
+    # ... take control samples ...
+
+    # add valid entries to database
+    entrylist.save()
 
 def handle_connection(hashserver, clientsocket, address):
     # authentication
