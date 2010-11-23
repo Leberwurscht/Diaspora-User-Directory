@@ -22,7 +22,7 @@ table_exists = cur.fetchone()
 if not table_exists:
     cur.execute("PRAGMA legacy_file_format=0")
     cur.execute("CREATE TABLE entries (hash BLOB UNIQUE, webfinger_address TEXT UNIQUE, full_name TEXT, hometown TEXT, "
-               +"country_code CHARACTER(2), captcha_signature BLOB, timestamp INTEGER)")
+               +"country_code CHARACTER(2), services TEXT, captcha_signature BLOB, timestamp INTEGER)")
     cur.execute("CREATE UNIQUE INDEX entries_hashes ON entries (hash)")
     cur.execute("CREATE UNIQUE INDEX entries_addresses ON entries (webfinger_address)")
 
@@ -125,7 +125,7 @@ class EntryList(list):
 
         for binhash in binhashes:
             cur.execute(
-                "SELECT webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp FROM entries WHERE hash=?",
+                "SELECT webfinger_address, full_name, hometown, country_code, services, captcha_signature, timestamp FROM entries WHERE hash=?",
                 (buffer(binhash), )
             )
             args = cur.fetchone()
@@ -166,6 +166,7 @@ class EntryList(list):
             full_name = json_entry["full_name"]
             hometown = json_entry["hometown"]
             country_code = json_entry["country_code"]
+            services = json_entry["services"]
             captcha_signature = binascii.unhexlify(json_entry["captcha_signature"])
 
             if "timestamp" in json_entry:
@@ -173,7 +174,7 @@ class EntryList(list):
             else:
                 timestamp = None
 
-            entry = Entry(webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp)
+            entry = Entry(webfinger_address, full_name, hometown, country_code, services, captcha_signature, timestamp)
 
             if "hash" in json_entry:
                 if not binascii.unhexlify(json_entry["hash"])==entry.hash:
@@ -193,6 +194,7 @@ class EntryList(list):
                 "full_name":entry.full_name,
                 "hometown":entry.hometown,
                 "country_code":entry.country_code,
+                "services":entry.services,
                 "captcha_signature":binascii.hexlify(entry.captcha_signature),
                 "timestamp":entry.timestamp
             })
@@ -213,12 +215,13 @@ class EntryList(list):
 
         for entry in self:
             # add entry to database
-            cur.execute("INSERT INTO entries (hash, webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp) VALUES (?,?,?,?,?,?,?)",
+            cur.execute("INSERT INTO entries (hash, webfinger_address, full_name, hometown, country_code, services, captcha_signature, timestamp) VALUES (?,?,?,?,?,?,?,?)",
                 (buffer(entry.hash),
                 entry.webfinger_address,
                 entry.full_name,
                 entry.hometown,
                 entry.country_code,
+                entry.services,
                 buffer(entry.captcha_signature),
                 entry.timestamp)
             )
@@ -241,21 +244,25 @@ class Entry:
         # https://github.com/jcarbaugh/python-webfinger
         raise NotImplementedError, "Not implemented yet."
 
-    def __init__(self, webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp=None):
-        """ arguments must be unicode strings, except captcha_signature (buffer) and timestamp (int) """
+    def __init__(self, webfinger_address, full_name, hometown, country_code, services, captcha_signature, timestamp=None):
+        """ arguments must be unicode objects, except captcha_signature (buffer) and timestamp (int) """
         if not timestamp: timestamp = int(time.time())
 
         self.webfinger_address = webfinger_address
         self.full_name = full_name
         self.hometown = hometown
         self.country_code = country_code
+        self.services = services # contains comma-separated tokens for each service
+                                 # a user uses, e.g. "diaspora,osw,email". This can
+                                 # be used to filter out only users of a certain 
+                                 # service when searching.
         self.captcha_signature = captcha_signature
         self.timestamp = timestamp
 
         # compute hash
         combinedhash = hashlib.sha1()
 
-        for data in [self.webfinger_address, self.full_name, self.hometown, self.country_code, self.timestamp]:
+        for data in [self.webfinger_address, self.full_name, self.hometown, self.country_code, self.services, self.timestamp]:
             subhash = hashlib.sha1(str(data)).hexdigest()
             combinedhash.update(subhash)
 

@@ -26,10 +26,11 @@ webfinger_address = u"test@example.com"
 full_name = u"John Doe"
 hometown = u"Los Angeles"
 country_code = u"US"
+services = "diaspora,email"
 captcha_signature = sign(private_key, webfinger_address.encode("utf-8"))
 timestamp = 1290117971
 
-entry = entries.Entry(webfinger_address, full_name, hometown, country_code, captcha_signature, timestamp)
+entry = entries.Entry(webfinger_address, full_name, hometown, country_code, services, captcha_signature, timestamp)
 assert entry.captcha_signature_valid()
 
 entrylist = entries.EntryList([entry])
