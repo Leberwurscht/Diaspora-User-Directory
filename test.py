@@ -80,10 +80,12 @@ hexhash3 = binascii.hexlify(entry3.hash)
 assert hexhash3==hexhash
 
 # run a EntryServer
-entryserver = entries.EntryServer()
+entryserver_interface = "localhost"
+entryserver_port = 20001
+entryserver = entries.EntryServer(entryserver_interface, entryserver_port)
 
 # get a EntryList from the EntryServer
-entrylist4 = entries.EntryList.from_server([binhash], ("localhost",20001))
+entrylist4 = entries.EntryList.from_server([binhash], (entryserver_interface, entryserver_port))
 entry4 = entrylist4[0]
 hexhash4 = binascii.hexlify(entry4.hash)
 assert hexhash4==hexhash

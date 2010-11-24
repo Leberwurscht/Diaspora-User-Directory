@@ -207,21 +207,37 @@ def connect(hashserver, server):
     process_hashes(hashlist, server.entryserver_address)
 
 if __name__=="__main__":
+    """
+    Command line interface.
+
+    There are two ways to call this:
+    - You can pass arguments HOST PORT [ENTRYSERVER_PORT] to connect to another
+      server manually.
+    - You can pass no argument or only ENTRYSERVER_PORT to wait for connections
+      from other servers.
+
+    The own EntryServer will run on the port ENTRYSERVER_PORT or on 20001 if
+    ENTRYSERVER_PORT was not specified.
+    """
+
     import sys, time
 
     # run the trieserver executable
     import trieserver
 
-    # run hashserver and entryserver
+    # run hashserver
     hashserver = HashServer()
-    entryserver = entries.EntryServer()
 
-    if len(sys.argv)>1:
+    if len(sys.argv)>2:
         # initiate connection if host and port are passed
         try:
-            command,host,port = sys.argv
+            if len(sys.argv)==3:
+                command,host,port = sys.argv
+                entryserver_port = 20001
+            else:
+                command,host,port,entryserver_port = sys.argv
         except ValueError:
-            print >>sys.stderr, "Pass host and port for manually initiating a connection."
+            print >>sys.stderr, "Pass host and port and (optionally) EntryServer port for manually initiating a connection."
             sys.exit(1)
 
         try:
@@ -230,6 +246,16 @@ if __name__=="__main__":
             print >>sys.stderr, "Invalid port."
             sys.exit(1)
 
+        try:
+            entryserver_port = int(entryserver_port)
+        except ValueError:
+            print >>sys.stderr, "Invalid EntryServer port."
+            sys.exit(1)
+
+        # start EntryServer
+        entryserver = entries.EntryServer("localhost", entryserver_port)
+
+        # synchronize with another server
         address = (host, port)
 
         if not address in partners.servers:
@@ -250,6 +276,21 @@ if __name__=="__main__":
         sys.exit(0)
 
     # otherwise simply run a server
+    interface = "localhost"
+
+    if len(sys.argv)>1:
+        try:
+            entryserver_port = int(sys.argv[1])
+        except ValueError:
+            print >>sys.stderr, "Invalid EntryServer port."
+            sys.exit(1)
+    else:
+        entryserver_port = 20001
+
+    # start EntryServer
+    entryserver = entries.EntryServer("localhost", entryserver_port)
+
+    # start a server that waits for synchronisation attempts from others
     interface = "localhost"
     port = 20000
 
