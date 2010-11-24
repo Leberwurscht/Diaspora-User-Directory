@@ -8,9 +8,9 @@ terminating it when the interpreter terminates.
 import os, sys, time, subprocess, signal
 
 # delete remaining unix domain sockets
-os.remove("server.ocaml2py.sock")
-os.remove("client.ocaml2py.sock")
-os.remove("add.ocaml2py.sock")
+for name in ["server","client","add"]:
+    path = name+".ocaml2py.sock"
+    if os.path.exists(path): os.remove(path)
 
 # run trieserver
 trieserver = subprocess.Popen("./trieserver")
