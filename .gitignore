@@ -2,8 +2,10 @@
 /.depend
 /prepared
 
-# database directory
+# databases
 /PTree/
+entries.sqlite
+entries.sqlite-journal
 
 # objects
 *.annot

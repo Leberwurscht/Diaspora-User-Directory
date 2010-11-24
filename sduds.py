@@ -47,7 +47,7 @@ class HashServer(threading.Thread):
             thread.start()
 
     def get_event(self, identifier):
-        """ Create event for identifier if it does not exists and return it,
+        """ Create event for an identifier if it does not exist and return it,
             otherwise return existing one. Does not lock the dicts, you must
             do this yourself! """
 
@@ -114,15 +114,20 @@ def link_sockets(socket1, socket2):
             other_socket = sockets[ ( sockets.index(input_socket) + 1 ) % 2 ]
             other_socket.sendall(buf)
 
-def process_hashes(hashlist):
+def process_hashes(hashlist, entryserver_address):
+    # get database entries
+    entrylist = entries.EntryList.from_server(hashlist, entryserver_address)
 
-    # ... get database entries, take control samples etc. ...
+    # verify captcha signatures
+    for entry in entrylist:
+        if not entry.captcha_signature_valid():
+            entrylist.remove(entry)
+            # ... kick the partner ...
 
-    # ... add valid entries to database ...
+    # ... take control samples ...
 
-    # add hashes for valid entries to own prefix tree
-    logging.debug("Calling addhashes on the processed hashes.")
-    addhashes.addhashes(hashlist)
+    # add valid entries to database
+    entrylist.save()
 
 def handle_connection(hashserver, clientsocket, address):
     # authentication
@@ -140,6 +145,8 @@ def handle_connection(hashserver, clientsocket, address):
         logging.warning("Rejected synchronisation attempt from %s (%s) - wrong password." % (username, str(address)))
         clientsocket.close()
         return False
+
+    client = partners.clients[username]
 
     logging.debug("%s (from %s) authenticated successfully." % (username, str(address)))
     clientsocket.sendall("OK\n")
@@ -164,7 +171,7 @@ def handle_connection(hashserver, clientsocket, address):
     logging.debug("Waiting for hashes for username %s" % username)
     hashlist = hashserver.get(username)
 
-    process_hashes(hashlist)
+    process_hashes(hashlist, client.entryserver_address)
 
 def connect(hashserver, server):
     logging.debug("Connecting to server %s" % str(server))
@@ -197,19 +204,40 @@ def connect(hashserver, server):
     logging.debug("Waiting for hashes for identifier %s" % identifier)
     hashlist = hashserver.get(identifier)
 
-    process_hashes(hashlist)
+    process_hashes(hashlist, server.entryserver_address)
 
 if __name__=="__main__":
-    import sys
+    """
+    Command line interface.
 
+    There are two ways to call this:
+    - You can pass arguments HOST PORT [ENTRYSERVER_PORT] to connect to another
+      server manually.
+    - You can pass no argument or only ENTRYSERVER_PORT to wait for connections
+      from other servers.
+
+    The own EntryServer will run on the port ENTRYSERVER_PORT or on 20001 if
+    ENTRYSERVER_PORT was not specified.
+    """
+
+    import sys, time
+
+    # run the trieserver executable
+    import trieserver
+
+    # run hashserver
     hashserver = HashServer()
 
-    if len(sys.argv)>1:
+    if len(sys.argv)>2:
         # initiate connection if host and port are passed
         try:
-            command,host,port = sys.argv
+            if len(sys.argv)==3:
+                command,host,port = sys.argv
+                entryserver_port = 20001
+            else:
+                command,host,port,entryserver_port = sys.argv
         except ValueError:
-            print >>sys.stderr, "Pass host and port for manually initiating a connection."
+            print >>sys.stderr, "Pass host and port and (optionally) EntryServer port for manually initiating a connection."
             sys.exit(1)
 
         try:
@@ -218,6 +246,16 @@ if __name__=="__main__":
             print >>sys.stderr, "Invalid port."
             sys.exit(1)
 
+        try:
+            entryserver_port = int(entryserver_port)
+        except ValueError:
+            print >>sys.stderr, "Invalid EntryServer port."
+            sys.exit(1)
+
+        # start EntryServer
+        entryserver = entries.EntryServer("localhost", entryserver_port)
+
+        # synchronize with another server
         address = (host, port)
 
         if not address in partners.servers:
@@ -226,11 +264,33 @@ if __name__=="__main__":
 
         server = partners.servers[address]
 
-        connect(hashserver, server)
+        try:
+            connect(hashserver, server)
+        except socket.error,e:
+            print >>sys.stderr, "Connecting to %s failed: %s" % (str(server), str(e))
+            sys.exit(1)
+
+        # give trieserver some time to process the data
+        time.sleep(3)
 
         sys.exit(0)
 
     # otherwise simply run a server
+    interface = "localhost"
+
+    if len(sys.argv)>1:
+        try:
+            entryserver_port = int(sys.argv[1])
+        except ValueError:
+            print >>sys.stderr, "Invalid EntryServer port."
+            sys.exit(1)
+    else:
+        entryserver_port = 20001
+
+    # start EntryServer
+    entryserver = entries.EntryServer("localhost", entryserver_port)
+
+    # start a server that waits for synchronisation attempts from others
     interface = "localhost"
     port = 20000
 
