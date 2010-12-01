@@ -114,7 +114,9 @@ def link_sockets(socket1, socket2):
             other_socket = sockets[ ( sockets.index(input_socket) + 1 ) % 2 ]
             other_socket.sendall(buf)
 
-def process_hashes(hashlist, entryserver_address):
+def process_hashes(hashlist, partner):
+    entryserver_address = (partner.host, partner.entryserver_port)
+
     # get database entries
     entrylist = entries.EntryList.from_server(hashlist, entryserver_address)
 
@@ -136,17 +138,22 @@ def handle_connection(hashserver, clientsocket, address):
     password = f.readline().strip()
     f.close()
 
-    if not username in partners.clients:
+    client = partners.Client.from_database(username)
+
+    if not client:
         logging.warning("Rejected synchronisation attempt from %s (%s) - unknown username." % (username, str(address)))
         clientsocket.close()
         return False
+
+    if client.kicked:
+        logging.warning("Rejected synchronisation attempt from kicked client %s (%s)." % (username, str(address)))
+        clientsocket.close()
+        return False
         
-    if not partners.clients[username].password_valid(password):
+    if not client.password_valid(password):
         logging.warning("Rejected synchronisation attempt from %s (%s) - wrong password." % (username, str(address)))
         clientsocket.close()
         return False
-
-    client = partners.clients[username]
 
     logging.debug("%s (from %s) authenticated successfully." % (username, str(address)))
     clientsocket.sendall("OK\n")
@@ -171,7 +178,7 @@ def handle_connection(hashserver, clientsocket, address):
     logging.debug("Waiting for hashes for username %s" % username)
     hashlist = hashserver.get(username)
 
-    process_hashes(hashlist, client.entryserver_address)
+    process_hashes(hashlist, client)
 
 def connect(hashserver, server):
     logging.debug("Connecting to server %s" % str(server))
@@ -187,7 +194,7 @@ def connect(hashserver, server):
     unix_socket.connect("client.ocaml2py.sock")
 
     # tell ocaml the identifier
-    identifier = str(server.address)
+    identifier = server.host+":"+str(server.synchronisation_port)
     unix_socket.sendall(identifier+"\n")
     logging.debug("Told %s the identifier %s" % (str(server), identifier))
 
@@ -204,7 +211,7 @@ def connect(hashserver, server):
     logging.debug("Waiting for hashes for identifier %s" % identifier)
     hashlist = hashserver.get(identifier)
 
-    process_hashes(hashlist, server.entryserver_address)
+    process_hashes(hashlist, server)
 
 if __name__=="__main__":
     """
@@ -258,11 +265,15 @@ if __name__=="__main__":
         # synchronize with another server
         address = (host, port)
 
-        if not address in partners.servers:
+        server = partners.Server.from_database(host, port)
+
+        if not server:
             print >>sys.stderr, "Address not in known servers list - add it with partners.py."
             sys.exit(1)
 
-        server = partners.servers[address]
+        if server.kicked:
+            print >>sys.stderr, "Will not connect - server got kicked!"
+            sys.exit(1)
 
         try:
             connect(hashserver, server)

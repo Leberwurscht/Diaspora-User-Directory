@@ -10,30 +10,98 @@ import sys
 import hashlib
 import socket
 
-# config file path
-partners_file = "partners"
+# initialize database
+import sqlite3 as db
 
-# create partners file if not existing
-open(partners_file, "a").close()
+con = db.connect("partners.sqlite", check_same_thread=False)
 
-# read partners file and fill servers/clients dictionary
+# check if tables exist and create them if not
 
-servers = {} # server address -> Server object mapping, where address=(host, port)
-clients = {} # username -> Client object mapping
+cur = con.cursor()
+cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='servers'")
+tables_exist = cur.fetchone()
 
-class Server:
-    def __init__(self, host, port, entryserverport, username, password):
-        self.address = (host, port)
-        self.entryserver_address = (host, entryserverport)
+if not tables_exist:
+    cur.execute("PRAGMA legacy_file_format=0")
+    cur.execute("CREATE TABLE servers (host TEXT, synchronisation_port INT, entryserver_port INT, username TEXT, password TEXT, kicked INTEGER)")
+    cur.execute("CREATE TABLE clients (username TEXT, passwordhash TEXT, host TEXT, entryserver_port INT, kicked INTEGER)")
+
+cur.close()
+
+class Partner:
+    @classmethod
+    def from_database(self, *args):
+        raise NotImplementedError, "Override this function in subclasses."
+
+    def kick(self, reason):
+        raise NotImplementedError, "Not implemented yet."
+
+    def save(self):
+        raise NotImplementedError, "Override this function in subclasses."
+
+    def delete(self):
+        raise NotImplementedError, "Override this function in subclasses."
+
+class Server(Partner):
+    @classmethod
+    def from_database(cls, host, synchronisation_port):
+        global con
+
+        cur = con.cursor()
+
+        cur.execute(
+            "SELECT host, username, password, synchronisation_port, entryserver_port, kicked FROM servers WHERE host=? AND synchronisation_port=?", (
+            host,
+            synchronisation_port
+        ))
+
+        args = cur.fetchone()
+        if not args: return None
+
+        server = cls(*args)
+
+        return server
+
+    def __init__(self, host, username, password, synchronisation_port=20000, entryserver_port=20001, kicked=False):
+        self.host = host
+        self.synchronisation_port = synchronisation_port
+        self.entryserver_port = entryserver_port
         self.username = username
         self.password = password
+        self.kicked = kicked
 
-    def config_line(self):
-        return "server "+self.address[0]+" "+str(self.address[1])+" "+str(self.entryserver_address[1])+" "+self.username+" "+self.password
+    def save(self):
+        global con
+
+        cur = con.cursor()
+
+        cur.execute("INSERT INTO servers (host, synchronisation_port, entryserver_port, username, password, kicked) VALUES (?,?,?,?,?,?)", (
+            self.host,
+            self.synchronisation_port,
+            self.entryserver_port,
+            self.username,
+            self.password,
+            self.kicked
+        ))
+
+        con.commit()
+
+    def delete(self):
+        global con
+
+        cur = con.cursor()
+
+        cur.execute("DELETE FROM servers WHERE host=? and synchronisation_port=?", (
+            self.host,
+            self.synchronisation_port
+        ))
+
+        con.commit()
 
     def authenticated_socket(self):
+        address = (self.host, self.synchronisation_port)
         asocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        asocket.connect(self.address)
+        asocket.connect(address)
 
         asocket.sendall(self.username+"\n")
         asocket.sendall(self.password+"\n")
@@ -43,79 +111,69 @@ class Server:
         f.close()
 
         if answer=="OK":
-            logging.info("Successfully authenticated to server %s." % str(self.address))
+            logging.info("Successfully authenticated to server %s." % str(address))
             return asocket
         else:
-            logging.error("Authentication to server %s failed." % str(self.address))
+            logging.error("Authentication to server %s failed." % str(address))
             asocket.close()
             return False
 
-    def __str__(self):
-        return self.username+"@"+self.address[0]+":"+str(self.address[1])
+class Client(Partner):
+    @classmethod
+    def from_database(cls, username):
+        global con
 
-class Client:
-    def __init__(self, host, entryserverport, username, passwordhash):
-        self.entryserver_address = (host, entryserverport)
+        cur = con.cursor()
+
+        cur.execute(
+            "SELECT host, entryserver_port, username, passwordhash, kicked FROM clients WHERE username=?", (
+            username,
+        ))
+
+        args = cur.fetchone()
+        if not args: return None
+
+        client = cls(*args)
+
+        return client
+
+    def __init__(self, host, entryserver_port, username, passwordhash, kicked=False):
+        self.host = host
+        self.entryserver_port = entryserver_port
         self.username = username
         self.passwordhash = passwordhash
+        self.kicked = kicked
 
-    def config_line(self):
-        return "client "+self.entryserver_address[0]+" "+str(self.entryserver_address[1])+" "+self.username+" "+self.passwordhash
+    def save(self):
+        global con
+
+        cur = con.cursor()
+
+        cur.execute("INSERT INTO clients (username, passwordhash, host, entryserver_port, kicked) VALUES (?,?,?,?,?)", (
+            self.username,
+            self.passwordhash,
+            self.host,
+            self.entryserver_port,
+            self.kicked
+        ))
+
+        con.commit()
+
+    def delete(self):
+        global con
+
+        cur = con.cursor()
+
+        cur.execute("DELETE FROM clients WHERE username=?", (
+            self.username,
+        ))
+
+        con.commit()
 
     def password_valid(self, password):
         comparehash = hashlib.sha1(password).hexdigest()
         
         return comparehash==self.passwordhash
-
-    def __str__(self):
-        return self.entryserver_address[0]+" (username: "+self.username+")"
-
-for line in open(partners_file):
-    # check if line is empty
-    if not line.strip(): continue
-
-    # get first word of line
-    direction = line.split()[0]
-
-    if direction=="server":
-        try:
-            direction, host, port, entryserverport, username, password = line.split()
-        except ValueError:
-            logging.error("Invalid server line in partners file!")
-            continue
-
-        try:
-            port = int(port)
-        except ValueError:
-            logging.error("Invalid port %s for server %s in partners file!" % (port, host))
-            continue
-
-        try:
-            entryserverport = int(entryserverport)
-        except ValueError:
-            logging.error("Invalid port %s for entry server %s in partners file!" % (entryserverport, host))
-            continue
-
-        server = Server(host, port, entryserverport, username, password)
-        servers[server.address] = server
-
-    elif direction=="client":
-        try:
-            direction, host, entryserverport, username, passwordhash = line.split()
-        except ValueError:
-            logging.error("Invalid client line in partners file!")
-            continue
-
-        try:
-            entryserverport = int(entryserverport)
-        except ValueError:
-            logging.error("Invalid port %s for entry server %s in partners file!" % (entryserverport, host))
-            continue
-
-        clients[username] = Client(host, entryserverport, username, passwordhash)
-
-    else:
-        logging.error("Invalid line in partners file: first word must be 'server' or 'client'.")
 
 # command line interface
 if __name__=="__main__":
@@ -132,19 +190,6 @@ if __name__=="__main__":
                 return password
             else:
                 print >>sys.stderr, "ERROR: Passwords do not match."
-
-    def write_partners():
-        global servers, clients
-
-        configfile = open(partners_file, "w")
-
-        for server in servers.values():
-            print >>configfile, server.config_line()
-
-        for client in clients.values():
-            print >>configfile, client.config_line()
-
-        configfile.close()
 
     parser = optparse.OptionParser(
         usage = "%prog -a -s HOST PORT ENTRYSERVERPORT USERNAME\nOr: %prog -d -s HOST PORT\nOr: %prog -a -c USERNAME HOST ENTRYSERVERPORT\nOr: %prog -d -c USERNAME\nOr: %prog -l [-s|-c]",
@@ -166,31 +211,39 @@ if __name__=="__main__":
             options.server = True
             options.client = True
 
+        cur = con.cursor()
+
         if options.server:
+            cur.execute("SELECT username, host, synchronisation_port FROM servers")
+
             print "Servers:"
-            for server in servers.values(): print server
+            for username, host, synchronisation_port in cur:
+                print username+"@"+host+":"+str(synchronisation_port)
             print
 
         if options.client:
+            cur.execute("SELECT host, username FROM clients")
+
             print "Clients:"
-            for client in clients.values(): print client
+            for host, username in cur:
+                print host+" (using username '"+username+"')"
             print
 
     elif options.add and options.server:
         try:
-            host,port,entryserverport,username = args
+            host,synchronisation_port,entryserver_port,username = args
         except ValueError:
             print >>sys.stderr, "ERROR: Need host, port, EntryServer port and username."
             sys.exit(1)
             
         try:
-            port = int(port)
+            synchronisation_port = int(synchronisation_port)
         except ValueError:
             print >>sys.stderr, "ERROR: Invalid port."
             sys.exit(1)
             
         try:
-            entryserverport = int(entryserverport)
+            entryserver_port = int(entryserver_port)
         except ValueError:
             print >>sys.stderr, "ERROR: Invalid EntryServer port."
             sys.exit(1)
@@ -198,19 +251,23 @@ if __name__=="__main__":
         print "Adding server \"%s\"." % host
 
         password = read_password()
-        server = Server(host, port, entryserverport, username, password)
-        servers[server.address] = server
-        write_partners()
+
+        old_server = Server.from_database(host, synchronisation_port)
+        if old_server:
+            old_server.delete()
+
+        server = Server(host, username, password, synchronisation_port, entryserver_port)
+        server.save()
 
     elif options.add and options.client:
         try:
-            username,host,entryserverport = args
+            username,host,entryserver_port = args
         except ValueError:
             print >>sys.stderr, "ERROR: Need username, host and EntryServer port."
             sys.exit(1)
 
         try:
-            entryserverport = int(entryserverport)
+            entryserver_port = int(entryserver_port)
         except ValueError:
             print >>sys.stderr, "ERROR: Invalid EntryServer port."
             sys.exit(1)
@@ -219,8 +276,13 @@ if __name__=="__main__":
 
         password = read_password()
         passwordhash = hashlib.sha1(password).hexdigest()
-        clients[username] = Client(host, entryserverport, username, passwordhash)
-        write_partners()
+
+        old_client = Client.from_database(username)
+        if old_client:
+            old_client.delete()
+
+        client = Client(host, entryserver_port, username, passwordhash)
+        client.save()
 
     elif options.add:
         print >>sys.stderr, "ERROR: Need either -s or -c."
@@ -228,21 +290,26 @@ if __name__=="__main__":
 
     elif options.delete and options.server:
         try:
-            host,port = args
+            host,synchronisation_port = args
         except ValueError:
             print >>sys.stderr, "ERROR: Need host and port."
             sys.exit(1)
-
-        address = (host, port)
-
-        if not address in servers:
-            print >>sys.stderr, "ERROR: Server \"%s\" is not in list." % str(address)
+            
+        try:
+            synchronisation_port = int(synchronisation_port)
+        except ValueError:
+            print >>sys.stderr, "ERROR: Invalid port."
             sys.exit(1)
 
-        print "Deleting server \"%s\"." % address
+        server = Server.from_database(host, synchronisation_port)
 
-        del servers[address]
-        write_partners()
+        if not server:
+            print >>sys.stderr, "ERROR: Server \"%s:%d\" is not in list." % (host, synchronisation_port)
+            sys.exit(1)
+
+        print "Deleting server \"%s:%d\"." % (host, synchronisation_port)
+
+        server.delete()
 
     elif options.delete and options.client:
         try:
@@ -251,14 +318,15 @@ if __name__=="__main__":
             print >>sys.stderr, "ERROR: Need username."
             sys.exit(1)
 
-        if not username in clients:
-            print >>sys.stderr, "ERROR: Client \"%s\" is not in list."
+        client = Client.from_database(username)
+
+        if not client:
+            print >>sys.stderr, "ERROR: Client username \"%s\" is not in list." % username
             sys.exit(1)
 
         print "Deleting client username \"%s\"." % username
 
-        del clients[username]
-        write_partners()
+        client.delete()
 
     elif options.delete:
         print >>sys.stderr, "ERROR: Need either -s or -c."

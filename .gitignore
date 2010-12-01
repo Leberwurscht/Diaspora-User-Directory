@@ -6,6 +6,8 @@
 /PTree/
 entries.sqlite
 entries.sqlite-journal
+partners.sqlite
+partners.sqlite-journal
 
 # objects
 *.annot
