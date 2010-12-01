@@ -38,16 +38,78 @@ private_key = get_private_key()
 
 import entries, binascii, sqlite3
 
-# create an example database entry
-webfinger_address = u"test@example.com"
-full_name = u"John Doe"
-hometown = u"Los Angeles"
-country_code = u"US"
-services = "diaspora,email"
-captcha_signature = sign(private_key, webfinger_address.encode("utf-8"))
-timestamp = 1290117971
+# test server providing a webfinger profile
 
-entry = entries.Entry(webfinger_address, full_name, hometown, country_code, services, captcha_signature, timestamp)
+import BaseHTTPServer, urlparse, urllib, json, threading
+
+class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path=="/.well-known/host-meta":
+            self.send_response(200, "OK")
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write("""<?xml version='1.0' encoding='UTF-8'?>
+<XRD xmlns='http://docs.oasis-open.org/ns/xri/xrd-1.0'
+     xmlns:hm='http://host-meta.net/xrd/1.0'>
+ 
+    <hm:Host>localhost:3000</hm:Host>
+ 
+    <Link rel='lrdd'
+          template='http://localhost:3000/describe?uri={uri}'>
+        <Title>Resource Descriptor</Title>
+    </Link>
+</XRD>""")
+        elif self.path.startswith("/describe"):
+            querystring = urlparse.urlparse(self.path).query
+            args = urlparse.parse_qs(querystring)
+            uri, = args["uri"]
+            self.send_response(200, "OK")
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write("""<?xml version='1.0' encoding='UTF-8'?>
+<XRD xmlns='http://docs.oasis-open.org/ns/xri/xrd-1.0'>
+
+<Subject>"""+uri+"""</Subject>
+
+<Link rel='http://hoegners.de/sduds/spec'
+      href='http://localhost:3000/sduds?"""+urllib.urlencode({"uri":uri})+"""' />
+</XRD>""")
+        elif self.path.startswith("/sduds"):
+            querystring = urlparse.urlparse(self.path).query
+            args = urlparse.parse_qs(querystring)
+            uri, = args["uri"]
+
+            webfinger_address = uri.split("acct:",1)[-1]
+
+            json_dict = {}
+            json_dict["webfinger_address"] = webfinger_address
+            json_dict["full_name"] = webfinger_address.split("@")[0]
+            json_dict["hometown"] = u"Los Angeles"
+            json_dict["country_code"] = u"US"
+            json_dict["services"] = "diaspora,email"
+            json_dict["captcha_signature"] = binascii.hexlify(sign(private_key, webfinger_address.encode("utf-8")))
+
+            json_string = json.dumps(json_dict)
+
+            self.send_response(200, "OK")
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(json_string)
+
+def run_webfinger_profile_server():
+    webfinger_profile_server = BaseHTTPServer.HTTPServer(('', 3000), RequestHandler)
+    webfinger_profile_server.serve_forever()
+
+wps_thread = threading.Thread(target=run_webfinger_profile_server)
+wps_thread.daemon = True
+wps_thread.start()
+
+# create an example database entry, retrieving a webfinger profile from the test server
+
+entry = entries.Entry.from_webfinger_address("JohnDoe@localhost:3000")
+entry.timestamp = 1290117971 # set custom timestamp to avoid different versions of the entry
+entry.hash = entry.compute_hash() # recompute hash for newly set timestamp
+
 assert entry.captcha_signature_valid()
 
 entrylist = entries.EntryList([entry])
@@ -56,7 +118,7 @@ entrylist = entries.EntryList([entry])
 try:
     entrylist.save()
 except sqlite3.IntegrityError:
-    print "already in db"
+    print "address already in db"
 
 # print hash
 binhash = entry.hash

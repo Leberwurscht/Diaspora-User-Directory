@@ -236,16 +236,40 @@ class EntryList(list):
 
         con.commit()
 
+# https://github.com/jcarbaugh/python-webfinger
+import pywebfinger
+
+import urllib
+
 class Entry:
     """ represents a database entry for a webfinger address """
 
     @classmethod
-    def from_webfinger_profile(cls, webfinger_address):
-        # https://github.com/jcarbaugh/python-webfinger
-        raise NotImplementedError, "Not implemented yet."
+    def from_webfinger_address(cls, webfinger_address):
+
+        wf = pywebfinger.finger(webfinger_address)
+
+        sduds_uri = wf.find_link("http://hoegners.de/sduds/spec", attr="href")
+
+        f = urllib.urlopen(sduds_uri)
+        json_string = f.read()
+        f.close()
+
+        json_dict = json.loads(json_string)
+
+        full_name = json_dict["full_name"]
+        hometown = json_dict["hometown"]
+        country_code = json_dict["country_code"]
+        services = json_dict["services"]
+        captcha_signature = binascii.unhexlify(json_dict["captcha_signature"])
+
+        entry = cls(webfinger_address, full_name, hometown, country_code, services, captcha_signature)
+
+        return entry
 
     def __init__(self, webfinger_address, full_name, hometown, country_code, services, captcha_signature, timestamp=None):
-        """ arguments must be unicode objects, except captcha_signature (buffer) and timestamp (int) """
+        """ arguments must be unicode objects, except captcha_signature (buffer) and timestamp (int/NoneType) """
+
         if not timestamp: timestamp = int(time.time())
 
         self.webfinger_address = webfinger_address
@@ -259,15 +283,25 @@ class Entry:
         self.captcha_signature = captcha_signature
         self.timestamp = timestamp
 
-        # compute hash
+        self.hash = self.compute_hash()
+
+    def compute_hash(self, timestamp=None):
+        """ Computes the entry's hash. You can specify a custom timestamp if
+            you compute the hash to for comparison with other entries; if you
+            don't, the entry's own timestamp will be used. """
+
+        if not timestamp: timestamp = self.timestamp
+
         combinedhash = hashlib.sha1()
 
-        for data in [self.webfinger_address, self.full_name, self.hometown, self.country_code, self.services, self.timestamp]:
+        for data in [self.webfinger_address, self.full_name, self.hometown, self.country_code, self.services, timestamp]:
             subhash = hashlib.sha1(str(data)).hexdigest()
             combinedhash.update(subhash)
 
         # is it unsecure to take only 16 bytes of the hash?
-        self.hash = combinedhash.digest()[:16]
+        binhash = combinedhash.digest()[:16]
+
+        return binhash
 
     def captcha_signature_valid(self):
         global captcha_key
