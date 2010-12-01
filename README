@@ -27,11 +27,15 @@ Executables:
                    python scripts make use of this executable, but
                    you never need to execute it manually.
 
--- Build instructions for Ubuntu -----------
+-- Requirements for Ubuntu -----------
 
 aptitude install ocaml
 aptitude install libdb4.7-dev
 aptitude install python-paramiko
+
+Go to https://github.com/jcarbaugh/python-webfinger and install it.
+
+-- Building --------------------------
 
 cp Makefile.local.unused Makefile.local
 make dep
