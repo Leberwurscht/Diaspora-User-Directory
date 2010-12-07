@@ -283,25 +283,19 @@ class Entry:
         self.submission_timestamp = submission_timestamp
         self.retrieval_timestamp = retrieval_timestamp
 
-        self.hash = self.compute_hash()
+        self.update_hash()
 
-    def compute_hash(self, timestamp=None):
-        """ Computes the entry's hash. You can specify a custom timestamp if
-            you compute the hash to for comparison with other entries; if you
-            don't, the entry's own timestamp will be used. """
-
-        if not timestamp: timestamp = self.submission_timestamp
-
+    def update_hash(self):
         combinedhash = hashlib.sha1()
 
-        for data in [self.webfinger_address, self.full_name, self.hometown, self.country_code, self.services, timestamp]:
+        for data in [self.webfinger_address, self.full_name, self.hometown, self.country_code, self.services, self.submission_timestamp]:
             subhash = hashlib.sha1(str(data)).hexdigest()
             combinedhash.update(subhash)
 
         # is it unsecure to take only 16 bytes of the hash?
         binhash = combinedhash.digest()[:16]
 
-        return binhash
+        self.hash = binhash
 
     def captcha_signature_valid(self):
         global captcha_key
