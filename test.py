@@ -106,9 +106,7 @@ wps_thread.start()
 
 # create an example database entry, retrieving a webfinger profile from the test server
 
-entry = entries.Entry.from_webfinger_address("JohnDoe@localhost:3000")
-entry.timestamp = 1290117971 # set custom timestamp to avoid different versions of the entry
-entry.hash = entry.compute_hash() # recompute hash for newly set timestamp
+entry = entries.Entry.from_webfinger_address("JohnDoe@localhost:3000", 1290117971)
 
 assert entry.captcha_signature_valid()
 

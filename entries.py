@@ -22,7 +22,7 @@ table_exists = cur.fetchone()
 if not table_exists:
     cur.execute("PRAGMA legacy_file_format=0")
     cur.execute("CREATE TABLE entries (hash BLOB UNIQUE, webfinger_address TEXT UNIQUE, full_name TEXT, hometown TEXT, "
-               +"country_code CHARACTER(2), services TEXT, captcha_signature BLOB, timestamp INTEGER)")
+               +"country_code CHARACTER(2), services TEXT, captcha_signature BLOB, submission_timestamp INTEGER, retrieval_timestamp INTEGER)")
     cur.execute("CREATE UNIQUE INDEX entries_hashes ON entries (hash)")
     cur.execute("CREATE UNIQUE INDEX entries_addresses ON entries (webfinger_address)")
 
@@ -125,7 +125,7 @@ class EntryList(list):
 
         for binhash in binhashes:
             cur.execute(
-                "SELECT webfinger_address, full_name, hometown, country_code, services, captcha_signature, timestamp FROM entries WHERE hash=?",
+                "SELECT webfinger_address, full_name, hometown, country_code, services, captcha_signature, submission_timestamp, retrieval_timestamp FROM entries WHERE hash=?",
                 (buffer(binhash), )
             )
             args = cur.fetchone()
@@ -168,13 +168,10 @@ class EntryList(list):
             country_code = json_entry["country_code"]
             services = json_entry["services"]
             captcha_signature = binascii.unhexlify(json_entry["captcha_signature"])
+            submission_timestamp = json_entry["submission_timestamp"]
+            retrieval_timestamp = json_entry["retrieval_timestamp"]
 
-            if "timestamp" in json_entry:
-                timestamp = json_entry["timestamp"]
-            else:
-                timestamp = None
-
-            entry = Entry(webfinger_address, full_name, hometown, country_code, services, captcha_signature, timestamp)
+            entry = Entry(webfinger_address, full_name, hometown, country_code, services, captcha_signature, submission_timestamp, retrieval_timestamp)
 
             if "hash" in json_entry:
                 if not binascii.unhexlify(json_entry["hash"])==entry.hash:
@@ -196,7 +193,8 @@ class EntryList(list):
                 "country_code":entry.country_code,
                 "services":entry.services,
                 "captcha_signature":binascii.hexlify(entry.captcha_signature),
-                "timestamp":entry.timestamp
+                "submission_timestamp":entry.submission_timestamp,
+                "retrieval_timestamp":entry.retrieval_timestamp
             })
 
         json_string = json.dumps(json_list)
@@ -215,7 +213,7 @@ class EntryList(list):
 
         for entry in self:
             # add entry to database
-            cur.execute("INSERT INTO entries (hash, webfinger_address, full_name, hometown, country_code, services, captcha_signature, timestamp) VALUES (?,?,?,?,?,?,?,?)",
+            cur.execute("INSERT INTO entries (hash, webfinger_address, full_name, hometown, country_code, services, captcha_signature, submission_timestamp, retrieval_timestamp) VALUES (?,?,?,?,?,?,?,?,?)",
                 (buffer(entry.hash),
                 entry.webfinger_address,
                 entry.full_name,
@@ -223,7 +221,8 @@ class EntryList(list):
                 entry.country_code,
                 entry.services,
                 buffer(entry.captcha_signature),
-                entry.timestamp)
+                entry.submission_timestamp,
+                entry.retrieval_timestamp)
             )
 
             # add hash to prefix tree
@@ -245,7 +244,7 @@ class Entry:
     """ represents a database entry for a webfinger address """
 
     @classmethod
-    def from_webfinger_address(cls, webfinger_address):
+    def from_webfinger_address(cls, webfinger_address, submission_timestamp):
 
         wf = pywebfinger.finger(webfinger_address)
 
@@ -263,14 +262,14 @@ class Entry:
         services = json_dict["services"]
         captcha_signature = binascii.unhexlify(json_dict["captcha_signature"])
 
-        entry = cls(webfinger_address, full_name, hometown, country_code, services, captcha_signature)
+        retrieval_timestamp = int(time.time())
+
+        entry = cls(webfinger_address, full_name, hometown, country_code, services, captcha_signature, submission_timestamp, retrieval_timestamp)
 
         return entry
 
-    def __init__(self, webfinger_address, full_name, hometown, country_code, services, captcha_signature, timestamp=None):
-        """ arguments must be unicode objects, except captcha_signature (buffer) and timestamp (int/NoneType) """
-
-        if not timestamp: timestamp = int(time.time())
+    def __init__(self, webfinger_address, full_name, hometown, country_code, services, captcha_signature, submission_timestamp, retrieval_timestamp):
+        """ arguments must be unicode objects, except captcha_signature (buffer) and timestamps (int) """
 
         self.webfinger_address = webfinger_address
         self.full_name = full_name
@@ -281,7 +280,8 @@ class Entry:
                                  # be used to filter out only users of a certain 
                                  # service when searching.
         self.captcha_signature = captcha_signature
-        self.timestamp = timestamp
+        self.submission_timestamp = submission_timestamp
+        self.retrieval_timestamp = retrieval_timestamp
 
         self.hash = self.compute_hash()
 
@@ -290,7 +290,7 @@ class Entry:
             you compute the hash to for comparison with other entries; if you
             don't, the entry's own timestamp will be used. """
 
-        if not timestamp: timestamp = self.timestamp
+        if not timestamp: timestamp = self.submission_timestamp
 
         combinedhash = hashlib.sha1()
 
