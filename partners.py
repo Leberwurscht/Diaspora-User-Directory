@@ -23,8 +23,8 @@ tables_exist = cur.fetchone()
 
 if not tables_exist:
     cur.execute("PRAGMA legacy_file_format=0")
-    cur.execute("CREATE TABLE servers (host TEXT, synchronisation_port INT, entryserver_port INT, username TEXT, password TEXT, kicked INTEGER)")
-    cur.execute("CREATE TABLE clients (username TEXT, passwordhash TEXT, host TEXT, entryserver_port INT, kicked INTEGER)")
+    cur.execute("CREATE TABLE servers (host TEXT, synchronisation_port INT, entryserver_port INT, username TEXT, password TEXT, control_probability FLOAT, kicked INTEGER)")
+    cur.execute("CREATE TABLE clients (username TEXT, passwordhash TEXT, host TEXT, entryserver_port INT, control_probability FLOAT, kicked INTEGER)")
 
 cur.close()
 
@@ -50,7 +50,7 @@ class Server(Partner):
         cur = con.cursor()
 
         cur.execute(
-            "SELECT host, username, password, synchronisation_port, entryserver_port, kicked FROM servers WHERE host=? AND synchronisation_port=?", (
+            "SELECT host, username, password, synchronisation_port, entryserver_port, control_probability, kicked FROM servers WHERE host=? AND synchronisation_port=?", (
             host,
             synchronisation_port
         ))
@@ -62,12 +62,13 @@ class Server(Partner):
 
         return server
 
-    def __init__(self, host, username, password, synchronisation_port=20000, entryserver_port=20001, kicked=False):
+    def __init__(self, host, username, password, synchronisation_port=20000, entryserver_port=20001, control_probability=0.1, kicked=False):
         self.host = host
         self.synchronisation_port = synchronisation_port
         self.entryserver_port = entryserver_port
         self.username = username
         self.password = password
+        self.control_probability = control_probability
         self.kicked = kicked
 
     def save(self):
@@ -75,12 +76,13 @@ class Server(Partner):
 
         cur = con.cursor()
 
-        cur.execute("INSERT INTO servers (host, synchronisation_port, entryserver_port, username, password, kicked) VALUES (?,?,?,?,?,?)", (
+        cur.execute("INSERT INTO servers (host, synchronisation_port, entryserver_port, username, password, control_probability, kicked) VALUES (?,?,?,?,?,?,?)", (
             self.host,
             self.synchronisation_port,
             self.entryserver_port,
             self.username,
             self.password,
+            self.control_probability,
             self.kicked
         ))
 
@@ -126,7 +128,7 @@ class Client(Partner):
         cur = con.cursor()
 
         cur.execute(
-            "SELECT host, entryserver_port, username, passwordhash, kicked FROM clients WHERE username=?", (
+            "SELECT host, entryserver_port, username, passwordhash, control_probability, kicked FROM clients WHERE username=?", (
             username,
         ))
 
@@ -137,11 +139,12 @@ class Client(Partner):
 
         return client
 
-    def __init__(self, host, entryserver_port, username, passwordhash, kicked=False):
+    def __init__(self, host, entryserver_port, username, passwordhash, control_probability=0.1, kicked=False):
         self.host = host
         self.entryserver_port = entryserver_port
         self.username = username
         self.passwordhash = passwordhash
+        self.control_probability = control_probability
         self.kicked = kicked
 
     def save(self):
@@ -149,11 +152,12 @@ class Client(Partner):
 
         cur = con.cursor()
 
-        cur.execute("INSERT INTO clients (username, passwordhash, host, entryserver_port, kicked) VALUES (?,?,?,?,?)", (
+        cur.execute("INSERT INTO clients (username, passwordhash, host, entryserver_port, control_probability, kicked) VALUES (?,?,?,?,?,?)", (
             self.username,
             self.passwordhash,
             self.host,
             self.entryserver_port,
+            self.control_probability,
             self.kicked
         ))
 
@@ -192,7 +196,7 @@ if __name__=="__main__":
                 print >>sys.stderr, "ERROR: Passwords do not match."
 
     parser = optparse.OptionParser(
-        usage = "%prog -a -s HOST PORT ENTRYSERVERPORT USERNAME\nOr: %prog -d -s HOST PORT\nOr: %prog -a -c USERNAME HOST ENTRYSERVERPORT\nOr: %prog -d -c USERNAME\nOr: %prog -l [-s|-c]",
+        usage = "%prog -a -s HOST PORT ENTRYSERVERPORT USERNAME [CONTROL_PROBABILITY]\nOr: %prog -d -s HOST PORT\nOr: %prog -a -c USERNAME HOST ENTRYSERVERPORT [CONTROL_PROBABILITY]\nOr: %prog -d -c USERNAME\nOr: %prog -l [-s|-c]",
         description="manage the synchronisation partners list"
     )
     
@@ -214,24 +218,24 @@ if __name__=="__main__":
         cur = con.cursor()
 
         if options.server:
-            cur.execute("SELECT username, host, synchronisation_port FROM servers")
+            cur.execute("SELECT username, host, synchronisation_port, control_probability FROM servers")
 
             print "Servers:"
-            for username, host, synchronisation_port in cur:
-                print username+"@"+host+":"+str(synchronisation_port)
+            for username, host, synchronisation_port, control_probability in cur:
+                print username+"@"+host+":"+str(synchronisation_port)+" ["+str(control_probability)+"]"
             print
 
         if options.client:
-            cur.execute("SELECT host, username FROM clients")
+            cur.execute("SELECT host, username, control_probability FROM clients")
 
             print "Clients:"
-            for host, username in cur:
-                print host+" (using username '"+username+"')"
+            for host, username, control_probability in cur:
+                print host+" (using username '"+username+"') ["+str(control_probability)+"]"
             print
 
     elif options.add and options.server:
         try:
-            host,synchronisation_port,entryserver_port,username = args
+            host,synchronisation_port,entryserver_port,username = args[:4]
         except ValueError:
             print >>sys.stderr, "ERROR: Need host, port, EntryServer port and username."
             sys.exit(1)
@@ -248,6 +252,18 @@ if __name__=="__main__":
             print >>sys.stderr, "ERROR: Invalid EntryServer port."
             sys.exit(1)
 
+        control_probability = 0.1
+
+        if len(args)>5:
+            print >>sys.stderr, "ERROR: Too many arguments."
+            sys.exit(1)
+        elif len(args)==5:
+            try:
+                control_probability = float(args[4])
+            except ValueError:
+                print >>sys.stderr, "ERROR: Invalid probability."
+                sys.exit(1)
+
         print "Adding server \"%s\"." % host
 
         password = read_password()
@@ -256,12 +272,12 @@ if __name__=="__main__":
         if old_server:
             old_server.delete()
 
-        server = Server(host, username, password, synchronisation_port, entryserver_port)
+        server = Server(host, username, password, synchronisation_port, entryserver_port, control_probability)
         server.save()
 
     elif options.add and options.client:
         try:
-            username,host,entryserver_port = args
+            username,host,entryserver_port = args[:3]
         except ValueError:
             print >>sys.stderr, "ERROR: Need username, host and EntryServer port."
             sys.exit(1)
@@ -272,6 +288,18 @@ if __name__=="__main__":
             print >>sys.stderr, "ERROR: Invalid EntryServer port."
             sys.exit(1)
 
+        control_probability = 0.1
+
+        if len(args)>4:
+            print >>sys.stderr, "ERROR: Too many arguments."
+            sys.exit(1)
+        elif len(args)==4:
+            try:
+                control_probability = float(args[3])
+            except ValueError:
+                print >>sys.stderr, "ERROR: Invalid probability."
+                sys.exit(1)
+
         print "Adding client \"%s\"." % username
 
         password = read_password()
@@ -281,7 +309,7 @@ if __name__=="__main__":
         if old_client:
             old_client.delete()
 
-        client = Client(host, entryserver_port, username, passwordhash)
+        client = Client(host, entryserver_port, username, passwordhash, control_probability)
         client.save()
 
     elif options.add:
