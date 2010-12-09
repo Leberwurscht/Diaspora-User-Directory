@@ -113,6 +113,13 @@ class EntryServer(threading.Thread):
 ######
 
 class InvalidHashError(Exception): pass
+""" The partner included a hash field into its JSON string but it was wrong """
+
+class InvalidListError(Exception): pass
+""" EntryList transmitted as JSON was invalid """
+
+class WrongHashesError(Exception): pass
+""" Requested entries were missing or entries not requested were transmitted """
 
 class EntryList(list):
     @classmethod
@@ -155,7 +162,16 @@ class EntryList(list):
         f.close()
         asocket.close()
 
-        return cls.from_json(json_string)
+        try:
+            entrylist = cls.from_json(json_string)
+        except Exception, error:
+            raise InvalidListError(error)
+
+        # check if the received entries are the requested ones
+        if not set(entrylist.hashes())==set(binhashes):
+            raise WrongEntriesError(entrylist.hashes(), binhashes)
+
+        return entrylist
 
     @classmethod
     def from_json(cls, json_string):
@@ -175,11 +191,15 @@ class EntryList(list):
 
             if "hash" in json_entry:
                 if not binascii.unhexlify(json_entry["hash"])==entry.hash:
-                    raise InvalidHashError
+                    raise InvalidHashError(json_string, json_entry["hash"], entry.hash)
 
             entrylist.append(entry)
 
         return entrylist
+
+    def hashes(self):
+        binhashes = [entry.hash for entry in self]
+        return binhashes
 
     def json(self):
         json_list = []
