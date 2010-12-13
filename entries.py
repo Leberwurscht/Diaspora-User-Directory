@@ -118,7 +118,7 @@ class InvalidHashError(Exception): pass
 class InvalidListError(Exception): pass
 """ EntryList transmitted as JSON was invalid """
 
-class WrongHashesError(Exception): pass
+class WrongEntriesError(Exception): pass
 """ Requested entries were missing or entries not requested were transmitted """
 
 class EntryList(list):
