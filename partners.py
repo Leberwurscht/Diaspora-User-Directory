@@ -11,94 +11,54 @@ import hashlib
 import socket
 
 # initialize database
-import sqlite3 as db
+import sqlalchemy, sqlalchemy.orm
 
-con = db.connect("partners.sqlite", check_same_thread=False)
+engine = sqlalchemy.create_engine('sqlite:///partners.sqlite')
+Session = sqlalchemy.orm.scoped_session(sqlalchemy.orm.sessionmaker(bind=engine))
 
-# check if tables exist and create them if not
+import sqlalchemy.ext.declarative
+DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
 
-cur = con.cursor()
-cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='servers'")
-tables_exist = cur.fetchone()
+###
 
-if not tables_exist:
-    cur.execute("PRAGMA legacy_file_format=0")
-    cur.execute("CREATE TABLE servers (host TEXT, synchronisation_port INT, entryserver_port INT, username TEXT, password TEXT, control_probability FLOAT, kicked INTEGER)")
-    cur.execute("CREATE TABLE clients (username TEXT, passwordhash TEXT, host TEXT, entryserver_port INT, control_probability FLOAT, kicked INTEGER)")
+class Partner(DatabaseObject):
+    __tablename__ = 'partners'
 
-cur.close()
+    partner_type = sqlalchemy.Column('partner_type', sqlalchemy.String)
+    __mapper_args__ = {'polymorphic_on': partner_type}
 
-class Partner:
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    host = sqlalchemy.Column(sqlalchemy.String)
+    entryserver_port = sqlalchemy.Column(sqlalchemy.Integer)
+    control_probability = sqlalchemy.Column(sqlalchemy.Float)
+    kicked = sqlalchemy.Column(sqlalchemy.Boolean)
+
     @classmethod
-    def from_database(self, *args):
-        raise NotImplementedError, "Override this function in subclasses."
+    def from_database(cls, **kwargs):
+        global Session
+
+        try:
+            partner = Session.query(cls).filter_by(**kwargs).one()
+        except sqlalchemy.orm.exc.NoResultFound:
+            return None
+        else:
+            return partner
+
+    def delete(self):
+        Session.delete(self)
+        Session.commit()
 
     def kick(self, reason):
         raise NotImplementedError, "Not implemented yet."
 
-    def save(self):
-        raise NotImplementedError, "Override this function in subclasses."
-
-    def delete(self):
-        raise NotImplementedError, "Override this function in subclasses."
-
 class Server(Partner):
-    @classmethod
-    def from_database(cls, host, synchronisation_port):
-        global con
-
-        cur = con.cursor()
-
-        cur.execute(
-            "SELECT host, username, password, synchronisation_port, entryserver_port, control_probability, kicked FROM servers WHERE host=? AND synchronisation_port=?", (
-            host,
-            synchronisation_port
-        ))
-
-        args = cur.fetchone()
-        if not args: return None
-
-        server = cls(*args)
-
-        return server
-
-    def __init__(self, host, username, password, synchronisation_port=20000, entryserver_port=20001, control_probability=0.1, kicked=False):
-        self.host = host
-        self.synchronisation_port = synchronisation_port
-        self.entryserver_port = entryserver_port
-        self.username = username
-        self.password = password
-        self.control_probability = control_probability
-        self.kicked = kicked
-
-    def save(self):
-        global con
-
-        cur = con.cursor()
-
-        cur.execute("INSERT INTO servers (host, synchronisation_port, entryserver_port, username, password, control_probability, kicked) VALUES (?,?,?,?,?,?,?)", (
-            self.host,
-            self.synchronisation_port,
-            self.entryserver_port,
-            self.username,
-            self.password,
-            self.control_probability,
-            self.kicked
-        ))
-
-        con.commit()
-
-    def delete(self):
-        global con
-
-        cur = con.cursor()
-
-        cur.execute("DELETE FROM servers WHERE host=? and synchronisation_port=?", (
-            self.host,
-            self.synchronisation_port
-        ))
-
-        con.commit()
+    __tablename__ = 'servers'
+    __mapper_args__ = {'polymorphic_identity': 'server'}
+    
+    id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'), primary_key=True)
+    synchronisation_port = sqlalchemy.Column(sqlalchemy.Integer)
+    username = sqlalchemy.Column(sqlalchemy.String)
+    password = sqlalchemy.Column(sqlalchemy.String)
 
     def authenticated_socket(self):
         address = (self.host, self.synchronisation_port)
@@ -121,63 +81,20 @@ class Server(Partner):
             return False
 
 class Client(Partner):
-    @classmethod
-    def from_database(cls, username):
-        global con
-
-        cur = con.cursor()
-
-        cur.execute(
-            "SELECT host, entryserver_port, username, passwordhash, control_probability, kicked FROM clients WHERE username=?", (
-            username,
-        ))
-
-        args = cur.fetchone()
-        if not args: return None
-
-        client = cls(*args)
-
-        return client
-
-    def __init__(self, host, entryserver_port, username, passwordhash, control_probability=0.1, kicked=False):
-        self.host = host
-        self.entryserver_port = entryserver_port
-        self.username = username
-        self.passwordhash = passwordhash
-        self.control_probability = control_probability
-        self.kicked = kicked
-
-    def save(self):
-        global con
-
-        cur = con.cursor()
-
-        cur.execute("INSERT INTO clients (username, passwordhash, host, entryserver_port, control_probability, kicked) VALUES (?,?,?,?,?,?)", (
-            self.username,
-            self.passwordhash,
-            self.host,
-            self.entryserver_port,
-            self.control_probability,
-            self.kicked
-        ))
-
-        con.commit()
-
-    def delete(self):
-        global con
-
-        cur = con.cursor()
-
-        cur.execute("DELETE FROM clients WHERE username=?", (
-            self.username,
-        ))
-
-        con.commit()
+    __tablename__ = 'clients'
+    __mapper_args__ = {'polymorphic_identity': 'client'}
+    
+    id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'), primary_key=True)
+    username = sqlalchemy.Column(sqlalchemy.String)
+    passwordhash = sqlalchemy.Column(sqlalchemy.String)
 
     def password_valid(self, password):
         comparehash = hashlib.sha1(password).hexdigest()
         
         return comparehash==self.passwordhash
+
+# create tables if they don't exist
+DatabaseObject.metadata.create_all(engine)
 
 # command line interface
 if __name__=="__main__":
@@ -215,22 +132,16 @@ if __name__=="__main__":
             options.server = True
             options.client = True
 
-        cur = con.cursor()
-
         if options.server:
-            cur.execute("SELECT username, host, synchronisation_port, control_probability FROM servers")
-
             print "Servers:"
-            for username, host, synchronisation_port, control_probability in cur:
-                print username+"@"+host+":"+str(synchronisation_port)+" ["+str(control_probability)+"]"
+            for server in Session.query(Server).all():
+                print server.username+"@"+server.host+":"+str(server.synchronisation_port)+" ["+str(server.control_probability)+"]"
             print
 
         if options.client:
-            cur.execute("SELECT host, username, control_probability FROM clients")
-
             print "Clients:"
-            for host, username, control_probability in cur:
-                print host+" (using username '"+username+"') ["+str(control_probability)+"]"
+            for client in Session.query(Client).all():
+                print client.host+" (using username '"+client.username+"') ["+str(client.control_probability)+"]"
             print
 
     elif options.add and options.server:
@@ -259,7 +170,12 @@ if __name__=="__main__":
             sys.exit(1)
         elif len(args)==5:
             try:
+                # might raise ValueError if string is invalid
                 control_probability = float(args[4])
+
+                # if number is not in range, raise ValueError ourselves
+                if control_probability<0 or control_probability>1:
+                    raise ValueError
             except ValueError:
                 print >>sys.stderr, "ERROR: Invalid probability."
                 sys.exit(1)
@@ -268,12 +184,23 @@ if __name__=="__main__":
 
         password = read_password()
 
-        old_server = Server.from_database(host, synchronisation_port)
+        # delete old entry
+        old_server = Server.from_database(host=host, synchronisation_port=synchronisation_port)
         if old_server:
             old_server.delete()
 
-        server = Server(host, username, password, synchronisation_port, entryserver_port, control_probability)
-        server.save()
+        server = Server(
+            host=host,
+            username=username,
+            password=password,
+            synchronisation_port=synchronisation_port,
+            entryserver_port=entryserver_port,
+            control_probability=control_probability,
+            kicked=False
+        )
+
+        Session.add(server)
+        Session.commit()
 
     elif options.add and options.client:
         try:
@@ -295,7 +222,12 @@ if __name__=="__main__":
             sys.exit(1)
         elif len(args)==4:
             try:
+                # might raise ValueError if string is invalid
                 control_probability = float(args[3])
+
+                # if number is not in range, raise ValueError ourselves
+                if control_probability<0 or control_probability>1:
+                    raise ValueError
             except ValueError:
                 print >>sys.stderr, "ERROR: Invalid probability."
                 sys.exit(1)
@@ -305,12 +237,22 @@ if __name__=="__main__":
         password = read_password()
         passwordhash = hashlib.sha1(password).hexdigest()
 
-        old_client = Client.from_database(username)
+        # delete old entry
+        old_client = Client.from_database(username=username)
         if old_client:
             old_client.delete()
 
-        client = Client(host, entryserver_port, username, passwordhash, control_probability)
-        client.save()
+        client = Client(
+            host=host,
+            entryserver_port=entryserver_port,
+            username=username,
+            passwordhash=passwordhash,
+            control_probability=control_probability,
+            kicked=False
+        )
+
+        Session.add(client)
+        Session.commit()
 
     elif options.add:
         print >>sys.stderr, "ERROR: Need either -s or -c."
@@ -329,7 +271,7 @@ if __name__=="__main__":
             print >>sys.stderr, "ERROR: Invalid port."
             sys.exit(1)
 
-        server = Server.from_database(host, synchronisation_port)
+        server = Server.from_database(host=host, synchronisation_port=synchronisation_port)
 
         if not server:
             print >>sys.stderr, "ERROR: Server \"%s:%d\" is not in list." % (host, synchronisation_port)
@@ -346,7 +288,7 @@ if __name__=="__main__":
             print >>sys.stderr, "ERROR: Need username."
             sys.exit(1)
 
-        client = Client.from_database(username)
+        client = Client.from_database(username=username)
 
         if not client:
             print >>sys.stderr, "ERROR: Client username \"%s\" is not in list." % username
