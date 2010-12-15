@@ -9,25 +9,6 @@ import binascii, hashlib
 
 import json
 
-import sqlite3 as db
-
-con = db.connect("entries.sqlite", check_same_thread=False)
-
-# check if table exists and create it if not
-
-cur = con.cursor()
-cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='entries'")
-table_exists = cur.fetchone()
-
-if not table_exists:
-    cur.execute("PRAGMA legacy_file_format=0")
-    cur.execute("CREATE TABLE entries (hash BLOB UNIQUE, webfinger_address TEXT UNIQUE, full_name TEXT, hometown TEXT, "
-               +"country_code CHARACTER(2), services TEXT, captcha_signature BLOB, submission_timestamp INTEGER, retrieval_timestamp INTEGER)")
-    cur.execute("CREATE UNIQUE INDEX entries_hashes ON entries (hash)")
-    cur.execute("CREATE UNIQUE INDEX entries_addresses ON entries (webfinger_address)")
-
-cur.close()
-
 # load public key for verifying captcha signatures
 
 import base64, paramiko
@@ -51,6 +32,15 @@ def signature_valid(public_key, signature, text):
     sig_message.rewind()
 
     return public_key.verify_ssh_sig(text, sig_message)
+
+# initialize database
+import sqlalchemy, sqlalchemy.orm
+
+engine = sqlalchemy.create_engine('sqlite:///entries.sqlite')
+Session = sqlalchemy.orm.sessionmaker(bind=engine)
+
+import sqlalchemy.ext.declarative
+DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
 
 ######
 
@@ -82,9 +72,6 @@ class EntryServer(threading.Thread):
             thread.start()
 
     def handle_connection(self, clientsocket, address):
-        global con
-
-        cur = con.cursor()
         f = clientsocket.makefile()
 
         # get list of hashes to be transmitted
@@ -124,26 +111,18 @@ class WrongHashesError(Exception): pass
 class EntryList(list):
     @classmethod
     def from_database(cls, binhashes):
-        global con
+        global Session
+        session = Session()
 
         entrylist = EntryList()
 
-        cur = con.cursor()
-
         for binhash in binhashes:
-            cur.execute(
-                "SELECT webfinger_address, full_name, hometown, country_code, services, captcha_signature, submission_timestamp, retrieval_timestamp FROM entries WHERE hash=?",
-                (buffer(binhash), )
-            )
-            args = cur.fetchone()
-            if not args: return None
-
-            entry = Entry(*args)
-
-            if entry:
-                entrylist.append(entry)
-            else:
+            try:
+                entry = session.query(Entry).filter_by(hash=binhash).one()
+            except sqlalchemy.orm.exc.NoResultFound:
                 logging.warning("Requested hash \"%s\" does not exist." % binascii.hexlify(binhash))
+            else:
+                entrylist.append(entry)
 
         return entrylist
 
@@ -178,16 +157,16 @@ class EntryList(list):
         entrylist = cls()
 
         for json_entry in json.loads(json_string):
-            webfinger_address = json_entry["webfinger_address"]
-            full_name = json_entry["full_name"]
-            hometown = json_entry["hometown"]
-            country_code = json_entry["country_code"]
-            services = json_entry["services"]
-            captcha_signature = binascii.unhexlify(json_entry["captcha_signature"])
-            submission_timestamp = json_entry["submission_timestamp"]
-            retrieval_timestamp = json_entry["retrieval_timestamp"]
-
-            entry = Entry(webfinger_address, full_name, hometown, country_code, services, captcha_signature, submission_timestamp, retrieval_timestamp)
+            entry = Entry(
+                json_entry["webfinger_address"],
+                full_name=json_entry["full_name"],
+                hometown=json_entry["hometown"],
+                country_code=json_entry["country_code"],
+                services=json_entry["services"],
+                captcha_signature=binascii.unhexlify(json_entry["captcha_signature"]),
+                submission_timestamp=json_entry["submission_timestamp"],
+                retrieval_timestamp=json_entry["retrieval_timestamp"]
+            )
 
             if "hash" in json_entry:
                 if not binascii.unhexlify(json_entry["hash"])==entry.hash:
@@ -222,9 +201,8 @@ class EntryList(list):
         return json_string
 
     def save(self):
-        global con
-
-        cur = con.cursor()
+        global Session
+        session = Session()
 
         # open unix domain socket for adding hashes to the prefix tree
         logging.debug("Connect to unix socket add.ocaml2py.sock.")
@@ -232,36 +210,43 @@ class EntryList(list):
         s.connect("add.ocaml2py.sock")
 
         for entry in self:
-            # add entry to database
-            cur.execute("INSERT INTO entries (hash, webfinger_address, full_name, hometown, country_code, services, captcha_signature, submission_timestamp, retrieval_timestamp) VALUES (?,?,?,?,?,?,?,?,?)",
-                (buffer(entry.hash),
-                entry.webfinger_address,
-                entry.full_name,
-                entry.hometown,
-                entry.country_code,
-                entry.services,
-                buffer(entry.captcha_signature),
-                entry.submission_timestamp,
-                entry.retrieval_timestamp)
-            )
-
-            # add hash to prefix tree
             hexhash = binascii.hexlify(entry.hash)
-            s.sendall(hexhash+"\n")
-            logging.debug("Sent hash %s to unix socket add.ocaml2py.sock." % hexhash)
+
+            # add entry to database
+            session.add(entry)
+
+            try:
+                session.commit()
+            except sqlalchemy.exc.IntegrityError:
+                logging.warning("Attempted reinsertion of %s (%s) into the database" % (entry.webfinger_address, hexhash))
+            else:
+                # add hash to prefix tree
+                s.sendall(hexhash+"\n")
+                logging.debug("Sent hash %s to unix socket add.ocaml2py.sock." % hexhash)
 
         s.close()
         logging.debug("Closed unix socket add.ocaml2py.sock.")
-
-        con.commit()
 
 # https://github.com/jcarbaugh/python-webfinger
 import pywebfinger
 
 import urllib
 
-class Entry:
+class Entry(DatabaseObject):
     """ represents a database entry for a webfinger address """
+
+    __tablename__ = 'entries'
+
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    hash = sqlalchemy.Column(sqlalchemy.BLOB, index=True, unique=True)
+    webfinger_address = sqlalchemy.Column(sqlalchemy.String, index=True, unique=True)
+    full_name = sqlalchemy.Column(sqlalchemy.String)
+    hometown = sqlalchemy.Column(sqlalchemy.String)
+    country_code = sqlalchemy.Column(sqlalchemy.String(2))
+    services = sqlalchemy.Column(sqlalchemy.String)
+    captcha_signature = sqlalchemy.Column(sqlalchemy.BLOB)
+    submission_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
+    retrieval_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
 
     @classmethod
     def from_webfinger_address(cls, webfinger_address, submission_timestamp):
@@ -284,25 +269,31 @@ class Entry:
 
         retrieval_timestamp = int(time.time())
 
-        entry = cls(webfinger_address, full_name, hometown, country_code, services, captcha_signature, submission_timestamp, retrieval_timestamp)
+        entry = cls(
+            webfinger_address,
+            full_name=full_name,
+            hometown=hometown,
+            country_code=country_code,
+            services=services,
+            captcha_signature=captcha_signature,
+            submission_timestamp=submission_timestamp,
+            retrieval_timestamp=retrieval_timestamp
+        )
 
         return entry
 
-    def __init__(self, webfinger_address, full_name, hometown, country_code, services, captcha_signature, submission_timestamp, retrieval_timestamp):
-        """ arguments must be unicode objects, except captcha_signature (buffer) and timestamps (int) """
+    def __init__(self, webfinger_address, **kwargs):
+#        global Session
+#        session = Session()
+#
+#        try:
+#            old_entry = session.query(self.__class__).filter_by(webfinger_address=webfinger_address).one()
+#        except sqlalchemy.orm.exc.NoResultFound: pass
+#        else:
+#            kwargs["id"] = old_entry.id
 
-        self.webfinger_address = webfinger_address
-        self.full_name = full_name
-        self.hometown = hometown
-        self.country_code = country_code
-        self.services = services # contains comma-separated tokens for each service
-                                 # a user uses, e.g. "diaspora,osw,email". This can
-                                 # be used to filter out only users of a certain 
-                                 # service when searching.
-        self.captcha_signature = captcha_signature
-        self.submission_timestamp = submission_timestamp
-        self.retrieval_timestamp = retrieval_timestamp
-
+        kwargs["webfinger_address"] = webfinger_address
+        DatabaseObject.__init__(self, **kwargs)
         self.update_hash()
 
     def update_hash(self):
@@ -321,6 +312,9 @@ class Entry:
         global captcha_key
 
         return signature_valid(captcha_key, self.captcha_signature, self.webfinger_address.encode("utf-8"))
+
+# create tables if they don't exist
+DatabaseObject.metadata.create_all(engine)
 
 class DatabaseOperation:
     def verify(self):
