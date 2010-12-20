@@ -120,6 +120,115 @@ class Conversation(DatabaseObject):
     received = sqlalchemy.Column(sqlalchemy.Integer)
     timestamp = sqlalchemy.Column(sqlalchemy.Integer)
 
+# Violations
+
+class Violation(DatabaseObject):
+    """ A partner is kicked if and only if a violation exists """
+    __tablename__ = 'violations'
+
+    violation_type = sqlalchemy.Column(lib.String)
+    __mapper_args__ = {'polymorphic_on': violation_type}
+
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'))
+    partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
+    description = sqlalchemy.Column(lib.String)
+    guilty = sqlalchemy.Column(sqlalchemy.Boolean)
+        # The administrator must set this to false to unkick the partner
+
+class InvalidHashViolation(Violation):
+    """ The transmitted entry contained a hash but it was wrong """
+
+    __mapper_args__ = {"polymorphic_identity": "InvalidHash"}
+
+class InvalidListViolation(Violation):
+    """ The partner responded with an improper format being asked for a set of entries. """
+
+    __mapper_args__ = {"polymorphic_identity": "InvalidList"}
+
+class WrongEntriesViolation(Violation):
+    """ The partner did not send the requested set of entries but other ones. """
+
+    __mapper_args__ = {"polymorphic_identity": "WrongEntries"}
+
+class InvalidCaptchaViolation(Violation):
+    """ The partner sent an entry with an invalid Captcha signature """
+
+    __mapper_args__ = {"polymorphic_identity": "InvalidCaptcha"}
+
+class InvalidTimestampsViolation(Violation):
+    """ The partner sent an entry with retrieval_timestamp < submission_timestamp """
+
+    __mapper_args__ = {"polymorphic_identity": "InvalidTimestamps"}
+
+class TooManyOffensesViolation(Violation):
+    """ Too many offenses """
+
+    __mapper_args__ = {"polymorphic_identity": "TooManyOffenses"}
+
+# Offences
+
+class Offense(DatabaseObject):
+    """ An offense is added each time a partner makes a fault that will not
+        immediately get it kicked. If too many offenses exist, a violation
+        will be created. """
+    __tablename__ = 'offenses'
+
+    offense_type = sqlalchemy.Column(lib.String)
+    __mapper_args__ = {'polymorphic_on': offense_type}
+
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'))
+    partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
+    description = sqlalchemy.Column(lib.String)
+    severity = sqlalchemy.Column(sqlalchemy.Float)
+    guilty = sqlalchemy.Column(sqlalchemy.Boolean)
+        # if a violation is created, this will be set to False.
+
+    default_severity = 0
+
+    def __init(self, partner, description, **kwargs):
+        kwargs["partner"] = partner
+        kwargs["description"] = description
+
+        if not "severity" in kwargs:
+            kwargs["severity"] = default_severity
+
+        DatabaseObject.__init__(self, **kwargs)
+
+class ConnectionFailedOffense(Offense):
+    """ partner is down """
+
+    __mapper_args__ = {"polymorphic_identity": "ConnectionFailed"}
+
+    default_severity = 1
+
+class InvalidProfileOffense(Offense):
+    """ webfinger profile is invalid but the partner transmitted information """
+
+    __mapper_args__ = {"polymorphic_identity": "InvalidProfile"}
+
+    default_severity = 1
+
+class NonConcurrenceOffense(Offense):
+    """ the webfinger profile differs from the one the partner transmitted """
+
+    __mapper_args__ = {"polymorphic_identity": "NonConcurrence"}
+
+    default_severity = 1
+
+    def __init__(self, partner, fetched_entry, transmitted_entry, **kwargs):
+        description = "A control sample for an entry obtained from "+str(partner)+" did not match the one on "+transmitted_entry.webfinger_address+"\n\n"
+        description += "Fetched entry:\n"
+        description += "==============\n"
+        description += str(fetched_entry)+"\n"
+        description += "Transmitted entry:\n"
+        description += "==================\n"
+        description += str(transmitted_entry)
+
+        Offense.__init__(partner, description, **kwargs)
+
+###
 # create tables if they don't exist
 DatabaseObject.metadata.create_all(engine)
 
