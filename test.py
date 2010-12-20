@@ -36,7 +36,7 @@ def sign(private_key, text):
 
 private_key = get_private_key()
 
-import entries, binascii, sqlite3
+import entries, binascii
 
 # test server providing a webfinger profile
 
@@ -113,13 +113,10 @@ assert entry.captcha_signature_valid()
 entrylist = entries.EntryList([entry])
 
 # save it
-try:
-    entrylist.save()
-except sqlite3.IntegrityError:
-    print "address already in db"
+entrylist.save()
 
 # print hash
-binhash = entry.hash
+binhash = str(entry.hash)
 hexhash = binascii.hexlify(binhash)
 print hexhash
 

@@ -138,7 +138,7 @@ def handle_connection(hashserver, clientsocket, address):
     password = f.readline().strip()
     f.close()
 
-    client = partners.Client.from_database(username)
+    client = partners.Client.from_database(username=username)
 
     if not client:
         logging.warning("Rejected synchronisation attempt from %s (%s) - unknown username." % (username, str(address)))
@@ -265,7 +265,7 @@ if __name__=="__main__":
         # synchronize with another server
         address = (host, port)
 
-        server = partners.Server.from_database(host, port)
+        server = partners.Server.from_database(host=host, synchronisation_port=port)
 
         if not server:
             print >>sys.stderr, "Address not in known servers list - add it with partners.py."
