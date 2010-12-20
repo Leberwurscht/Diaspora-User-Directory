@@ -300,7 +300,7 @@ class Entry(DatabaseObject):
         combinedhash = hashlib.sha1()
 
         for data in [self.webfinger_address, self.full_name, self.hometown, self.country_code, self.services, self.submission_timestamp]:
-            subhash = hashlib.sha1(str(data)).hexdigest()
+            subhash = hashlib.sha1(str(data)).digest()
             combinedhash.update(subhash)
 
         # is it unsecure to take only 16 bytes of the hash?

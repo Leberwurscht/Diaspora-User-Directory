@@ -97,7 +97,7 @@ class Client(Partner):
     passwordhash = sqlalchemy.Column(lib.String)
 
     def password_valid(self, password):
-        comparehash = hashlib.sha1(password).hexdigest()
+        comparehash = hashlib.sha1(password).digest()
         
         return comparehash==self.passwordhash
 
@@ -117,7 +117,7 @@ class Conversation(DatabaseObject):
 # create tables if they don't exist
 DatabaseObject.metadata.create_all(engine)
 
-# command line interface
+### command line interface
 if __name__=="__main__":
     import optparse
     import getpass
@@ -256,7 +256,7 @@ if __name__=="__main__":
         print "Adding client \"%s\"." % username
 
         password = read_password()
-        passwordhash = hashlib.sha1(password).hexdigest()
+        passwordhash = hashlib.sha1(password).digest()
 
         # delete old entry
         old_client = Client.from_database(username=username)
