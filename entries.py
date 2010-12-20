@@ -238,13 +238,13 @@ class Entry(DatabaseObject):
     __tablename__ = 'entries'
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    hash = sqlalchemy.Column(sqlalchemy.BLOB, index=True, unique=True)
+    hash = sqlalchemy.Column(lib.String, index=True, unique=True)
     webfinger_address = sqlalchemy.Column(lib.String, index=True, unique=True)
     full_name = sqlalchemy.Column(sqlalchemy.UnicodeText)
     hometown = sqlalchemy.Column(sqlalchemy.UnicodeText)
     country_code = sqlalchemy.Column(lib.String(2))
     services = sqlalchemy.Column(lib.String)
-    captcha_signature = sqlalchemy.Column(sqlalchemy.BLOB)
+    captcha_signature = sqlalchemy.Column(lib.String)
     submission_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
     retrieval_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
 
