@@ -11,7 +11,7 @@ import hashlib
 import socket
 
 # initialize database
-import sqlalchemy, sqlalchemy.orm
+import sqlalchemy, sqlalchemy.orm, lib
 
 engine = sqlalchemy.create_engine('sqlite:///partners.sqlite')
 Session = sqlalchemy.orm.scoped_session(sqlalchemy.orm.sessionmaker(bind=engine))
@@ -24,11 +24,11 @@ DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
 class Partner(DatabaseObject):
     __tablename__ = 'partners'
 
-    partner_type = sqlalchemy.Column('partner_type', sqlalchemy.String)
+    partner_type = sqlalchemy.Column('partner_type', lib.String)
     __mapper_args__ = {'polymorphic_on': partner_type}
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    host = sqlalchemy.Column(sqlalchemy.String)
+    host = sqlalchemy.Column(lib.String)
     entryserver_port = sqlalchemy.Column(sqlalchemy.Integer)
     control_probability = sqlalchemy.Column(sqlalchemy.Float)
     kicked = sqlalchemy.Column(sqlalchemy.Boolean)
@@ -65,8 +65,8 @@ class Server(Partner):
     
     id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'), primary_key=True)
     synchronisation_port = sqlalchemy.Column(sqlalchemy.Integer)
-    username = sqlalchemy.Column(sqlalchemy.String)
-    password = sqlalchemy.Column(sqlalchemy.String)
+    username = sqlalchemy.Column(lib.String)
+    password = sqlalchemy.Column(lib.String)
 
     def authenticated_socket(self):
         address = (self.host, self.synchronisation_port)
@@ -93,8 +93,8 @@ class Client(Partner):
     __mapper_args__ = {'polymorphic_identity': 'client'}
     
     id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'), primary_key=True)
-    username = sqlalchemy.Column(sqlalchemy.String)
-    passwordhash = sqlalchemy.Column(sqlalchemy.String)
+    username = sqlalchemy.Column(lib.String)
+    passwordhash = sqlalchemy.Column(lib.String)
 
     def password_valid(self, password):
         comparehash = hashlib.sha1(password).hexdigest()

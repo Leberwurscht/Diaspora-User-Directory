@@ -34,7 +34,7 @@ def signature_valid(public_key, signature, text):
     return public_key.verify_ssh_sig(text, sig_message)
 
 # initialize database
-import sqlalchemy, sqlalchemy.orm
+import sqlalchemy, sqlalchemy.orm, lib
 
 engine = sqlalchemy.create_engine('sqlite:///entries.sqlite')
 Session = sqlalchemy.orm.sessionmaker(bind=engine)
@@ -239,11 +239,11 @@ class Entry(DatabaseObject):
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
     hash = sqlalchemy.Column(sqlalchemy.BLOB, index=True, unique=True)
-    webfinger_address = sqlalchemy.Column(sqlalchemy.String, index=True, unique=True)
-    full_name = sqlalchemy.Column(sqlalchemy.String)
-    hometown = sqlalchemy.Column(sqlalchemy.String)
-    country_code = sqlalchemy.Column(sqlalchemy.String(2))
-    services = sqlalchemy.Column(sqlalchemy.String)
+    webfinger_address = sqlalchemy.Column(lib.String, index=True, unique=True)
+    full_name = sqlalchemy.Column(sqlalchemy.UnicodeText)
+    hometown = sqlalchemy.Column(sqlalchemy.UnicodeText)
+    country_code = sqlalchemy.Column(lib.String(2))
+    services = sqlalchemy.Column(lib.String)
     captcha_signature = sqlalchemy.Column(sqlalchemy.BLOB)
     submission_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
     retrieval_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
