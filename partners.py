@@ -6,7 +6,7 @@
 
 import logging
 
-import sys
+import sys, time
 import hashlib
 import socket
 
@@ -51,6 +51,14 @@ class Partner(DatabaseObject):
     def kick(self, reason):
         raise NotImplementedError, "Not implemented yet."
 
+    def log_conversation(self, received):
+        global Session
+
+        conversation = Conversation(partner=self, received=received, timestamp=int(time.time()))
+
+        Session.add(conversation)
+        Session.commit()
+
 class Server(Partner):
     __tablename__ = 'servers'
     __mapper_args__ = {'polymorphic_identity': 'server'}
@@ -92,6 +100,19 @@ class Client(Partner):
         comparehash = hashlib.sha1(password).hexdigest()
         
         return comparehash==self.passwordhash
+
+###
+
+# Conversations
+
+class Conversation(DatabaseObject):
+    __tablename__ = 'conversations'
+
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'))
+    partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
+    received = sqlalchemy.Column(sqlalchemy.Integer)
+    timestamp = sqlalchemy.Column(sqlalchemy.Integer)
 
 # create tables if they don't exist
 DatabaseObject.metadata.create_all(engine)

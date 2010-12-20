@@ -179,6 +179,7 @@ def handle_connection(hashserver, clientsocket, address):
     hashlist = hashserver.get(username)
 
     process_hashes(hashlist, client)
+    client.log_conversation(len(hashlist))
 
 def connect(hashserver, server):
     logging.debug("Connecting to server %s" % str(server))
@@ -212,6 +213,7 @@ def connect(hashserver, server):
     hashlist = hashserver.get(identifier)
 
     process_hashes(hashlist, server)
+    server.log_conversation(len(hashlist))
 
 if __name__=="__main__":
     """
