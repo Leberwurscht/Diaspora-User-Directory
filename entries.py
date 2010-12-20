@@ -313,6 +313,20 @@ class Entry(DatabaseObject):
 
         return signature_valid(captcha_key, self.captcha_signature, self.webfinger_address.encode("utf-8"))
 
+    def __str__(self):
+        """ for debbuging and log messages """
+        r = "Hash: "+binascii.hexlify(self.hash)+"\n"
+        r += "Address: "+self.webfinger_address.encode("utf8")+"\n"
+        r += "Full name: "+self.full_name.encode("utf8")+"\n"
+        r += "Hometown: "+self.hometown.encode("utf8")+"\n"
+        r += "Country code: "+self.country_code.encode("utf8")+"\n"
+        r += "Services: "+self.services.encode("utf8")+"\n"
+        r += "Captcha signature: "+binascii.hexlify(self.captcha_signature)[:20]+"...\n"
+        r += "Submission time: "+time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime(self.submission_timestamp))+"\n"
+        r += "Retrieval time: "+time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime(self.retrieval_timestamp))+"\n"
+
+        return r
+
 # create tables if they don't exist
 DatabaseObject.metadata.create_all(engine)
 

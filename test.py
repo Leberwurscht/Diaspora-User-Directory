@@ -112,6 +112,9 @@ assert entry.captcha_signature_valid()
 
 entrylist = entries.EntryList([entry])
 
+# print entry
+print str(entry)
+
 # save it
 entrylist.save()
 
