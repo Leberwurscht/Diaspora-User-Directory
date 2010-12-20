@@ -263,8 +263,8 @@ class Entry(DatabaseObject):
 
         full_name = json_dict["full_name"]
         hometown = json_dict["hometown"]
-        country_code = json_dict["country_code"]
-        services = json_dict["services"]
+        country_code = json_dict["country_code"].encode("utf8")
+        services = json_dict["services"].encode("utf8")
         captcha_signature = binascii.unhexlify(json_dict["captcha_signature"])
 
         retrieval_timestamp = int(time.time())
@@ -319,8 +319,8 @@ class Entry(DatabaseObject):
         r += "Address: "+self.webfinger_address.encode("utf8")+"\n"
         r += "Full name: "+self.full_name.encode("utf8")+"\n"
         r += "Hometown: "+self.hometown.encode("utf8")+"\n"
-        r += "Country code: "+self.country_code.encode("utf8")+"\n"
-        r += "Services: "+self.services.encode("utf8")+"\n"
+        r += "Country code: "+self.country_code+"\n"
+        r += "Services: "+self.services+"\n"
         r += "Captcha signature: "+binascii.hexlify(self.captcha_signature)[:20]+"...\n"
         r += "Submission time: "+time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime(self.submission_timestamp))+"\n"
         r += "Retrieval time: "+time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime(self.retrieval_timestamp))+"\n"
