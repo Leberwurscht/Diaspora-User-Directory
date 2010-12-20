@@ -88,6 +88,9 @@ class Server(Partner):
             asocket.close()
             return False
 
+    def __str__(self):
+        return self.username+"@"+self.host+":"+str(self.synchronisation_port)
+
 class Client(Partner):
     __tablename__ = 'clients'
     __mapper_args__ = {'polymorphic_identity': 'client'}
@@ -100,6 +103,9 @@ class Client(Partner):
         comparehash = hashlib.sha1(password).digest()
         
         return comparehash==self.passwordhash
+
+    def __str__(self):
+        return self.host+" (using username "+self.username+")"
 
 ###
 
@@ -156,13 +162,13 @@ if __name__=="__main__":
         if options.server:
             print "Servers:"
             for server in Session.query(Server).all():
-                print server.username+"@"+server.host+":"+str(server.synchronisation_port)+" ["+str(server.control_probability)+"]"
+                print str(server)
             print
 
         if options.client:
             print "Clients:"
             for client in Session.query(Client).all():
-                print client.host+" (using username '"+client.username+"') ["+str(client.control_probability)+"]"
+                print str(client)
             print
 
     elif options.add and options.server:
