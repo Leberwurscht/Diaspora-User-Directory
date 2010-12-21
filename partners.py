@@ -31,7 +31,6 @@ class Partner(DatabaseObject):
     host = sqlalchemy.Column(lib.String)
     entryserver_port = sqlalchemy.Column(sqlalchemy.Integer)
     control_probability = sqlalchemy.Column(sqlalchemy.Float)
-    kicked = sqlalchemy.Column(sqlalchemy.Boolean)
 
     @classmethod
     def from_database(cls, **kwargs):
@@ -43,6 +42,12 @@ class Partner(DatabaseObject):
             return None
         else:
             return partner
+
+    def kicked(self):
+        global Session
+
+        violations = Session.query(Violation).filter_by(partner=self, guilty=True).count()
+        return (violations>0)
 
     def delete(self):
         global Session
@@ -91,7 +96,12 @@ class Server(Partner):
             return False
 
     def __str__(self):
-        return self.username+"@"+self.host+":"+str(self.synchronisation_port)
+        r = self.username+"@"+self.host+":"+str(self.synchronisation_port)
+
+        if self.kicked():
+            r += " [K]"
+
+        return r
 
 class Client(Partner):
     __tablename__ = 'clients'
@@ -107,7 +117,12 @@ class Client(Partner):
         return comparehash==self.passwordhash
 
     def __str__(self):
-        return self.host+" (using username "+self.username+")"
+        r = self.host+" (using username "+self.username+")"
+
+        if self.kicked():
+            r += " [K]"
+
+        return r
 
 ###
 
@@ -333,8 +348,7 @@ if __name__=="__main__":
             password=password,
             synchronisation_port=synchronisation_port,
             entryserver_port=entryserver_port,
-            control_probability=control_probability,
-            kicked=False
+            control_probability=control_probability
         )
 
         Session.add(server)
@@ -385,8 +399,7 @@ if __name__=="__main__":
             entryserver_port=entryserver_port,
             username=username,
             passwordhash=passwordhash,
-            control_probability=control_probability,
-            kicked=False
+            control_probability=control_probability
         )
 
         Session.add(client)

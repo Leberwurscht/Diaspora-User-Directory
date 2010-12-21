@@ -145,7 +145,7 @@ def handle_connection(hashserver, clientsocket, address):
         clientsocket.close()
         return False
 
-    if client.kicked:
+    if client.kicked():
         logging.warning("Rejected synchronisation attempt from kicked client %s (%s)." % (username, str(address)))
         clientsocket.close()
         return False
@@ -273,8 +273,8 @@ if __name__=="__main__":
             print >>sys.stderr, "Address not in known servers list - add it with partners.py."
             sys.exit(1)
 
-        if server.kicked:
-            print >>sys.stderr, "Will not connect - server got kicked!"
+        if server.kicked():
+            print >>sys.stderr, "Will not connect - server is kicked!"
             sys.exit(1)
 
         try:
