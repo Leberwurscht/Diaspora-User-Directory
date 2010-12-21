@@ -45,6 +45,8 @@ class Partner(DatabaseObject):
             return partner
 
     def delete(self):
+        global Session
+
         Session.delete(self)
         Session.commit()
 
