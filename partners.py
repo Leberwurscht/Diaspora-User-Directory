@@ -109,9 +109,20 @@ class Partner(DatabaseObject):
             self.add_violation(violation)
         
     def add_violation(self, violation):
-        violation.partner = self
+        global Session
 
-        raise NotImplementedError, "not implemented yet"
+        # save violation
+        violation.partner = self
+        
+        Session.add(violation)
+        Session.commit()
+
+        # TODO:
+        # notify administrator and partner
+
+        # this will interrupt the processing of data until the
+        # exception is caught.
+        raise PartnerKickedError
 
     def log_conversation(self, received):
         global Session
@@ -308,6 +319,13 @@ class NonConcurrenceOffense(Offense):
         description += str(transmitted_entry)
 
         Offense.__init__(self, description, **kwargs)
+
+####
+# custom exceptions
+
+class PartnerKickedError(Exception):
+    """ The partner got violation """
+    pass
 
 ###
 # create tables if they don't exist
