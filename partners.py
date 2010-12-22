@@ -221,13 +221,14 @@ class Violation(DatabaseObject):
         # The administrator must set this to false to unkick the partner
 
     def __init__(self, description, **kwargs):
-        kwargs["description"] = description
+        kwargs["description"] = str(description)
 
         if not "timestamp" in kwargs:
             kwargs["timestamp"] = int(time.time())
 
         DatabaseObject.__init__(self, **kwargs)
 
+# TODO: override constructors
 class InvalidHashViolation(Violation):
     """ The transmitted entry contained a hash but it was wrong """
 
@@ -286,7 +287,7 @@ class Offense(DatabaseObject):
     default_severity = 0
 
     def __init__(self, description, **kwargs):
-        kwargs["description"] = description
+        kwargs["description"] = str(description)
 
         if not "severity" in kwargs:
             kwargs["severity"] = self.default_severity
@@ -430,6 +431,7 @@ if __name__=="__main__":
         # delete old entry
         old_server = Server.from_database(host=host, synchronisation_port=synchronisation_port)
         if old_server:
+            # TODO: this will invalidate all the violations and offenses
             old_server.delete()
 
         server = Server(
@@ -482,6 +484,7 @@ if __name__=="__main__":
         # delete old entry
         old_client = Client.from_database(username=username)
         if old_client:
+            # TODO: this will invalidate all the violations and offenses
             old_client.delete()
 
         client = Client(
