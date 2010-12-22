@@ -220,6 +220,14 @@ class Violation(DatabaseObject):
     guilty = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
         # The administrator must set this to false to unkick the partner
 
+    def __init__(self, description, **kwargs):
+        kwargs["description"] = description
+
+        if not "timestamp" in kwargs:
+            kwargs["timestamp"] = int(time.time())
+
+        DatabaseObject.__init__(self, **kwargs)
+
 class InvalidHashViolation(Violation):
     """ The transmitted entry contained a hash but it was wrong """
 
@@ -251,9 +259,9 @@ class TooManyOffensesViolation(Violation):
     __mapper_args__ = {"polymorphic_identity": "TooManyOffenses"}
 
     def __init__(self, severity_sum, received_sum, **kwargs):
-        kwargs["description"] = "Too many offenses accumulated: A severity sum of %f was reached with a total of %d received entries." % (severity_sum, received_sum)
+        description = "Too many offenses accumulated: A severity sum of %f was reached with a total of %d received entries." % (severity_sum, received_sum)
 
-        Violation.__init__(self, **kwargs)
+        Violation.__init__(self, description, **kwargs)
 
 # Offences
 
