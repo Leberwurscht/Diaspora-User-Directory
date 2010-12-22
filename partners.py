@@ -150,6 +150,7 @@ class Violation(DatabaseObject):
     partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'))
     partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
     description = sqlalchemy.Column(lib.String)
+    timestamp = sqlalchemy.Column(sqlalchemy.Integer)
     guilty = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
         # The administrator must set this to false to unkick the partner
 
