@@ -183,6 +183,11 @@ class TooManyOffensesViolation(Violation):
 
     __mapper_args__ = {"polymorphic_identity": "TooManyOffenses"}
 
+    def __init__(self, severity_sum, received_sum, **kwargs):
+        kwargs["description"] = "Too many offenses accumulated: A severity sum of %f was reached with a total of %d received entries." % (severity_sum, received_sum)
+
+        Violation.__init__(self, **kwargs)
+
 # Offences
 
 class Offense(DatabaseObject):
