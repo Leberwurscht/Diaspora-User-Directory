@@ -69,6 +69,9 @@ class Partner(DatabaseObject):
         Session.add(offense)
         Session.commit()
 
+        # TODO:
+        # notify partner
+
         # get current time
         current_timestamp = int(time.time())
         timestamp_limit = current_timestamp - OFFENSE_LIFETIME
