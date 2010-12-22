@@ -11,13 +11,18 @@ import hashlib
 import socket
 
 # initialize database
-import sqlalchemy, sqlalchemy.orm, lib
+import sqlalchemy, sqlalchemy.orm, lib, sqlalchemy.sql.functions
 
 engine = sqlalchemy.create_engine('sqlite:///partners.sqlite')
 Session = sqlalchemy.orm.scoped_session(sqlalchemy.orm.sessionmaker(bind=engine))
 
 import sqlalchemy.ext.declarative
 DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
+
+###
+
+OFFENSE_LIFETIME = 3600*24*30
+OFFENSES_THRESHOLD = 0.05
 
 ###
 
@@ -55,8 +60,55 @@ class Partner(DatabaseObject):
         Session.delete(self)
         Session.commit()
 
-    def kick(self, reason):
-        raise NotImplementedError, "Not implemented yet."
+    def add_offense(self, offense):
+        global Session
+
+        # save offense
+        offense.partner = self
+
+        Session.add(offense)
+        Session.commit()
+
+        # get current time
+        current_timestamp = int(time.time())
+        timestamp_limit = current_timestamp - OFFENSE_LIFETIME
+
+        # calculate severity sum
+        aggregator = sqlalchemy.sql.functions.sum(Offense.severity)
+        query = Session.query(aggregator.label("severity_sum"))
+        query = query.filter(Offense.partner == self)
+        query = query.filter(Offense.timestamp >= timestamp_limit)
+        query = query.filter(Offense.guilty == True)
+        severity_sum = query.one().severity_sum
+        if severity_sum==None: severity_sum=0
+
+        # calculate total number of received entries
+        aggregator = sqlalchemy.sql.functions.sum(Conversation.received)
+        query = Session.query(aggregator.label("received_sum"))
+        query = query.filter(Conversation.partner == self)
+        query = query.filter(Conversation.timestamp >= timestamp_limit)
+        received_sum = query.one().received_sum
+        if received_sum==None: received_sum = 0
+
+        # if there are enough entries to make a reliable calculation and if there were to
+        # many offenses, add the violation.
+        if received_sum>3/OFFENSES_THRESHOLD and severity_sum>OFFENSES_THRESHOLD*received_sum:
+            # set guilty=False on offenses; guiltiness is absorbed into violation.
+            query = Session.query(Offense)
+            query = query.filter(Offense.partner == self)
+            query = query.filter(Offense.timestamp >= timestamp_limit)
+            query = query.filter(Offense.guilty == True)
+            query.update({Offense.guilty:False})
+            Session.commit()
+
+            # add a violation
+            violation = TooManyOffensesViolation(severity_sum, received_sum)
+            self.add_violation(violation)
+        
+    def add_violation(self, violation):
+        violation.partner = self
+
+        raise NotImplementedError, "not implemented yet"
 
     def log_conversation(self, received):
         global Session
