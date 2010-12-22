@@ -210,7 +210,7 @@ class Offense(DatabaseObject):
         kwargs["description"] = description
 
         if not "severity" in kwargs:
-            kwargs["severity"] = default_severity
+            kwargs["severity"] = self.default_severity
 
         if not "timestamp" in kwargs:
             kwargs["timestamp"] = int(time.time())
