@@ -205,8 +205,7 @@ class Offense(DatabaseObject):
 
     default_severity = 0
 
-    def __init(self, partner, description, **kwargs):
-        kwargs["partner"] = partner
+    def __init__(self, description, **kwargs):
         kwargs["description"] = description
 
         if not "severity" in kwargs:
@@ -238,8 +237,8 @@ class NonConcurrenceOffense(Offense):
 
     default_severity = 1
 
-    def __init__(self, partner, fetched_entry, transmitted_entry, **kwargs):
-        description = "A control sample for an entry obtained from "+str(partner)+" did not match the one on "+transmitted_entry.webfinger_address+"\n\n"
+    def __init__(self, fetched_entry, transmitted_entry, **kwargs):
+        description = "A control sample for an entry did not match the one on "+transmitted_entry.webfinger_address+"\n\n"
         description += "Fetched entry:\n"
         description += "==============\n"
         description += str(fetched_entry)+"\n"
@@ -247,7 +246,7 @@ class NonConcurrenceOffense(Offense):
         description += "==================\n"
         description += str(transmitted_entry)
 
-        Offense.__init__(partner, description, **kwargs)
+        Offense.__init__(self, description, **kwargs)
 
 ###
 # create tables if they don't exist
