@@ -199,6 +199,7 @@ class Offense(DatabaseObject):
     partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
     description = sqlalchemy.Column(lib.String)
     severity = sqlalchemy.Column(sqlalchemy.Float)
+    timestamp = sqlalchemy.Column(sqlalchemy.Integer)
     guilty = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
         # if a violation is created, this will be set to False.
 
@@ -210,6 +211,9 @@ class Offense(DatabaseObject):
 
         if not "severity" in kwargs:
             kwargs["severity"] = default_severity
+
+        if not "timestamp" in kwargs:
+            kwargs["timestamp"] = int(time.time())
 
         DatabaseObject.__init__(self, **kwargs)
 
