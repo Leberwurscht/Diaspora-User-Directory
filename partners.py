@@ -150,7 +150,7 @@ class Violation(DatabaseObject):
     partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'))
     partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
     description = sqlalchemy.Column(lib.String)
-    guilty = sqlalchemy.Column(sqlalchemy.Boolean)
+    guilty = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
         # The administrator must set this to false to unkick the partner
 
 class InvalidHashViolation(Violation):
@@ -199,7 +199,7 @@ class Offense(DatabaseObject):
     partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
     description = sqlalchemy.Column(lib.String)
     severity = sqlalchemy.Column(sqlalchemy.Float)
-    guilty = sqlalchemy.Column(sqlalchemy.Boolean)
+    guilty = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
         # if a violation is created, this will be set to False.
 
     default_severity = 0
