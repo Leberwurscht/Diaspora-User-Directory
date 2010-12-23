@@ -158,11 +158,11 @@ class EntryList(list):
 
         for json_entry in json.loads(json_string):
             entry = Entry(
-                json_entry["webfinger_address"],
+                json_entry["webfinger_address"].encode("latin-1"),
                 full_name=json_entry["full_name"],
                 hometown=json_entry["hometown"],
-                country_code=json_entry["country_code"],
-                services=json_entry["services"],
+                country_code=json_entry["country_code"].encode("latin-1"),
+                services=json_entry["services"].encode("latin-1"),
                 captcha_signature=binascii.unhexlify(json_entry["captcha_signature"]),
                 submission_timestamp=json_entry["submission_timestamp"],
                 retrieval_timestamp=json_entry["retrieval_timestamp"]
@@ -185,15 +185,15 @@ class EntryList(list):
 
         for entry in self:
             json_list.append({
-                "hash":binascii.hexlify(entry.hash),
-                "webfinger_address":entry.webfinger_address,
-                "full_name":entry.full_name,
-                "hometown":entry.hometown,
-                "country_code":entry.country_code,
-                "services":entry.services,
-                "captcha_signature":binascii.hexlify(entry.captcha_signature),
-                "submission_timestamp":entry.submission_timestamp,
-                "retrieval_timestamp":entry.retrieval_timestamp
+                "hash": unicode(binascii.hexlify(entry.hash), "latin-1"),
+                "webfinger_address": unicode(entry.webfinger_address, "latin-1"),
+                "full_name": entry.full_name,
+                "hometown": entry.hometown,
+                "country_code": unicode(entry.country_code, "latin-1"),
+                "services": unicode(entry.services, "latin-1"),
+                "captcha_signature": unicode(binascii.hexlify(entry.captcha_signature), "latin-1"),
+                "submission_timestamp": entry.submission_timestamp,
+                "retrieval_timestamp": entry.retrieval_timestamp
             })
 
         json_string = json.dumps(json_list)
@@ -238,13 +238,13 @@ class Entry(DatabaseObject):
     __tablename__ = 'entries'
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    hash = sqlalchemy.Column(lib.String, index=True, unique=True)
-    webfinger_address = sqlalchemy.Column(lib.String, index=True, unique=True)
+    hash = sqlalchemy.Column(lib.Binary, index=True, unique=True)
+    webfinger_address = sqlalchemy.Column(lib.Text, index=True, unique=True)
     full_name = sqlalchemy.Column(sqlalchemy.UnicodeText)
     hometown = sqlalchemy.Column(sqlalchemy.UnicodeText)
-    country_code = sqlalchemy.Column(lib.String(2))
-    services = sqlalchemy.Column(lib.String)
-    captcha_signature = sqlalchemy.Column(lib.String)
+    country_code = sqlalchemy.Column(lib.Text(2))
+    services = sqlalchemy.Column(lib.Text)
+    captcha_signature = sqlalchemy.Column(lib.Binary)
     submission_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
     retrieval_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
 
@@ -316,9 +316,9 @@ class Entry(DatabaseObject):
     def __str__(self):
         """ for debbuging and log messages """
         r = "Hash: "+binascii.hexlify(self.hash)+"\n"
-        r += "Address: "+self.webfinger_address.encode("utf8")+"\n"
-        r += "Full name: "+self.full_name.encode("utf8")+"\n"
-        r += "Hometown: "+self.hometown.encode("utf8")+"\n"
+        r += "Address: "+self.webfinger_address+"\n"
+        r += "Full name: "+self.full_name.encode("utf-8")+"\n"
+        r += "Hometown: "+self.hometown.encode("utf-8")+"\n"
         r += "Country code: "+self.country_code+"\n"
         r += "Services: "+self.services+"\n"
         r += "Captcha signature: "+binascii.hexlify(self.captcha_signature)[:20]+"...\n"
