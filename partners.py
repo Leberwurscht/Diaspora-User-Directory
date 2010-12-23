@@ -29,11 +29,11 @@ OFFENSES_THRESHOLD = 0.05
 class Partner(DatabaseObject):
     __tablename__ = 'partners'
 
-    partner_type = sqlalchemy.Column('partner_type', lib.String)
+    partner_type = sqlalchemy.Column('partner_type', lib.Text)
     __mapper_args__ = {'polymorphic_on': partner_type}
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    host = sqlalchemy.Column(lib.String)
+    host = sqlalchemy.Column(lib.Text)
     entryserver_port = sqlalchemy.Column(sqlalchemy.Integer)
     control_probability = sqlalchemy.Column(sqlalchemy.Float)
 
@@ -156,8 +156,8 @@ class Server(Partner):
     
     id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'), primary_key=True)
     synchronisation_port = sqlalchemy.Column(sqlalchemy.Integer)
-    username = sqlalchemy.Column(lib.String)
-    password = sqlalchemy.Column(lib.String)
+    username = sqlalchemy.Column(lib.Text)
+    password = sqlalchemy.Column(lib.Text)
 
     def authenticated_socket(self):
         address = (self.host, self.synchronisation_port)
@@ -192,8 +192,8 @@ class Client(Partner):
     __mapper_args__ = {'polymorphic_identity': 'client'}
     
     id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'), primary_key=True)
-    username = sqlalchemy.Column(lib.String)
-    passwordhash = sqlalchemy.Column(lib.String)
+    username = sqlalchemy.Column(lib.Text)
+    passwordhash = sqlalchemy.Column(lib.Text)
 
     def password_valid(self, password):
         comparehash = hashlib.sha1(password).digest()
@@ -227,13 +227,13 @@ class Violation(DatabaseObject):
     """ A partner is kicked if and only if a violation exists """
     __tablename__ = 'violations'
 
-    violation_type = sqlalchemy.Column(lib.String)
+    violation_type = sqlalchemy.Column(lib.Text)
     __mapper_args__ = {'polymorphic_on': violation_type}
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
     partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'))
     partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
-    description = sqlalchemy.Column(lib.String)
+    description = sqlalchemy.Column(lib.Text)
     timestamp = sqlalchemy.Column(sqlalchemy.Integer)
     guilty = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
         # The administrator must set this to false to unkick the partner
@@ -290,14 +290,14 @@ class Offense(DatabaseObject):
         will be created. """
     __tablename__ = 'offenses'
 
-    offense_type = sqlalchemy.Column(lib.String)
+    offense_type = sqlalchemy.Column(lib.Text)
     __mapper_args__ = {'polymorphic_on': offense_type}
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    webfinger_address = sqlalchemy.Column(lib.String)
+    webfinger_address = sqlalchemy.Column(lib.Text)
     partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'))
     partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
-    description = sqlalchemy.Column(lib.String)
+    description = sqlalchemy.Column(lib.Text)
     severity = sqlalchemy.Column(sqlalchemy.Float)
     timestamp = sqlalchemy.Column(sqlalchemy.Integer)
     guilty = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
