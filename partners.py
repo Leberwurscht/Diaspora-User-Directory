@@ -78,14 +78,15 @@ class Partner(DatabaseObject):
 
         # calculate per-address severity sum (only most severe offense per webfinger_address)
         aggregator = sqlalchemy.sql.functions.max(Offense.severity)
-        subquery = Session.query(aggregator.label("max_severity"))
-        subquery = subquery.filter(Offense.partner == self)
-        subquery = subquery.filter(Offense.timestamp >= timestamp_limit)
-        subquery = subquery.filter(Offense.guilty == True)
-        subquery = subquery.filter(Offense.webfinger_address != None)
-        subquery = subquery.group_by(Offense.webfinger_address)
+        query = Session.query(aggregator.label("max_severity"))
+        query = query.filter(Offense.partner == self)
+        query = query.filter(Offense.timestamp >= timestamp_limit)
+        query = query.filter(Offense.guilty == True)
+        query = query.filter(Offense.webfinger_address != None)
+        query = query.group_by(Offense.webfinger_address)
+        subquery = query.subquery()
 
-        aggregator = sqlalchemy.sql.functions.sum(subquery.max_severity)
+        aggregator = sqlalchemy.sql.functions.sum(subquery.c.max_severity)
         query = Session.query(aggregator.label("per_address_severity_sum"))
         per_address_severity_sum = query.one().per_address_severity_sum
         if per_address_severity_sum==None: per_address_severity_sum=0
