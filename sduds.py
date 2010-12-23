@@ -179,7 +179,7 @@ def process_hashes(hashlist, partner):
         try:
             entry_fetched = entries.Entry.from_webfinger_address(address, entry.submission_timestamp)
         except Exception, error:
-            offense = InvalidProfileOffense(error, guilty=responsible)
+            offense = InvalidProfileOffense(address, error, guilty=responsible)
             partner.add_offense(offense)
             entrylist.remove(entry)
 

@@ -76,14 +76,32 @@ class Partner(DatabaseObject):
         current_timestamp = int(time.time())
         timestamp_limit = current_timestamp - OFFENSE_LIFETIME
 
-        # calculate severity sum
+        # calculate per-address severity sum (only most severe offense per webfinger_address)
+        aggregator = sqlalchemy.sql.functions.max(Offense.severity)
+        subquery = Session.query(aggregator.label("max_severity"))
+        subquery = subquery.filter(Offense.partner == self)
+        subquery = subquery.filter(Offense.timestamp >= timestamp_limit)
+        subquery = subquery.filter(Offense.guilty == True)
+        subquery = subquery.filter(Offense.webfinger_address != None)
+        subquery = subquery.group_by(Offense.webfinger_address)
+
+        aggregator = sqlalchemy.sql.functions.sum(subquery.max_severity)
+        query = Session.query(aggregator.label("per_address_severity_sum"))
+        per_address_severity_sum = query.one().per_address_severity_sum
+        if per_address_severity_sum==None: per_address_severity_sum=0
+
+        # calculate address-independent severity sum
         aggregator = sqlalchemy.sql.functions.sum(Offense.severity)
-        query = Session.query(aggregator.label("severity_sum"))
+        query = Session.query(aggregator.label("address_independent_severity_sum"))
         query = query.filter(Offense.partner == self)
         query = query.filter(Offense.timestamp >= timestamp_limit)
         query = query.filter(Offense.guilty == True)
-        severity_sum = query.one().severity_sum
-        if severity_sum==None: severity_sum=0
+        query = query.filter(Offense.webfinger_address == None)
+        address_independent_severity_sum = query.one().address_independent_severity_sum
+        if address_independent_severity_sum==None: address_independent_severity_sum=0
+
+        # calculate total severity sum
+        severity_sum = per_address_severity_sum + address_independent_severity_sum
 
         # calculate total number of received entries
         aggregator = sqlalchemy.sql.functions.sum(Conversation.received)
@@ -276,6 +294,7 @@ class Offense(DatabaseObject):
     __mapper_args__ = {'polymorphic_on': offense_type}
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    webfinger_address = sqlalchemy.Column(lib.String)
     partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'))
     partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
     description = sqlalchemy.Column(lib.String)
@@ -311,6 +330,11 @@ class InvalidProfileOffense(Offense):
 
     default_severity = 1
 
+    def __init__(self, webfinger_address, description, **kwargs):
+        kwargs["webfinger_address"] = webfinger_address
+
+        Offense.__init__(self, description, **kwargs)
+
 class NonConcurrenceOffense(Offense):
     """ the webfinger profile differs from the one the partner transmitted """
 
@@ -319,6 +343,8 @@ class NonConcurrenceOffense(Offense):
     default_severity = 1
 
     def __init__(self, fetched_entry, transmitted_entry, **kwargs):
+        kwargs["webfinger_address"] = transmitted_entry.webfinger_address
+
         description = "A control sample for an entry did not match the one on "+transmitted_entry.webfinger_address+"\n\n"
         description += "Fetched entry:\n"
         description += "==============\n"
