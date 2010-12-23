@@ -9,9 +9,13 @@ class Binary(sqlalchemy.types.TypeDecorator):
     impl = sqlalchemy.types.Binary
 
     def process_bind_param(self, value, dialect):
+        if value==None: return None
+
         return buffer(value)
 
     def process_result_value(self, value, dialect):
+        if value==None: return None
+
         return str(value)
 
     def copy(self):
@@ -25,9 +29,13 @@ class Text(sqlalchemy.types.TypeDecorator):
     impl = sqlalchemy.types.UnicodeText
 
     def process_bind_param(self, value, dialect):
+        if value==None: return None
+
         return unicode(value, "latin-1")
 
     def process_result_value(self, value, dialect):
+        if value==None: return None
+
         return value.encode("latin-1")
 
     def copy(self):
