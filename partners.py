@@ -194,7 +194,7 @@ class Client(Partner):
     
     id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'), primary_key=True)
     username = sqlalchemy.Column(lib.Text)
-    passwordhash = sqlalchemy.Column(lib.Text)
+    passwordhash = sqlalchemy.Column(lib.Binary)
 
     def password_valid(self, password):
         comparehash = hashlib.sha1(password).digest()
