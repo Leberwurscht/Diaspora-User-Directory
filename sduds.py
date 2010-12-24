@@ -6,10 +6,18 @@ logging.basicConfig(level=logging.DEBUG)
 import threading
 import os, socket, select
 
+import random
+
 import binascii
 
 import partners
 import entries
+
+###
+
+RESPONSIBILITY_TIME_SPAN = 3600*24*3
+
+###
 
 class HashServer(threading.Thread):
     """ Creates a unix domain socket listening for incoming hashes from the
@@ -120,13 +128,72 @@ def process_hashes(hashlist, partner):
     # get database entries
     entrylist = entries.EntryList.from_server(hashlist, entryserver_address)
 
-    # verify captcha signatures
-    for entry in entrylist:
-        if not entry.captcha_signature_valid():
-            entrylist.remove(entry)
-            # ... kick the partner ...
+    try:
+        entrylist = entries.EntryList.from_server(hashlist, entryserver_address)
+    except socket.error, error:
+        offense = partners.ConnectionFailedOffense(error)
+        partner.add_offense(offense)
+    except InvalidHashError, error:
+        violation = partners.InvalidHashViolation(error)
+        partner.add_violation(violation)
+    except InvalidListError, error:
+        violation = partners.InvalidListViolation(error)
+        partner.add_violation(violation)
+    except WrongEntriesError, error:
+        violation = partners.WrongEntriesViolation(error)
+        partner.add_violation(violation)        
 
-    # ... take control samples ...
+    new_entries = []
+
+    # take control samples
+    for entry in entrylist:
+        # verify captcha signatures
+        if not entry.captcha_signature_valid():
+            violation = partners.InvalidCaptchaViolation("")
+            partner.add_violation(violation)
+            entrylist.remove(entry)
+
+        # verify that entry was retrieved after it was submitted
+        if not entry.retrieval_timestamp>entry.submission_timestamp:
+            violation = partners.InvalidTimestampsViolation("")
+            partner.add_violation(violation)
+            entrylist.remove(entry)
+
+        # the partner is only responsible if the entry was retrieved recently
+        if entry.retrieval_timestamp > time.time()-RESPONSIBILITY_TIME_SPAN:
+            responsible = True
+
+            # Only re-retrieve the information with a certain probability
+            if random.random()>partner.control_probability: continue
+        else:
+            responsible = False
+
+            raise NotImplementedError, "Not implemented yet."
+            # ... tell the admin that an old timestamp was encourtered, and track it to its origin to enable the admin to
+            # shorten the chain of directory servers ...
+
+        # re-retrieve the information
+        address = entry.webfinger_address
+
+        # try to get the profile
+        try:
+            entry_fetched = entries.Entry.from_webfinger_address(address, entry.submission_timestamp)
+        except Exception, error:
+            offense = InvalidProfileOffense(address, error, guilty=responsible)
+            partner.add_offense(offense)
+            entrylist.remove(entry)
+
+            # TODO: remove entry from own database
+
+        if not entry_fetched.hash==entry.hash:
+            offense = NonConcurrenceOffense(entry_fetched, entry, guilty=responsible)
+            partner.add_offense(offense)
+            entrylist.remove(entry)
+
+            new_entries.append(entry_fetched)
+
+    # add valid entries to database
+    entrylist.extend(new_entries)
 
     # add valid entries to database
     entrylist.save()
@@ -145,7 +212,7 @@ def handle_connection(hashserver, clientsocket, address):
         clientsocket.close()
         return False
 
-    if client.kicked:
+    if client.kicked():
         logging.warning("Rejected synchronisation attempt from kicked client %s (%s)." % (username, str(address)))
         clientsocket.close()
         return False
@@ -178,7 +245,11 @@ def handle_connection(hashserver, clientsocket, address):
     logging.debug("Waiting for hashes for username %s" % username)
     hashlist = hashserver.get(username)
 
-    process_hashes(hashlist, client)
+    try:
+        process_hashes(hashlist, client)
+    except partners.PartnerKickedException:
+        logging.debug("Client %s got kicked." % str(client))
+
     client.log_conversation(len(hashlist))
 
 def connect(hashserver, server):
@@ -212,7 +283,11 @@ def connect(hashserver, server):
     logging.debug("Waiting for hashes for identifier %s" % identifier)
     hashlist = hashserver.get(identifier)
 
-    process_hashes(hashlist, server)
+    try:
+        process_hashes(hashlist, server)
+    except partners.PartnerKickedException:
+        logging.debug("Server %s got kicked." % str(server))
+
     server.log_conversation(len(hashlist))
 
 if __name__=="__main__":
@@ -273,8 +348,8 @@ if __name__=="__main__":
             print >>sys.stderr, "Address not in known servers list - add it with partners.py."
             sys.exit(1)
 
-        if server.kicked:
-            print >>sys.stderr, "Will not connect - server got kicked!"
+        if server.kicked():
+            print >>sys.stderr, "Will not connect - server is kicked!"
             sys.exit(1)
 
         try:

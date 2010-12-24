@@ -149,3 +149,20 @@ entrylist4 = entries.EntryList.from_server([binhash], (entryserver_interface, en
 entry4 = entrylist4[0]
 hexhash4 = binascii.hexlify(entry4.hash)
 assert hexhash4==hexhash
+
+import partners
+partner = partners.Session.query(partners.Partner)[0]
+partner.log_conversation(15)    # fake the transmission of 30 entries
+print partner
+offense = partners.ConnectionFailedOffense("connection failed.")
+partner.add_offense(offense)
+
+print "Violations:"
+print "==========="
+print
+for violation in partners.Session.query(partners.Violation):
+    print violation.description
+    print "Timestamp:", violation.timestamp
+    print "Partner:", violation.partner
+    print "Guilty:", violation.guilty
+    print
