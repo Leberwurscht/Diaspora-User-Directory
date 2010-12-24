@@ -307,7 +307,7 @@ if __name__=="__main__":
     import sys, time
 
     # run the trieserver executable
-    import trieserver
+    import hashtrie as trieserver
 
     # run hashserver
     hashserver = HashServer()

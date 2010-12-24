@@ -14,7 +14,7 @@ Two notes:
 """
 
 # run the trieserver executable
-import trieserver
+import hashtrie as trieserver
 
 # cryptography functions
 import paramiko
