@@ -13,7 +13,7 @@ for name in ["server","client","add"]:
     if os.path.exists(path): os.remove(path)
 
 # run trieserver
-trieserver = subprocess.Popen("./trieserver")
+trieserver = subprocess.Popen(["./trieserver", "PTree"])
 
 # define exitfunc
 def exit():

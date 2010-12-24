@@ -3,7 +3,7 @@
 /prepared
 
 # databases
-/PTree/
+/PTree*/
 entries.sqlite
 entries.sqlite-journal
 partners.sqlite

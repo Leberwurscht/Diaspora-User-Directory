@@ -14,7 +14,7 @@ let settings = { (* copied from reconserver.ml *)
 		else if !Settings.disk_ptree 
 		then `ondisk else `inmem);
 	max_nodes = !Settings.max_ptree_nodes;
-	dbdir = Lazy.force Settings.ptree_dbdir;
+	dbdir = Sys.argv.(1);
 	cache_bytes = !Settings.ptree_cache_bytes;
 	pagesize = !Settings.ptree_pagesize;
 };;
