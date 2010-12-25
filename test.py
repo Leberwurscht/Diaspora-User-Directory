@@ -14,7 +14,8 @@ Two notes:
 """
 
 # run the trieserver executable
-import hashtrie as trieserver
+from hashtrie import HashTrie
+hashtrie = HashTrie()
 
 # cryptography functions
 import paramiko
@@ -116,7 +117,8 @@ entrylist = entries.EntryList([entry])
 print str(entry)
 
 # save it
-entrylist.save()
+hashes = entrylist.save()
+hashtrie.add(hashes)
 
 # print hash
 binhash = str(entry.hash)
@@ -166,3 +168,5 @@ for violation in partners.Session.query(partners.Violation):
     print "Partner:", violation.partner
     print "Guilty:", violation.guilty
     print
+
+hashtrie.close()

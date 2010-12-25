@@ -204,10 +204,7 @@ class EntryList(list):
         global Session
         session = Session()
 
-        # open unix domain socket for adding hashes to the prefix tree
-        logging.debug("Connect to unix socket add.ocaml2py.sock.")
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.connect("add.ocaml2py.sock")
+        new_hashes = []
 
         for entry in self:
             hexhash = binascii.hexlify(entry.hash)
@@ -220,12 +217,9 @@ class EntryList(list):
             except sqlalchemy.exc.IntegrityError:
                 logging.warning("Attempted reinsertion of %s (%s) into the database" % (entry.webfinger_address, hexhash))
             else:
-                # add hash to prefix tree
-                s.sendall(hexhash+"\n")
-                logging.debug("Sent hash %s to unix socket add.ocaml2py.sock." % hexhash)
+                new_hashes.append(entry.hash)
 
-        s.close()
-        logging.debug("Closed unix socket add.ocaml2py.sock.")
+        return new_hashes
 
 # https://github.com/jcarbaugh/python-webfinger
 import pywebfinger

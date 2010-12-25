@@ -1,5 +1,9 @@
 open PTreeDB;;
 
+(***** get the suffix from the command line arguments *****)
+
+let suffix = Sys.argv.(1);;
+
 (***** prefix tree initialisation *****)
 
 module ZSet = ZZp.Set;;
@@ -14,7 +18,7 @@ let settings = { (* copied from reconserver.ml *)
 		else if !Settings.disk_ptree 
 		then `ondisk else `inmem);
 	max_nodes = !Settings.max_ptree_nodes;
-	dbdir = Sys.argv.(1);
+	dbdir = "PTree" ^ suffix;
 	cache_bytes = !Settings.ptree_cache_bytes;
 	pagesize = !Settings.ptree_pagesize;
 };;
@@ -25,25 +29,25 @@ init_ptree settings;;
 (***** initialize unix domain sockets *****)
 
 (* create recon server socket *)
-let unixsockaddr = "server.ocaml2py.sock";;
+let unixsockaddr = "server" ^ suffix ^ ".ocaml2py.sock";;
 let () = try Unix.unlink unixsockaddr with Unix.Unix_error _ -> ();;
 let addr = Unix.ADDR_UNIX unixsockaddr;;
 let serversock = Eventloop.create_sock addr;;
 
 (* create recon client socket *)
-let unixsockaddr = "client.ocaml2py.sock";;
+let unixsockaddr = "client" ^ suffix ^ ".ocaml2py.sock";;
 let () = try Unix.unlink unixsockaddr with Unix.Unix_error _ -> ();;
 let addr = Unix.ADDR_UNIX unixsockaddr;;
 let clientsock = Eventloop.create_sock addr;;
 
 (* create add hash socket *)
-let unixsockaddr = "add.ocaml2py.sock";;
+let unixsockaddr = "add" ^ suffix ^ ".ocaml2py.sock";;
 let () = try Unix.unlink unixsockaddr with Unix.Unix_error _ -> ();;
 let addr = Unix.ADDR_UNIX unixsockaddr;;
 let addsock = Eventloop.create_sock addr;;
 
 (* socket to transmit the hashes received from other servers to python *)
-let othersockaddr = "hashes.ocaml2py.sock";;
+let othersockaddr = "hashes" ^ suffix ^ ".ocaml2py.sock";;
 
 (***** helper functions *****)
 

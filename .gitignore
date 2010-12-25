@@ -29,10 +29,10 @@ partners.sqlite-journal
 /sks_add_mail
 
 # sockets
-server.ocaml2py.sock
-client.ocaml2py.sock
-add.ocaml2py.sock
-hashes.ocaml2py.sock
+server*.ocaml2py.sock
+client*.ocaml2py.sock
+add*.ocaml2py.sock
+hashes*.ocaml2py.sock
 
 # python objects
 *.pyc

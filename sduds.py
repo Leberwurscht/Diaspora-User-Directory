@@ -13,116 +13,39 @@ import binascii
 import partners
 import entries
 
+### setup hashtrie
+from hashtrie import HashTrie
+import sys, signal
+
+hashtrie = HashTrie()
+
+# define exitfunc
+def exit():
+    global hashtrie
+
+    hashtrie.close()
+    sys.exit(0)
+
+sys.exitfunc = exit
+
+# call exitfunc also for signals
+def signal_handler(signal, frame):
+    print >>sys.stderr, "Terminated by signal %d." % signal
+    exit()
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGHUP, signal_handler)
+
 ###
 
 RESPONSIBILITY_TIME_SPAN = 3600*24*3
 
 ###
-
-class HashServer(threading.Thread):
-    """ Creates a unix domain socket listening for incoming hashes from the
-        synchronisation process. Provides a 'get' function that can be used
-        to wait for hashes of a certain synchronisation identifier. """
-
-    def __init__(self, address="hashes.ocaml2py.sock"):
-        threading.Thread.__init__(self)
-
-        if os.path.exists(address): os.remove(address)
-
-        hashessocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        hashessocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        hashessocket.bind(address)
-        hashessocket.listen(5)
-
-        self.lock = threading.Lock() # lock for events and data dictionaries
-        self.events = {} # identifiers -> event dict for "data ready" events
-        self.data = {} # identifiers -> list of hashes dict
-
-        self.hashessocket = hashessocket
-
-        self.daemon = True  # terminate if main program exits
-        self.start()
-
-    def run(self):
-        while True:
-            (clientsocket, address) = self.hashessocket.accept()
-
-            thread = threading.Thread(
-                target=self.handle_connection,
-                args=(clientsocket, address)
-            )
-
-            thread.start()
-
-    def get_event(self, identifier):
-        """ Create event for an identifier if it does not exist and return it,
-            otherwise return existing one. Does not lock the dicts, you must
-            do this yourself! """
-
-        if not identifier in self.events:
-            self.events[identifier] = threading.Event()
-
-        return self.events[identifier]
-
-    def handle_connection(self, clientsocket, address):
-        f = clientsocket.makefile()
-
-        # get identifier
-        identifier = f.readline().strip()
-
-        # receive hexhashes
-        hashlist = []
-
-        for hexhash in f:
-            hexhash = hexhash.strip() # remove newline
-            logging.debug("Hashserver received  %s from %s" % (hexhash, identifier))
-            hashlist.append(binascii.unhexlify(hexhash))
-
-        # save hashlist to data dictionary and notify get function
-        with self.lock:
-            self.data[identifier] = hashlist
-            self.get_event(identifier).set()
-
-        logging.debug("Data ready for %s in HashServer" % identifier)
-
-    def get(self, identifier):
-        """ waits until data is ready and returns it """
-
-        self.lock.acquire()
-        event = self.get_event(identifier)
-        self.lock.release()
-
-        event.wait()
-
-        self.lock.acquire()
-        hashlist = self.data[identifier]
-        del self.data[identifier]
-        del self.events[identifier]
-        self.lock.release()
-
-        logging.debug("Data for identifier %s collected from HashServer" % identifier)
-        return hashlist
         
-def link_sockets(socket1, socket2):
-    """ Forwards traffic from each socket to the other, until one socket
-        is closed. Will block until this happens. """
-
-    sockets = [socket1, socket2]
-
-    while True:
-        # wait until at least one socket has data ready
-        inputready,outputready,exceptready = select.select(sockets,[],[])
-
-        for input_socket in inputready:
-            # receive data
-            buf = input_socket.recv(1024)
-            if not buf: return # connection got closed
-
-            # forward it to the other socket
-            other_socket = sockets[ ( sockets.index(input_socket) + 1 ) % 2 ]
-            other_socket.sendall(buf)
-
 def process_hashes(hashlist, partner):
+    global hashtrie
+
     entryserver_address = (partner.host, partner.entryserver_port)
 
     # get database entries
@@ -196,9 +119,10 @@ def process_hashes(hashlist, partner):
     entrylist.extend(new_entries)
 
     # add valid entries to database
-    entrylist.save()
+    hashes = entrylist.save()
+    hashtrie.add(hashes)
 
-def handle_connection(hashserver, clientsocket, address):
+def handle_connection(clientsocket, address):
     # authentication
     f = clientsocket.makefile()
     username = f.readline().strip()
@@ -225,25 +149,7 @@ def handle_connection(hashserver, clientsocket, address):
     logging.debug("%s (from %s) authenticated successfully." % (username, str(address)))
     clientsocket.sendall("OK\n")
 
-    # initialize the unix domain socket for communication with the ocaml component
-    unix_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    unix_socket.connect("server.ocaml2py.sock")
-
-    # tell ocaml the username
-    unix_socket.sendall(username+"\n")
-
-    # forward traffic on network socket to unix domain socket
-    logging.debug("Synchronising with %s" % str(address))
-    link_sockets(clientsocket, unix_socket)
-    logging.debug("Synchronising with %s" % str(address))
-
-    # close sockets
-    unix_socket.close()
-    clientsocket.close()
-
-    # await received hashes from the ocaml component (will block)
-    logging.debug("Waiting for hashes for username %s" % username)
-    hashlist = hashserver.get(username)
+    hashlist = hashtrie.synchronize_with_client(clientsocket)
 
     try:
         process_hashes(hashlist, client)
@@ -252,7 +158,9 @@ def handle_connection(hashserver, clientsocket, address):
 
     client.log_conversation(len(hashlist))
 
-def connect(hashserver, server):
+def connect(server):
+    global hashtrie
+
     logging.debug("Connecting to server %s" % str(server))
 
     # try establishing connection
@@ -261,27 +169,7 @@ def connect(hashserver, server):
 
     logging.debug("Got socket for %s" % str(server))
 
-    # initialize the unix domain socket for communication with the ocaml component
-    unix_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    unix_socket.connect("client.ocaml2py.sock")
-
-    # tell ocaml the identifier
-    identifier = server.host+":"+str(server.synchronisation_port)
-    unix_socket.sendall(identifier+"\n")
-    logging.debug("Told %s the identifier %s" % (str(server), identifier))
-
-    # forward traffic on network socket to unix domain socket
-    logging.debug("Synchronising with %s" % str(server))
-    link_sockets(serversocket, unix_socket)
-    logging.debug("Synchronising with %s done" % str(server))
-
-    # close sockets
-    unix_socket.close()
-    serversocket.close()
-
-    # await received hashes from the ocaml component (will block)
-    logging.debug("Waiting for hashes for identifier %s" % identifier)
-    hashlist = hashserver.get(identifier)
+    hashlist = hashtrie.synchronize_with_server(serversocket)
 
     try:
         process_hashes(hashlist, server)
@@ -305,12 +193,6 @@ if __name__=="__main__":
     """
 
     import sys, time
-
-    # run the trieserver executable
-    import hashtrie as trieserver
-
-    # run hashserver
-    hashserver = HashServer()
 
     if len(sys.argv)>2:
         # initiate connection if host and port are passed
@@ -353,7 +235,7 @@ if __name__=="__main__":
             sys.exit(1)
 
         try:
-            connect(hashserver, server)
+            connect(server)
         except socket.error,e:
             print >>sys.stderr, "Connecting to %s failed: %s" % (str(server), str(e))
             sys.exit(1)
@@ -390,5 +272,5 @@ if __name__=="__main__":
 
     while True:
         (clientsocket, address) = serversocket.accept()
-        thread = threading.Thread(target=handle_connection, args=(hashserver, clientsocket, address))
+        thread = threading.Thread(target=handle_connection, args=(clientsocket, address))
         thread.start()
