@@ -37,8 +37,5 @@ hashes.ocaml2py.sock
 # python objects
 *.pyc
 
-# configuration files
-partners
-
 # vim
 .*.swp
