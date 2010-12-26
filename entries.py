@@ -58,8 +58,6 @@ class EntryServer(threading.Thread):
 
             self.entrysocket = entrysocket
 
-            self.daemon = True  # terminate if main program exits
-
             self.running = True
             self.start()
 

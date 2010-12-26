@@ -31,8 +31,6 @@ class HashServer(threading.Thread):
 
         self.hashessocket = hashessocket
 
-        self.daemon = True  # terminate if main program exits
-
         self.running = True
         self.start()
 
