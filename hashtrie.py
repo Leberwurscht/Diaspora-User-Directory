@@ -99,6 +99,8 @@ class HashServer(threading.Thread):
         return hashlist
 
     def terminate(self):
+        if not self.running: return
+
         self.running = False
 
         # fake connection to unblock accept() in handle_connection
