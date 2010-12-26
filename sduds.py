@@ -37,6 +37,9 @@ signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGHUP, signal_handler)
 
+### setup partners database
+partnerdb = partners.Database()
+
 ###
 
 RESPONSIBILITY_TIME_SPAN = 3600*24*3
@@ -123,13 +126,15 @@ def process_hashes(hashlist, partner):
     hashtrie.add(hashes)
 
 def handle_connection(clientsocket, address):
+    global partnerdb
+
     # authentication
     f = clientsocket.makefile()
     username = f.readline().strip()
     password = f.readline().strip()
     f.close()
 
-    client = partners.Client.from_database(username=username)
+    client = partners.Client.from_database(partnerdb, username=username)
 
     if not client:
         logging.warning("Rejected synchronisation attempt from %s (%s) - unknown username." % (username, str(address)))
@@ -224,7 +229,7 @@ if __name__=="__main__":
         # synchronize with another server
         address = (host, port)
 
-        server = partners.Server.from_database(host=host, synchronisation_port=port)
+        server = partners.Server.from_database(partnerdb, host=host, synchronisation_port=port)
 
         if not server:
             print >>sys.stderr, "Address not in known servers list - add it with partners.py."
