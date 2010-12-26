@@ -49,19 +49,25 @@ class EntryServer(threading.Thread):
 
             self.database = database
 
+            self.address = (interface, port)
+
             entrysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             entrysocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            entrysocket.bind((interface,port))
+            entrysocket.bind(self.address)
             entrysocket.listen(5)
 
             self.entrysocket = entrysocket
 
             self.daemon = True  # terminate if main program exits
+
+            self.running = True
             self.start()
 
     def run(self):
         while True:
             (clientsocket, address) = self.entrysocket.accept()
+
+            if not self.running: return
 
             thread = threading.Thread(
                 target=self.handle_connection,
@@ -95,6 +101,18 @@ class EntryServer(threading.Thread):
         f.write(json_string)
         f.close()
         clientsocket.close()
+
+    def terminate(self):
+        if not self.running: return
+
+        self.running = False
+
+        # fake connection to unblock accept() in handle_connection
+        esocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        esocket.connect(self.address)
+        esocket.close()
+
+        self.entrysocket.close()
 
 ######
 
