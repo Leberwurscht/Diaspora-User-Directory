@@ -36,9 +36,6 @@ def signature_valid(public_key, signature, text):
 # initialize database
 import sqlalchemy, sqlalchemy.orm, lib
 
-engine = sqlalchemy.create_engine('sqlite:///entries.sqlite')
-Session = sqlalchemy.orm.sessionmaker(bind=engine)
-
 import sqlalchemy.ext.declarative
 DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
 
@@ -47,8 +44,10 @@ DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
 import threading
 
 class EntryServer(threading.Thread):
-    def __init__(self, interface="localhost", port=20001):
+    def __init__(self, database, interface="localhost", port=20001):
             threading.Thread.__init__(self)
+
+            self.database = database
 
             entrysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             entrysocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -89,7 +88,7 @@ class EntryServer(threading.Thread):
 
             binhashes.append(binhash)
 
-        entrylist = EntryList.from_database(binhashes)
+        entrylist = EntryList.from_database(self.database, binhashes)
 
         # serve requested hashes
         json_string = entrylist.json()
@@ -110,9 +109,8 @@ class WrongEntriesError(Exception): pass
 
 class EntryList(list):
     @classmethod
-    def from_database(cls, binhashes):
-        global Session
-        session = Session()
+    def from_database(cls, database, binhashes):
+        session = database.Session()
 
         entrylist = EntryList()
 
@@ -200,9 +198,8 @@ class EntryList(list):
 
         return json_string
 
-    def save(self):
-        global Session
-        session = Session()
+    def save(self, database):
+        session = database.Session()
 
         new_hashes = []
 
@@ -277,15 +274,6 @@ class Entry(DatabaseObject):
         return entry
 
     def __init__(self, webfinger_address, **kwargs):
-#        global Session
-#        session = Session()
-#
-#        try:
-#            old_entry = session.query(self.__class__).filter_by(webfinger_address=webfinger_address).one()
-#        except sqlalchemy.orm.exc.NoResultFound: pass
-#        else:
-#            kwargs["id"] = old_entry.id
-
         kwargs["webfinger_address"] = webfinger_address
         DatabaseObject.__init__(self, **kwargs)
         self.update_hash()
@@ -321,6 +309,15 @@ class Entry(DatabaseObject):
 
         return r
 
-# create tables if they don't exist
-DatabaseObject.metadata.create_all(engine)
+####
+# database class
 
+class Database:
+    def __init__(self, suffix=""):
+        global DatabaseObject
+
+        engine = sqlalchemy.create_engine("sqlite:///entries"+suffix+".sqlite")
+        self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
+
+        # create tables if they don't exist
+        DatabaseObject.metadata.create_all(engine)

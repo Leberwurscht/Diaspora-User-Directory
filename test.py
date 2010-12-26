@@ -17,6 +17,10 @@ Two notes:
 from hashtrie import HashTrie
 hashtrie = HashTrie()
 
+# setup entries database
+import entries
+entrydb = entries.Database()
+
 # cryptography functions
 import paramiko
 
@@ -37,7 +41,7 @@ def sign(private_key, text):
 
 private_key = get_private_key()
 
-import entries, binascii
+import binascii
 
 # test server providing a webfinger profile
 
@@ -117,7 +121,7 @@ entrylist = entries.EntryList([entry])
 print str(entry)
 
 # save it
-hashes = entrylist.save()
+hashes = entrylist.save(entrydb)
 hashtrie.add(hashes)
 
 # print hash
@@ -126,7 +130,7 @@ hexhash = binascii.hexlify(binhash)
 print hexhash
 
 # test loading from database
-entrylist2 = entries.EntryList.from_database([binhash])
+entrylist2 = entries.EntryList.from_database(entrydb, [binhash])
 entry2 = entrylist2[0]
 hexhash2 = binascii.hexlify(entry2.hash)
 assert hexhash2==hexhash
@@ -144,7 +148,7 @@ assert hexhash3==hexhash
 # run a EntryServer
 entryserver_interface = "localhost"
 entryserver_port = 20001
-entryserver = entries.EntryServer(entryserver_interface, entryserver_port)
+entryserver = entries.EntryServer(entrydb, entryserver_interface, entryserver_port)
 
 # get a EntryList from the EntryServer
 entrylist4 = entries.EntryList.from_server([binhash], (entryserver_interface, entryserver_port))

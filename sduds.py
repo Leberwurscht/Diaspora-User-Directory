@@ -10,9 +10,6 @@ import random
 
 import binascii
 
-import partners
-import entries
-
 ### setup hashtrie
 from hashtrie import HashTrie
 import sys, signal
@@ -38,7 +35,12 @@ signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGHUP, signal_handler)
 
 ### setup partners database
+import partners
 partnerdb = partners.Database()
+
+### setup entries database
+import entries
+entrydb = entries.Database()
 
 ###
 
@@ -47,7 +49,7 @@ RESPONSIBILITY_TIME_SPAN = 3600*24*3
 ###
         
 def process_hashes(hashlist, partner):
-    global hashtrie
+    global hashtrie, entrydb
 
     entryserver_address = (partner.host, partner.entryserver_port)
 
@@ -122,7 +124,7 @@ def process_hashes(hashlist, partner):
     entrylist.extend(new_entries)
 
     # add valid entries to database
-    hashes = entrylist.save()
+    hashes = entrylist.save(entrydb)
     hashtrie.add(hashes)
 
 def handle_connection(clientsocket, address):
@@ -224,7 +226,7 @@ if __name__=="__main__":
             sys.exit(1)
 
         # start EntryServer
-        entryserver = entries.EntryServer("localhost", entryserver_port)
+        entryserver = entries.EntryServer(entrydb, "localhost", entryserver_port)
 
         # synchronize with another server
         address = (host, port)
@@ -263,7 +265,7 @@ if __name__=="__main__":
         entryserver_port = 20001
 
     # start EntryServer
-    entryserver = entries.EntryServer("localhost", entryserver_port)
+    entryserver = entries.EntryServer(entrydb, "localhost", entryserver_port)
 
     # start a server that waits for synchronisation attempts from others
     interface = "localhost"

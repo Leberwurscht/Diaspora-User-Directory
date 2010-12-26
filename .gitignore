@@ -4,8 +4,8 @@
 
 # databases
 /PTree*/
-entries.sqlite
-entries.sqlite-journal
+entries*.sqlite
+entries*.sqlite-journal
 partners*.sqlite
 partners*.sqlite-journal
 
