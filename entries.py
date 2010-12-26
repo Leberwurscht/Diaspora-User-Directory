@@ -105,7 +105,7 @@ class EntryServer(threading.Thread):
 
         self.running = False
 
-        # fake connection to unblock accept() in handle_connection
+        # fake connection to unblock accept() in the run method
         esocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         esocket.connect(self.address)
         esocket.close()
