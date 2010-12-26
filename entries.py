@@ -324,23 +324,3 @@ class Entry(DatabaseObject):
 # create tables if they don't exist
 DatabaseObject.metadata.create_all(engine)
 
-class DatabaseOperation:
-    def verify(self):
-        raise NotImplementedError, "Override this function in subclasses."
-
-    def execute(self):
-        raise NotImplementedError, "Override this function in subclasses."
-
-class AddEntry(DatabaseOperation):
-    def __init__(self):
-        raise NotImplementedError, "Not implemented yet."
-
-    def verify(self):
-        raise NotImplementedError, "Not implemented yet."
-
-class DeleteEntry(DatabaseOperation):
-    def __init__(self):
-        raise NotImplementedError, "Not implemented yet."
-
-    def verify():
-        raise NotImplementedError, "Not implemented yet."
