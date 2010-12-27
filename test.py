@@ -157,3 +157,4 @@ hexhash4 = binascii.hexlify(entry4.hash)
 assert hexhash4==hexhash
 
 hashtrie.close()
+entryserver.terminate()
