@@ -61,17 +61,17 @@ class SDUDS:
         client = partners.Client.from_database(self.partnerdb, username=username)
 
         if not client:
-            logging.warning("Rejected synchronisation attempt from %s (%s) - unknown username." % (username, str(address)))
+            logging.warning("Rejected synchronization attempt from %s (%s) - unknown username." % (username, str(address)))
             clientsocket.close()
             return False
 
         if client.kicked():
-            logging.warning("Rejected synchronisation attempt from kicked client %s (%s)." % (username, str(address)))
+            logging.warning("Rejected synchronization attempt from kicked client %s (%s)." % (username, str(address)))
             clientsocket.close()
             return False
             
         if not client.password_valid(password):
-            logging.warning("Rejected synchronisation attempt from %s (%s) - wrong password." % (username, str(address)))
+            logging.warning("Rejected synchronization attempt from %s (%s) - wrong password." % (username, str(address)))
             clientsocket.close()
             return False
 
@@ -256,7 +256,7 @@ if __name__=="__main__":
         # synchronize with another server
         address = (host, port)
 
-        server = partners.Server.from_database(sduds.partnerdb, host=host, synchronisation_port=port)
+        server = partners.Server.from_database(sduds.partnerdb, host=host, synchronization_port=port)
 
         if not server:
             print >>sys.stderr, "Address not in known servers list - add it with partners.py."

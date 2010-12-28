@@ -10,8 +10,8 @@ import time, uuid, select
 
 class HashServer(threading.Thread):
     """ Creates a unix domain socket listening for incoming hashes from the
-        synchronisation process. Provides a 'get' function that can be used
-        to wait for hashes of a certain synchronisation identifier. """
+        synchronization process. Provides a 'get' function that can be used
+        to wait for hashes of a certain synchronization identifier. """
 
     def __init__(self, address):
         threading.Thread.__init__(self)

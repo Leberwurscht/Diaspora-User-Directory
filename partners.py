@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 ## Reminder: Make clear in documentation that server/client is only about who
-## initiates the connection; the synchronisation is always happening in both
+## initiates the connection; the synchronization is always happening in both
 ## directions.
 
 import logging
@@ -169,12 +169,12 @@ class Server(Partner):
     __mapper_args__ = {'polymorphic_identity': 'server'}
     
     id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'), primary_key=True)
-    synchronisation_port = sqlalchemy.Column(sqlalchemy.Integer)
+    synchronization_port = sqlalchemy.Column(sqlalchemy.Integer)
     username = sqlalchemy.Column(lib.Text)
     password = sqlalchemy.Column(lib.Text)
 
     def authenticated_socket(self):
-        address = (self.host, self.synchronisation_port)
+        address = (self.host, self.synchronization_port)
         asocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         asocket.connect(address)
 
@@ -194,7 +194,7 @@ class Server(Partner):
             return False
 
     def __str__(self):
-        r = self.username+"@"+self.host+":"+str(self.synchronisation_port)
+        r = self.username+"@"+self.host+":"+str(self.synchronization_port)
 
         if self.kicked():
             r += " [K]"
@@ -409,7 +409,7 @@ if __name__=="__main__":
 
     parser = optparse.OptionParser(
         usage = "%prog -a -s HOST PORT ENTRYSERVERPORT USERNAME [CONTROL_PROBABILITY]\nOr: %prog -d -s HOST PORT\nOr: %prog -a -c USERNAME HOST ENTRYSERVERPORT [CONTROL_PROBABILITY]\nOr: %prog -d -c USERNAME\nOr: %prog -l [-s|-c]",
-        description="manage the synchronisation partners list"
+        description="manage the synchronization partners list"
     )
     
     parser.add_option( "-s", "--server", action="store_true", dest="server", help="action deals with server")
@@ -441,13 +441,13 @@ if __name__=="__main__":
 
     elif options.add and options.server:
         try:
-            host,synchronisation_port,entryserver_port,username = args[:4]
+            host,synchronization_port,entryserver_port,username = args[:4]
         except ValueError:
             print >>sys.stderr, "ERROR: Need host, port, EntryServer port and username."
             sys.exit(1)
             
         try:
-            synchronisation_port = int(synchronisation_port)
+            synchronization_port = int(synchronization_port)
         except ValueError:
             print >>sys.stderr, "ERROR: Invalid port."
             sys.exit(1)
@@ -480,7 +480,7 @@ if __name__=="__main__":
         password = read_password()
 
         # delete old entry
-        old_server = Server.from_database(database, host=host, synchronisation_port=synchronisation_port)
+        old_server = Server.from_database(database, host=host, synchronization_port=synchronization_port)
         if old_server:
             # TODO: this will invalidate all the violations and offenses
             old_server.delete()
@@ -489,7 +489,7 @@ if __name__=="__main__":
             host=host,
             username=username,
             password=password,
-            synchronisation_port=synchronisation_port,
+            synchronization_port=synchronization_port,
             entryserver_port=entryserver_port,
             control_probability=control_probability
         )
@@ -555,24 +555,24 @@ if __name__=="__main__":
 
     elif options.delete and options.server:
         try:
-            host,synchronisation_port = args
+            host,synchronization_port = args
         except ValueError:
             print >>sys.stderr, "ERROR: Need host and port."
             sys.exit(1)
             
         try:
-            synchronisation_port = int(synchronisation_port)
+            synchronization_port = int(synchronization_port)
         except ValueError:
             print >>sys.stderr, "ERROR: Invalid port."
             sys.exit(1)
 
-        server = Server.from_database(database, host=host, synchronisation_port=synchronisation_port)
+        server = Server.from_database(database, host=host, synchronization_port=synchronization_port)
 
         if not server:
-            print >>sys.stderr, "ERROR: Server \"%s:%d\" is not in list." % (host, synchronisation_port)
+            print >>sys.stderr, "ERROR: Server \"%s:%d\" is not in list." % (host, synchronization_port)
             sys.exit(1)
 
-        print "Deleting server \"%s:%d\"." % (host, synchronisation_port)
+        print "Deleting server \"%s:%d\"." % (host, synchronization_port)
 
         server.delete()
 
