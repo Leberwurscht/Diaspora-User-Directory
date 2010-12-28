@@ -82,7 +82,7 @@ class SDUDS:
 
         try:
             self.fetch_entries_from_partner(hashlist, client)
-        except partners.PartnerKickedException:
+        except partners.PartnerKickedError:
             logging.debug("Client %s got kicked." % str(client))
 
         client.log_conversation(len(hashlist))
@@ -177,7 +177,7 @@ class SDUDS:
 
         try:
             self.fetch_entries_from_partner(hashlist, server)
-        except partners.PartnerKickedException:
+        except partners.PartnerKickedError:
             logging.debug("Server %s got kicked." % str(server))
 
         server.log_conversation(len(hashlist))
