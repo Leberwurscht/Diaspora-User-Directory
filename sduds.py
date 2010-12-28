@@ -4,7 +4,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 import threading
-import os, socket, select
+import os, socket, select, time
 
 import random
 
@@ -182,7 +182,7 @@ class SDUDS:
 
         server.log_conversation(len(hashlist))
 
-    def submit_address(self, webfinger_address, submission_time=None):
+    def submit_address(self, webfinger_address, submission_timestamp=None):
         if submission_timestamp==None:
             submission_timestamp = int(time.time())
 
