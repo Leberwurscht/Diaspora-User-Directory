@@ -186,10 +186,10 @@ class Server(Partner):
         f.close()
 
         if answer=="OK":
-            logging.info("Successfully authenticated to server %s." % str(address))
+            self.database.logger.info("Successfully authenticated to server %s." % str(address))
             return asocket
         else:
-            logging.error("Authentication to server %s failed." % str(address))
+            self.database.logger.error("Authentication to server %s failed." % str(address))
             asocket.close()
             return False
 
@@ -382,6 +382,8 @@ class PartnerKickedError(Exception):
 class Database:
     def __init__(self, suffix=""):
         global DatabaseObject
+
+        self.logger = logging.getLogger("partnerdb"+suffix)
 
         engine = sqlalchemy.create_engine("sqlite:///partners"+suffix+".sqlite")
         self.Session = sqlalchemy.orm.scoped_session(sqlalchemy.orm.sessionmaker(bind=engine))

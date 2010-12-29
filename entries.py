@@ -48,6 +48,7 @@ class EntryServer(threading.Thread):
             threading.Thread.__init__(self)
 
             self.database = database
+            self.logger = logging.getLogger("entryserver"+database.suffix)
 
             self.address = (interface, port)
 
@@ -87,7 +88,7 @@ class EntryServer(threading.Thread):
             try:
                 binhash = binascii.unhexlify(hexhash)
             except Exception,e:
-                logging.warning("Invalid request for hash \"%s\" by %s: %s" % (hexhash, str(address), str(e)))
+                self.logger.warning("Invalid request for hash \"%s\" by %s: %s" % (hexhash, str(address), str(e)))
                 continue
 
             binhashes.append(binhash)
@@ -134,7 +135,7 @@ class EntryList(list):
             try:
                 entry = session.query(Entry).filter_by(hash=binhash).one()
             except sqlalchemy.orm.exc.NoResultFound:
-                logging.warning("Requested hash \"%s\" does not exist." % binascii.hexlify(binhash))
+                database.logger.warning("Requested hash \"%s\" does not exist." % binascii.hexlify(binhash))
             else:
                 entrylist.append(entry)
 
@@ -228,7 +229,7 @@ class EntryList(list):
             try:
                 session.commit()
             except sqlalchemy.exc.IntegrityError:
-                logging.warning("Attempted reinsertion of %s (%s) into the database" % (entry.webfinger_address, hexhash))
+                database.logger.warning("Attempted reinsertion of %s (%s) into the database" % (entry.webfinger_address, hexhash))
             else:
                 new_hashes.append(entry.hash)
 
@@ -331,6 +332,9 @@ class Entry(DatabaseObject):
 class Database:
     def __init__(self, suffix=""):
         global DatabaseObject
+
+        self.suffix = suffix
+        self.logger = logging.getLogger("entrydb"+suffix)
 
         engine = sqlalchemy.create_engine("sqlite:///entries"+suffix+".sqlite")
         self.Session = sqlalchemy.orm.sessionmaker(bind=engine)

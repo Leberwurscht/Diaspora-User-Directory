@@ -16,6 +16,7 @@ class HashServer(threading.Thread):
     def __init__(self, address):
         threading.Thread.__init__(self)
 
+        self.logger = logging.getLogger(address)
         self.address = address
 
         if os.path.exists(address): os.remove(address)
@@ -68,7 +69,7 @@ class HashServer(threading.Thread):
 
         for hexhash in f:
             hexhash = hexhash.strip() # remove newline
-            logging.debug("Hashserver received  %s from %s" % (hexhash, identifier))
+            self.logger.debug("Hashserver received  %s from %s" % (hexhash, identifier))
             hashlist.append(binascii.unhexlify(hexhash))
 
         # save hashlist to data dictionary and notify get function
@@ -76,7 +77,7 @@ class HashServer(threading.Thread):
             self.data[identifier] = hashlist
             self.get_event(identifier).set()
 
-        logging.debug("Data ready for %s in HashServer" % identifier)
+        self.logger.debug("Data ready for %s in HashServer" % identifier)
 
     def get(self, identifier):
         """ waits until data is ready and returns it """
@@ -93,7 +94,7 @@ class HashServer(threading.Thread):
         del self.events[identifier]
         self.lock.release()
 
-        logging.debug("Data for identifier %s collected from HashServer" % identifier)
+        self.logger.debug("Data for identifier %s collected from HashServer" % identifier)
         return hashlist
 
     def terminate(self):
@@ -130,6 +131,8 @@ def link_sockets(socket1, socket2):
 
 class HashTrie:
     def __init__(self, suffix=""):
+        self.logger = logging.getLogger("hashtrie"+suffix)
+
         self.server_socket = "server"+suffix+".ocaml2py.sock"
         self.client_socket = "client"+suffix+".ocaml2py.sock"
         self.add_socket = "add"+suffix+".ocaml2py.sock"
@@ -157,14 +160,14 @@ class HashTrie:
 
     def _synchronize_common(self, partnersocket, address):
         # connect to the unix domain socket the trieserver listens on
-        logging.debug("connect to %s" % address)
+        self.logger.debug("connect to %s" % address)
         ocamlsocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         ocamlsocket.connect(address)
 
         # transmit an identifier to be able to get the right entries from the hashserver
         identifier = uuid.uuid4().hex
         ocamlsocket.sendall(identifier+"\n")
-        logging.debug("sent identifier %s to %s" % (identifier, address))
+        self.logger.debug("sent identifier %s to %s" % (identifier, address))
 
         # forward traffic on network socket to unix domain socket
         link_sockets(partnersocket, ocamlsocket)
@@ -174,9 +177,9 @@ class HashTrie:
         partnersocket.close()
 
         # await received hashes from the ocaml component (will block)
-        logging.debug("Waiting for hashes for identifier %s on %s" % (identifier, address))
+        self.logger.debug("Waiting for hashes for identifier %s on %s" % (identifier, address))
         hashlist = self.hashserver.get(identifier)
-        logging.debug("Got %d hashes for identifier %s on %s" % (len(hashlist), identifier, address))
+        self.logger.debug("Got %d hashes for identifier %s on %s" % (len(hashlist), identifier, address))
 
         return hashlist
 

@@ -27,6 +27,7 @@ class SDUDS:
         self.entrydb = entries.Database(suffix)
 
         self.hashtrie = HashTrie(suffix)
+        self.logger = logging.getLogger("sduds"+suffix) 
 
         entryserver_interface, entryserver_port = entryserver_address
         self.entry_server = entries.EntryServer(self.entrydb, entryserver_interface, entryserver_port)
@@ -38,7 +39,7 @@ class SDUDS:
         serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         serversocket.bind((interface, port))
         serversocket.listen(5)
-        logging.info("Listening on %s:%d." % (interface, port))
+        self.logger.info("Listening on %s:%d." % (interface, port))
 
         self.synchronization_socket = serversocket
         self.synchronization_address = (interface, port)
@@ -61,21 +62,21 @@ class SDUDS:
         client = partners.Client.from_database(self.partnerdb, username=username)
 
         if not client:
-            logging.warning("Rejected synchronization attempt from %s (%s) - unknown username." % (username, str(address)))
+            self.logger.warning("Rejected synchronization attempt from %s (%s) - unknown username." % (username, str(address)))
             clientsocket.close()
             return False
 
         if client.kicked():
-            logging.warning("Rejected synchronization attempt from kicked client %s (%s)." % (username, str(address)))
+            self.logger.warning("Rejected synchronization attempt from kicked client %s (%s)." % (username, str(address)))
             clientsocket.close()
             return False
             
         if not client.password_valid(password):
-            logging.warning("Rejected synchronization attempt from %s (%s) - wrong password." % (username, str(address)))
+            self.logger.warning("Rejected synchronization attempt from %s (%s) - wrong password." % (username, str(address)))
             clientsocket.close()
             return False
 
-        logging.debug("%s (from %s) authenticated successfully." % (username, str(address)))
+        self.logger.debug("%s (from %s) authenticated successfully." % (username, str(address)))
         clientsocket.sendall("OK\n")
 
         hashlist = self.hashtrie.synchronize_with_client(clientsocket)
@@ -83,7 +84,7 @@ class SDUDS:
         try:
             self.fetch_entries_from_partner(hashlist, client)
         except partners.PartnerKickedError:
-            logging.debug("Client %s got kicked." % str(client))
+            self.logger.debug("Client %s got kicked." % str(client))
 
         client.log_conversation(len(hashlist))
 
@@ -165,20 +166,20 @@ class SDUDS:
         self.hashtrie.add(hashes)
 
     def connect_to_server(self, server):
-        logging.debug("Connecting to server %s" % str(server))
+        self.logger.debug("Connecting to server %s" % str(server))
 
         # try establishing connection
         serversocket = server.authenticated_socket()
         if not serversocket: return False
 
-        logging.debug("Got socket for %s" % str(server))
+        self.logger.debug("Got socket for %s" % str(server))
 
         hashlist = self.hashtrie.synchronize_with_server(serversocket)
 
         try:
             self.fetch_entries_from_partner(hashlist, server)
         except partners.PartnerKickedError:
-            logging.debug("Server %s got kicked." % str(server))
+            self.logger.debug("Server %s got kicked." % str(server))
 
         server.log_conversation(len(hashlist))
 
