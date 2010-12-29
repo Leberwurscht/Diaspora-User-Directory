@@ -82,67 +82,67 @@ let send_number cout number =
 	cout#write_string hexhash;
 	cout#write_string "\n";
 	cout#flush;
-	Common.plerror 1 "sent hash %s to hashes.ocaml2py.sock" hexhash;;
+	Common.plerror 1 "sent hash %s to hashes.ocaml2py.sock (%s)" hexhash suffix;;
 
-let send_numbers source numbers =
+let send_numbers identifier numbers =
 	(* the python part should only accept one connection at a time for this socket *)
-	Common.plerror 1 "send_numbers called; connecting to hashes.ocaml2py.sock";
+	Common.plerror 1 "send_numbers called; connecting to hashes.ocaml2py.sock (%s)" suffix;
 	let socket = Unix.socket Unix.PF_UNIX Unix.SOCK_STREAM 0 in
 	let addr = Unix.ADDR_UNIX othersockaddr in
 	let cout = Channel.sys_out_from_fd socket in
 	Unix.connect socket addr;
-	Common.plerror 1 "Connection to hashes.ocaml2py.sock established";
-	cout#write_string source;
+	Common.plerror 1 "Connection to hashes.ocaml2py.sock established (%s)" suffix;
+	cout#write_string identifier;
 	cout#write_string "\n";
 	cout#flush;
-	Common.plerror 1 "Sent source %s to hashes.ocaml2py.sock" source;
+	Common.plerror 1 "Sent identifier %s to hashes.ocaml2py.sock (%s)" identifier suffix;
 	ZSet.iter ~f:(send_number cout) numbers;
 	Unix.close socket;
-	Common.plerror 1 "Connection to hashes.ocaml2py.sock closed";;
+	Common.plerror 1 "Connection to hashes.ocaml2py.sock closed (%s)" suffix;;
 
 (* function to add a hash to the database *)
 
 let add_hash hexhash =
 	let l = String.length hexhash in
 	if (l=32) then (
-		Common.plerror 1 "adding hash %s to database" hexhash;
+		Common.plerror 1 "adding hash %s to database (%s)" hexhash suffix;
 		let binary = KeyHash.dehexify hexhash in
 		let modulo = ZZp.of_bytes binary in
 		let txn = new_txnopt () in
 			PTree.insert (get_ptree ()) txn modulo;
 			PTree.clean txn (get_ptree ());
 			commit_txnopt txn;
-		Common.plerror 1 "added hash %s to database." hexhash;
+		Common.plerror 1 "added hash %s to database (%s)" hexhash suffix;
 	) else (
-		Common.plerror 1 "received line with invalid length %d" l;
+		Common.plerror 1 "received line with invalid length %d (%s)" l suffix;
 	)
 
 (***** eventloop callbacks *****)
 
 let servercb addr cin cout =
-	Common.plerror 1 "connection on server.ocaml2py.sock";
+	Common.plerror 1 "connection on server.ocaml2py.sock (%s)" suffix;
 	let cin = (new Channel.sys_in_channel cin)
 	and cout = (new Channel.sys_out_channel cout) in
-		let source = readline cin in
+		let identifier = readline cin in
 		let data = Client.handle (get_ptree ()) cin cout in
-		send_numbers source data;
+		send_numbers identifier data;
 
-	Common.plerror 1 "did synchronisation as server as requested by %s" (ReconMessages.sockaddr_to_string addr);
+	Common.plerror 1 "did synchronisation as server as requested by %s (%s)" (ReconMessages.sockaddr_to_string addr) suffix;
 	[];;
 
 let clientcb addr cin cout =
-	Common.plerror 1 "connection on client.ocaml2py.sock";
+	Common.plerror 1 "connection on client.ocaml2py.sock (%s)" suffix;
 	let cin = (new Channel.sys_in_channel cin)
 	and cout = (new Channel.sys_out_channel cout) in
-		let source = readline cin in
+		let identifier = readline cin in
 		let data = Server.handle (get_ptree ()) cin cout in
-		send_numbers source data;
+		send_numbers identifier data;
 
-	Common.plerror 1 "did synchronisation as client as requested by %s" (ReconMessages.sockaddr_to_string addr);
+	Common.plerror 1 "did synchronisation as client as requested by %s (%s)" (ReconMessages.sockaddr_to_string addr) suffix;
 	[];;
 
 let addcb addr cin cout =
-	Common.plerror 1 "got connection on add.ocaml2py.sock";
+	Common.plerror 1 "got connection on add.ocaml2py.sock (%s)" suffix;
 	let cin = (new Channel.sys_in_channel cin)
 	and cout = (new Channel.sys_out_channel cout) in
 		iter_lines cin add_hash;
@@ -160,5 +160,5 @@ let run () = Eventloop.evloop [] [
 (***** run the main loop *****)
 Common.protect ~f:run ~finally:(fun () -> 
 	closedb (); (* close db to prevent bdb "fatal region errors" *)
-	Common.plerror 2 "DB closed"
+	Common.plerror 2 "DB closed (%s)" suffix
 )
