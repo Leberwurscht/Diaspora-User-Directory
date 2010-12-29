@@ -119,8 +119,8 @@ class SDUDS:
                 entrylist.remove(entry)
 
             # verify that entry was retrieved after it was submitted
-            if not entry.retrieval_timestamp>entry.submission_timestamp:
-                violation = partners.InvalidTimestampsViolation("")
+            if not entry.retrieval_timestamp>=entry.submission_timestamp:
+                violation = partners.InvalidTimestampsViolation(entry)
                 partner.add_violation(violation)
                 entrylist.remove(entry)
 
