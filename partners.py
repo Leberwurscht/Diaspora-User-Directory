@@ -6,7 +6,7 @@
 
 import logging
 
-import sys, time
+import os, sys, time
 import hashlib
 import socket
 
@@ -380,16 +380,25 @@ class PartnerKickedError(Exception):
 # database class
 
 class Database:
-    def __init__(self, suffix=""):
+    def __init__(self, suffix="", erase=False):
         global DatabaseObject
 
         self.logger = logging.getLogger("partnerdb"+suffix)
 
-        engine = sqlalchemy.create_engine("sqlite:///partners"+suffix+".sqlite")
+        self.dbfile = "partners"+suffix+".sqlite"
+
+        if erase: self.erase()
+
+        engine = sqlalchemy.create_engine("sqlite:///"+self.dbfile)
         self.Session = sqlalchemy.orm.scoped_session(sqlalchemy.orm.sessionmaker(bind=engine))
 
         # create tables if they don't exist
         DatabaseObject.metadata.create_all(engine)
+
+    def erase(self):
+        if hasattr(self, "Session"): self.Session.close_all()
+
+        if os.path.exists(self.dbfile): os.remove(self.dbfile)
 
 ### command line interface
 if __name__=="__main__":
