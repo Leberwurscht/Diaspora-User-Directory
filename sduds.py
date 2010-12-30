@@ -115,7 +115,7 @@ class SDUDS:
         for entry in entrylist:
             # verify captcha signatures
             if not entry.captcha_signature_valid():
-                violation = partners.InvalidCaptchaViolation("")
+                violation = partners.InvalidCaptchaViolation(entry)
                 partner.add_violation(violation)
                 entrylist.remove(entry)
 
