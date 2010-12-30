@@ -140,6 +140,7 @@ class HashTrie:
         self.server_socket = "server"+suffix+".ocaml2py.sock"
         self.client_socket = "client"+suffix+".ocaml2py.sock"
         self.add_socket = "add"+suffix+".ocaml2py.sock"
+        hashes_socket = "hashes"+suffix+".ocaml2py.sock"
 
         # erase database if requested
         self.opened = False
@@ -152,11 +153,12 @@ class HashTrie:
 
         # a hashtrie is opened until close() is called
         self.opened = True
+
         # run trieserver
-        self.trieserver = subprocess.Popen(["./trieserver", suffix])
+        self.trieserver = subprocess.Popen(["./trieserver", self.dbdir, self.server_socket, self.client_socket, self.add_socket, hashes_socket])
 
         # run HashServer
-        self.hashserver = HashServer("hashes"+suffix+".ocaml2py.sock")
+        self.hashserver = HashServer(hashes_socket)
 
         # wait until all unix domain sockets are set up by trieserver
         while True:
