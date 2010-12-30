@@ -200,6 +200,8 @@ class SDUDS:
         hashes = entrylist.save(self.entrydb)
         self.hashtrie.add(hashes)
 
+        return hashes
+
     def close(self):
         self.hashtrie.close()
         self.entry_server.terminate()
