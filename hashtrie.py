@@ -8,6 +8,8 @@ import os, binascii
 import subprocess
 import time, uuid, select
 
+import shutil
+
 class HashServer(threading.Thread):
     """ Creates a unix domain socket listening for incoming hashes from the
         synchronization process. Provides a 'get' function that can be used
@@ -130,18 +132,26 @@ def link_sockets(socket1, socket2):
             other_socket.sendall(buf)
 
 class HashTrie:
-    def __init__(self, suffix=""):
+    def __init__(self, suffix="", erase=False):
         self.logger = logging.getLogger("hashtrie"+suffix)
+
+        self.dbdir = "PTree"+suffix
 
         self.server_socket = "server"+suffix+".ocaml2py.sock"
         self.client_socket = "client"+suffix+".ocaml2py.sock"
         self.add_socket = "add"+suffix+".ocaml2py.sock"
+
+        # erase database if requested
+        self.opened = False
+        if erase: self.erase()
 
         # delete remaining unix domain sockets
         if os.path.exists(self.server_socket): os.remove(self.server_socket)
         if os.path.exists(self.client_socket): os.remove(self.client_socket)
         if os.path.exists(self.add_socket): os.remove(self.add_socket)
 
+        # a hashtrie is opened until close() is called
+        self.opened = True
         # run trieserver
         self.trieserver = subprocess.Popen(["./trieserver", suffix])
 
@@ -200,6 +210,8 @@ class HashTrie:
         s.close()
 
     def close(self):
+        if not self.opened: return
+
         self.trieserver.terminate()
         self.hashserver.terminate()
 
@@ -208,3 +220,10 @@ class HashTrie:
         if os.path.exists(self.server_socket): os.remove(self.server_socket)
         if os.path.exists(self.client_socket): os.remove(self.client_socket)
         if os.path.exists(self.add_socket): os.remove(self.add_socket)
+
+        self.opened = False
+
+    def erase(self):
+        assert not self.opened
+
+        if os.path.exists(self.dbdir): shutil.rmtree(self.dbdir)
