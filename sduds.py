@@ -22,11 +22,11 @@ RESPONSIBILITY_TIME_SPAN = 3600*24*3
 ###
 
 class SDUDS:
-    def __init__(self, entryserver_address, suffix=""):
-        self.partnerdb = partners.Database(suffix)
-        self.entrydb = entries.Database(suffix)
+    def __init__(self, entryserver_address, suffix="", erase=False):
+        self.partnerdb = partners.Database(suffix, erase=erase)
+        self.entrydb = entries.Database(suffix, erase=erase)
 
-        self.hashtrie = HashTrie(suffix)
+        self.hashtrie = HashTrie(suffix, erase=erase)
         self.logger = logging.getLogger("sduds"+suffix) 
 
         entryserver_interface, entryserver_port = entryserver_address
@@ -210,6 +210,13 @@ class SDUDS:
             fsocket.close()
 
             serversocket.close()
+
+    def erase(self):
+        # no checking is needed if these are closed, as hashtrie check this by itself
+        # and partnerdb and entrydb close the connections automatically
+        self.hashtrie.erase()
+        self.partnerdb.erase()
+        self.entrydb.erase()
 
 if __name__=="__main__":
     """
