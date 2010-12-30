@@ -21,6 +21,10 @@ RESPONSIBILITY_TIME_SPAN = 3600*24*3
 
 ###
 
+class InvalidCaptchaSignatureError(Exception): pass
+
+###
+
 class SDUDS:
     def __init__(self, entryserver_address, suffix="", erase=False):
         self.partnerdb = partners.Database(suffix, erase=erase)
@@ -188,7 +192,8 @@ class SDUDS:
             submission_timestamp = int(time.time())
 
         entry = entries.Entry.from_webfinger_address(webfinger_address, submission_timestamp)
-        assert entry.captcha_signature_valid()
+        if not entry.captcha_signature_valid():
+            raise InvalidCaptchaSignatureError, "%s is not a valid signature for %s" % (binascii.hexlify(entry.captcha_signature), entry.webfinger_address)
 
         entrylist = entries.EntryList([entry])
 
