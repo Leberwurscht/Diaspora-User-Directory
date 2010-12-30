@@ -9,6 +9,8 @@ import binascii, hashlib
 
 import json
 
+import os
+
 # load public key for verifying captcha signatures
 
 import base64, paramiko
@@ -330,14 +332,23 @@ class Entry(DatabaseObject):
 # database class
 
 class Database:
-    def __init__(self, suffix=""):
+    def __init__(self, suffix="", erase=False):
         global DatabaseObject
 
         self.suffix = suffix
         self.logger = logging.getLogger("entrydb"+suffix)
 
-        engine = sqlalchemy.create_engine("sqlite:///entries"+suffix+".sqlite")
+        self.dbfile = "entries"+suffix+".sqlite"
+
+        if erase: self.erase()
+
+        engine = sqlalchemy.create_engine("sqlite:///"+self.dbfile)
         self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
 
         # create tables if they don't exist
         DatabaseObject.metadata.create_all(engine)
+
+    def erase(self):
+        if hasattr(self, "Session"): self.Session.close_all()
+
+        if os.path.exists(self.dbfile): os.remove(self.dbfile)
