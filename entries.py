@@ -9,6 +9,8 @@ import binascii, hashlib
 
 import json
 
+import os
+
 # load public key for verifying captcha signatures
 
 import base64, paramiko
@@ -36,9 +38,6 @@ def signature_valid(public_key, signature, text):
 # initialize database
 import sqlalchemy, sqlalchemy.orm, lib
 
-engine = sqlalchemy.create_engine('sqlite:///entries.sqlite')
-Session = sqlalchemy.orm.sessionmaker(bind=engine)
-
 import sqlalchemy.ext.declarative
 DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
 
@@ -47,22 +46,29 @@ DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
 import threading
 
 class EntryServer(threading.Thread):
-    def __init__(self, interface="localhost", port=20001):
+    def __init__(self, database, interface="localhost", port=20001):
             threading.Thread.__init__(self)
+
+            self.database = database
+            self.logger = logging.getLogger("entryserver"+database.suffix)
+
+            self.address = (interface, port)
 
             entrysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             entrysocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            entrysocket.bind((interface,port))
+            entrysocket.bind(self.address)
             entrysocket.listen(5)
 
             self.entrysocket = entrysocket
 
-            self.daemon = True  # terminate if main program exits
+            self.running = True
             self.start()
 
     def run(self):
         while True:
             (clientsocket, address) = self.entrysocket.accept()
+
+            if not self.running: return
 
             thread = threading.Thread(
                 target=self.handle_connection,
@@ -84,18 +90,30 @@ class EntryServer(threading.Thread):
             try:
                 binhash = binascii.unhexlify(hexhash)
             except Exception,e:
-                logging.warning("Invalid request for hash \"%s\" by %s: %s" % (hexhash, str(address), str(e)))
+                self.logger.warning("Invalid request for hash \"%s\" by %s: %s" % (hexhash, str(address), str(e)))
                 continue
 
             binhashes.append(binhash)
 
-        entrylist = EntryList.from_database(binhashes)
+        entrylist = EntryList.from_database(self.database, binhashes)
 
         # serve requested hashes
         json_string = entrylist.json()
         f.write(json_string)
         f.close()
         clientsocket.close()
+
+    def terminate(self):
+        if not self.running: return
+
+        self.running = False
+
+        # fake connection to unblock accept() in the run method
+        esocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        esocket.connect(self.address)
+        esocket.close()
+
+        self.entrysocket.close()
 
 ######
 
@@ -110,9 +128,8 @@ class WrongEntriesError(Exception): pass
 
 class EntryList(list):
     @classmethod
-    def from_database(cls, binhashes):
-        global Session
-        session = Session()
+    def from_database(cls, database, binhashes):
+        session = database.Session()
 
         entrylist = EntryList()
 
@@ -120,7 +137,7 @@ class EntryList(list):
             try:
                 entry = session.query(Entry).filter_by(hash=binhash).one()
             except sqlalchemy.orm.exc.NoResultFound:
-                logging.warning("Requested hash \"%s\" does not exist." % binascii.hexlify(binhash))
+                database.logger.warning("Requested hash \"%s\" does not exist." % binascii.hexlify(binhash))
             else:
                 entrylist.append(entry)
 
@@ -200,14 +217,10 @@ class EntryList(list):
 
         return json_string
 
-    def save(self):
-        global Session
-        session = Session()
+    def save(self, database):
+        session = database.Session()
 
-        # open unix domain socket for adding hashes to the prefix tree
-        logging.debug("Connect to unix socket add.ocaml2py.sock.")
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.connect("add.ocaml2py.sock")
+        new_hashes = []
 
         for entry in self:
             hexhash = binascii.hexlify(entry.hash)
@@ -218,14 +231,11 @@ class EntryList(list):
             try:
                 session.commit()
             except sqlalchemy.exc.IntegrityError:
-                logging.warning("Attempted reinsertion of %s (%s) into the database" % (entry.webfinger_address, hexhash))
+                database.logger.warning("Attempted reinsertion of %s (%s) into the database" % (entry.webfinger_address, hexhash))
             else:
-                # add hash to prefix tree
-                s.sendall(hexhash+"\n")
-                logging.debug("Sent hash %s to unix socket add.ocaml2py.sock." % hexhash)
+                new_hashes.append(entry.hash)
 
-        s.close()
-        logging.debug("Closed unix socket add.ocaml2py.sock.")
+        return new_hashes
 
 # https://github.com/jcarbaugh/python-webfinger
 import pywebfinger
@@ -283,15 +293,6 @@ class Entry(DatabaseObject):
         return entry
 
     def __init__(self, webfinger_address, **kwargs):
-#        global Session
-#        session = Session()
-#
-#        try:
-#            old_entry = session.query(self.__class__).filter_by(webfinger_address=webfinger_address).one()
-#        except sqlalchemy.orm.exc.NoResultFound: pass
-#        else:
-#            kwargs["id"] = old_entry.id
-
         kwargs["webfinger_address"] = webfinger_address
         DatabaseObject.__init__(self, **kwargs)
         self.update_hash()
@@ -327,26 +328,27 @@ class Entry(DatabaseObject):
 
         return r
 
-# create tables if they don't exist
-DatabaseObject.metadata.create_all(engine)
+####
+# database class
 
-class DatabaseOperation:
-    def verify(self):
-        raise NotImplementedError, "Override this function in subclasses."
+class Database:
+    def __init__(self, suffix="", erase=False):
+        global DatabaseObject
 
-    def execute(self):
-        raise NotImplementedError, "Override this function in subclasses."
+        self.suffix = suffix
+        self.logger = logging.getLogger("entrydb"+suffix)
 
-class AddEntry(DatabaseOperation):
-    def __init__(self):
-        raise NotImplementedError, "Not implemented yet."
+        self.dbfile = "entries"+suffix+".sqlite"
 
-    def verify(self):
-        raise NotImplementedError, "Not implemented yet."
+        if erase: self.erase()
 
-class DeleteEntry(DatabaseOperation):
-    def __init__(self):
-        raise NotImplementedError, "Not implemented yet."
+        engine = sqlalchemy.create_engine("sqlite:///"+self.dbfile)
+        self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
 
-    def verify():
-        raise NotImplementedError, "Not implemented yet."
+        # create tables if they don't exist
+        DatabaseObject.metadata.create_all(engine)
+
+    def erase(self):
+        if hasattr(self, "Session"): self.Session.close_all()
+
+        if os.path.exists(self.dbfile): os.remove(self.dbfile)

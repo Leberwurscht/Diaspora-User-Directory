@@ -1,20 +1,17 @@
 #!/usr/bin/env python
 
 ## Reminder: Make clear in documentation that server/client is only about who
-## initiates the connection; the synchronisation is always happening in both
+## initiates the connection; the synchronization is always happening in both
 ## directions.
 
 import logging
 
-import sys, time
+import os, sys, time
 import hashlib
 import socket
 
 # initialize database
 import sqlalchemy, sqlalchemy.orm, lib, sqlalchemy.sql.functions
-
-engine = sqlalchemy.create_engine('sqlite:///partners.sqlite')
-Session = sqlalchemy.orm.scoped_session(sqlalchemy.orm.sessionmaker(bind=engine))
 
 import sqlalchemy.ext.declarative
 DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
@@ -38,30 +35,46 @@ class Partner(DatabaseObject):
     control_probability = sqlalchemy.Column(sqlalchemy.Float)
 
     @classmethod
-    def from_database(cls, **kwargs):
-        global Session
+    def from_database(cls, database, **kwargs):
+        Session = database.Session
 
         try:
             partner = Session.query(cls).filter_by(**kwargs).one()
+            partner.database = database
         except sqlalchemy.orm.exc.NoResultFound:
             return None
         else:
             return partner
 
+    @classmethod
+    def list_from_database(cls, database, **kwargs):
+        Session = database.Session
+
+        partners = Session.query(cls).filter_by(**kwargs).all()
+
+        for partner in partners:
+            partner.database = database
+
+        return partners
+
+    def __init__(self, database, *args, **kwargs):
+        DatabaseObject.__init__(self, *args, **kwargs)
+        self.database = database
+
     def kicked(self):
-        global Session
+        Session = self.database.Session
 
         violations = Session.query(Violation).filter_by(partner=self, guilty=True).count()
         return (violations>0)
 
     def delete(self):
-        global Session
+        Session = self.database.Session
 
         Session.delete(self)
         Session.commit()
 
     def add_offense(self, offense):
-        global Session
+        Session = self.database.Session
 
         # save offense
         offense.partner = self
@@ -128,7 +141,7 @@ class Partner(DatabaseObject):
             self.add_violation(violation)
         
     def add_violation(self, violation):
-        global Session
+        Session = self.database.Session
 
         # save violation
         violation.partner = self
@@ -144,7 +157,7 @@ class Partner(DatabaseObject):
         raise PartnerKickedError
 
     def log_conversation(self, received):
-        global Session
+        Session = self.database.Session
 
         conversation = Conversation(partner=self, received=received, timestamp=int(time.time()))
 
@@ -156,12 +169,12 @@ class Server(Partner):
     __mapper_args__ = {'polymorphic_identity': 'server'}
     
     id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'), primary_key=True)
-    synchronisation_port = sqlalchemy.Column(sqlalchemy.Integer)
+    synchronization_port = sqlalchemy.Column(sqlalchemy.Integer)
     username = sqlalchemy.Column(lib.Text)
     password = sqlalchemy.Column(lib.Text)
 
     def authenticated_socket(self):
-        address = (self.host, self.synchronisation_port)
+        address = (self.host, self.synchronization_port)
         asocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         asocket.connect(address)
 
@@ -173,15 +186,15 @@ class Server(Partner):
         f.close()
 
         if answer=="OK":
-            logging.info("Successfully authenticated to server %s." % str(address))
+            self.database.logger.info("Successfully authenticated to server %s." % str(address))
             return asocket
         else:
-            logging.error("Authentication to server %s failed." % str(address))
+            self.database.logger.error("Authentication to server %s failed." % str(address))
             asocket.close()
             return False
 
     def __str__(self):
-        r = self.username+"@"+self.host+":"+str(self.synchronisation_port)
+        r = self.username+"@"+self.host+":"+str(self.synchronization_port)
 
         if self.kicked():
             r += " [K]"
@@ -363,14 +376,36 @@ class PartnerKickedError(Exception):
     """ The partner got violation """
     pass
 
-###
-# create tables if they don't exist
-DatabaseObject.metadata.create_all(engine)
+####
+# database class
+
+class Database:
+    def __init__(self, suffix="", erase=False):
+        global DatabaseObject
+
+        self.logger = logging.getLogger("partnerdb"+suffix)
+
+        self.dbfile = "partners"+suffix+".sqlite"
+
+        if erase: self.erase()
+
+        engine = sqlalchemy.create_engine("sqlite:///"+self.dbfile)
+        self.Session = sqlalchemy.orm.scoped_session(sqlalchemy.orm.sessionmaker(bind=engine))
+
+        # create tables if they don't exist
+        DatabaseObject.metadata.create_all(engine)
+
+    def erase(self):
+        if hasattr(self, "Session"): self.Session.close_all()
+
+        if os.path.exists(self.dbfile): os.remove(self.dbfile)
 
 ### command line interface
 if __name__=="__main__":
     import optparse
     import getpass
+
+    database = Database()
 
     def read_password():
         while True:
@@ -385,7 +420,7 @@ if __name__=="__main__":
 
     parser = optparse.OptionParser(
         usage = "%prog -a -s HOST PORT ENTRYSERVERPORT USERNAME [CONTROL_PROBABILITY]\nOr: %prog -d -s HOST PORT\nOr: %prog -a -c USERNAME HOST ENTRYSERVERPORT [CONTROL_PROBABILITY]\nOr: %prog -d -c USERNAME\nOr: %prog -l [-s|-c]",
-        description="manage the synchronisation partners list"
+        description="manage the synchronization partners list"
     )
     
     parser.add_option( "-s", "--server", action="store_true", dest="server", help="action deals with server")
@@ -405,25 +440,25 @@ if __name__=="__main__":
 
         if options.server:
             print "Servers:"
-            for server in Session.query(Server).all():
+            for server in Server.list_from_database(database):
                 print str(server)
             print
 
         if options.client:
             print "Clients:"
-            for client in Session.query(Client).all():
+            for client in Client.list_from_database(database):
                 print str(client)
             print
 
     elif options.add and options.server:
         try:
-            host,synchronisation_port,entryserver_port,username = args[:4]
+            host,synchronization_port,entryserver_port,username = args[:4]
         except ValueError:
             print >>sys.stderr, "ERROR: Need host, port, EntryServer port and username."
             sys.exit(1)
             
         try:
-            synchronisation_port = int(synchronisation_port)
+            synchronization_port = int(synchronization_port)
         except ValueError:
             print >>sys.stderr, "ERROR: Invalid port."
             sys.exit(1)
@@ -456,22 +491,22 @@ if __name__=="__main__":
         password = read_password()
 
         # delete old entry
-        old_server = Server.from_database(host=host, synchronisation_port=synchronisation_port)
+        old_server = Server.from_database(database, host=host, synchronization_port=synchronization_port)
         if old_server:
             # TODO: this will invalidate all the violations and offenses
             old_server.delete()
 
-        server = Server(
+        server = Server(database,
             host=host,
             username=username,
             password=password,
-            synchronisation_port=synchronisation_port,
+            synchronization_port=synchronization_port,
             entryserver_port=entryserver_port,
             control_probability=control_probability
         )
 
-        Session.add(server)
-        Session.commit()
+        database.Session.add(server)
+        database.Session.commit()
 
     elif options.add and options.client:
         try:
@@ -509,12 +544,12 @@ if __name__=="__main__":
         passwordhash = hashlib.sha1(password).digest()
 
         # delete old entry
-        old_client = Client.from_database(username=username)
+        old_client = Client.from_database(database, username=username)
         if old_client:
             # TODO: this will invalidate all the violations and offenses
             old_client.delete()
 
-        client = Client(
+        client = Client(database,
             host=host,
             entryserver_port=entryserver_port,
             username=username,
@@ -522,8 +557,8 @@ if __name__=="__main__":
             control_probability=control_probability
         )
 
-        Session.add(client)
-        Session.commit()
+        database.Session.add(client)
+        database.Session.commit()
 
     elif options.add:
         print >>sys.stderr, "ERROR: Need either -s or -c."
@@ -531,24 +566,24 @@ if __name__=="__main__":
 
     elif options.delete and options.server:
         try:
-            host,synchronisation_port = args
+            host,synchronization_port = args
         except ValueError:
             print >>sys.stderr, "ERROR: Need host and port."
             sys.exit(1)
             
         try:
-            synchronisation_port = int(synchronisation_port)
+            synchronization_port = int(synchronization_port)
         except ValueError:
             print >>sys.stderr, "ERROR: Invalid port."
             sys.exit(1)
 
-        server = Server.from_database(host=host, synchronisation_port=synchronisation_port)
+        server = Server.from_database(database, host=host, synchronization_port=synchronization_port)
 
         if not server:
-            print >>sys.stderr, "ERROR: Server \"%s:%d\" is not in list." % (host, synchronisation_port)
+            print >>sys.stderr, "ERROR: Server \"%s:%d\" is not in list." % (host, synchronization_port)
             sys.exit(1)
 
-        print "Deleting server \"%s:%d\"." % (host, synchronisation_port)
+        print "Deleting server \"%s:%d\"." % (host, synchronization_port)
 
         server.delete()
 
@@ -559,7 +594,7 @@ if __name__=="__main__":
             print >>sys.stderr, "ERROR: Need username."
             sys.exit(1)
 
-        client = Client.from_database(username=username)
+        client = Client.from_database(database, username=username)
 
         if not client:
             print >>sys.stderr, "ERROR: Client username \"%s\" is not in list." % username

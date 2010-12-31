@@ -4,7 +4,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 import threading
-import os, socket, select
+import os, socket, select, time
 
 import random
 
@@ -13,282 +13,217 @@ import binascii
 import partners
 import entries
 
+from hashtrie import HashTrie
+
 ###
 
 RESPONSIBILITY_TIME_SPAN = 3600*24*3
 
 ###
 
-class HashServer(threading.Thread):
-    """ Creates a unix domain socket listening for incoming hashes from the
-        synchronisation process. Provides a 'get' function that can be used
-        to wait for hashes of a certain synchronisation identifier. """
+class InvalidCaptchaSignatureError(Exception): pass
 
-    def __init__(self, address="hashes.ocaml2py.sock"):
-        threading.Thread.__init__(self)
+###
 
-        if os.path.exists(address): os.remove(address)
+class SDUDS:
+    def __init__(self, entryserver_address, suffix="", erase=False):
+        self.partnerdb = partners.Database(suffix, erase=erase)
+        self.entrydb = entries.Database(suffix, erase=erase)
 
-        hashessocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        hashessocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        hashessocket.bind(address)
-        hashessocket.listen(5)
+        self.hashtrie = HashTrie(suffix, erase=erase)
+        self.logger = logging.getLogger("sduds"+suffix) 
 
-        self.lock = threading.Lock() # lock for events and data dictionaries
-        self.events = {} # identifiers -> event dict for "data ready" events
-        self.data = {} # identifiers -> list of hashes dict
+        entryserver_interface, entryserver_port = entryserver_address
+        self.entry_server = entries.EntryServer(self.entrydb, entryserver_interface, entryserver_port)
 
-        self.hashessocket = hashessocket
+        self.synchronization_socket = None
 
-        self.daemon = True  # terminate if main program exits
-        self.start()
+    def run_synchronization_server(self, interface, port):
+        serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        serversocket.bind((interface, port))
+        serversocket.listen(5)
+        self.logger.info("Listening on %s:%d." % (interface, port))
 
-    def run(self):
+        self.synchronization_socket = serversocket
+        self.synchronization_address = (interface, port)
+
         while True:
-            (clientsocket, address) = self.hashessocket.accept()
+            (clientsocket, address) = serversocket.accept()
 
-            thread = threading.Thread(
-                target=self.handle_connection,
-                args=(clientsocket, address)
-            )
-
+            if not self.synchronization_socket: return
+            
+            thread = threading.Thread(target=self.handle_client, args=(clientsocket, address))
             thread.start()
 
-    def get_event(self, identifier):
-        """ Create event for an identifier if it does not exist and return it,
-            otherwise return existing one. Does not lock the dicts, you must
-            do this yourself! """
-
-        if not identifier in self.events:
-            self.events[identifier] = threading.Event()
-
-        return self.events[identifier]
-
-    def handle_connection(self, clientsocket, address):
+    def handle_client(self, clientsocket, address):
+        # authentication
         f = clientsocket.makefile()
+        username = f.readline().strip()
+        password = f.readline().strip()
+        f.close()
 
-        # get identifier
-        identifier = f.readline().strip()
+        client = partners.Client.from_database(self.partnerdb, username=username)
 
-        # receive hexhashes
-        hashlist = []
+        if not client:
+            self.logger.warning("Rejected synchronization attempt from %s (%s) - unknown username." % (username, str(address)))
+            clientsocket.close()
+            return False
 
-        for hexhash in f:
-            hexhash = hexhash.strip() # remove newline
-            logging.debug("Hashserver received  %s from %s" % (hexhash, identifier))
-            hashlist.append(binascii.unhexlify(hexhash))
+        if client.kicked():
+            self.logger.warning("Rejected synchronization attempt from kicked client %s (%s)." % (username, str(address)))
+            clientsocket.close()
+            return False
+            
+        if not client.password_valid(password):
+            self.logger.warning("Rejected synchronization attempt from %s (%s) - wrong password." % (username, str(address)))
+            clientsocket.close()
+            return False
 
-        # save hashlist to data dictionary and notify get function
-        with self.lock:
-            self.data[identifier] = hashlist
-            self.get_event(identifier).set()
+        self.logger.debug("%s (from %s) authenticated successfully." % (username, str(address)))
+        clientsocket.sendall("OK\n")
 
-        logging.debug("Data ready for %s in HashServer" % identifier)
+        hashlist = self.hashtrie.synchronize_with_client(clientsocket)
 
-    def get(self, identifier):
-        """ waits until data is ready and returns it """
-
-        self.lock.acquire()
-        event = self.get_event(identifier)
-        self.lock.release()
-
-        event.wait()
-
-        self.lock.acquire()
-        hashlist = self.data[identifier]
-        del self.data[identifier]
-        del self.events[identifier]
-        self.lock.release()
-
-        logging.debug("Data for identifier %s collected from HashServer" % identifier)
-        return hashlist
-        
-def link_sockets(socket1, socket2):
-    """ Forwards traffic from each socket to the other, until one socket
-        is closed. Will block until this happens. """
-
-    sockets = [socket1, socket2]
-
-    while True:
-        # wait until at least one socket has data ready
-        inputready,outputready,exceptready = select.select(sockets,[],[])
-
-        for input_socket in inputready:
-            # receive data
-            buf = input_socket.recv(1024)
-            if not buf: return # connection got closed
-
-            # forward it to the other socket
-            other_socket = sockets[ ( sockets.index(input_socket) + 1 ) % 2 ]
-            other_socket.sendall(buf)
-
-def process_hashes(hashlist, partner):
-    entryserver_address = (partner.host, partner.entryserver_port)
-
-    # get database entries
-    entrylist = entries.EntryList.from_server(hashlist, entryserver_address)
-
-    try:
-        entrylist = entries.EntryList.from_server(hashlist, entryserver_address)
-    except socket.error, error:
-        offense = partners.ConnectionFailedOffense(error)
-        partner.add_offense(offense)
-    except InvalidHashError, error:
-        violation = partners.InvalidHashViolation(error)
-        partner.add_violation(violation)
-    except InvalidListError, error:
-        violation = partners.InvalidListViolation(error)
-        partner.add_violation(violation)
-    except WrongEntriesError, error:
-        violation = partners.WrongEntriesViolation(error)
-        partner.add_violation(violation)        
-
-    new_entries = []
-
-    # take control samples
-    for entry in entrylist:
-        # verify captcha signatures
-        if not entry.captcha_signature_valid():
-            violation = partners.InvalidCaptchaViolation("")
-            partner.add_violation(violation)
-            entrylist.remove(entry)
-
-        # verify that entry was retrieved after it was submitted
-        if not entry.retrieval_timestamp>entry.submission_timestamp:
-            violation = partners.InvalidTimestampsViolation("")
-            partner.add_violation(violation)
-            entrylist.remove(entry)
-
-        # the partner is only responsible if the entry was retrieved recently
-        if entry.retrieval_timestamp > time.time()-RESPONSIBILITY_TIME_SPAN:
-            responsible = True
-
-            # Only re-retrieve the information with a certain probability
-            if random.random()>partner.control_probability: continue
-        else:
-            responsible = False
-
-            raise NotImplementedError, "Not implemented yet."
-            # ... tell the admin that an old timestamp was encourtered, and track it to its origin to enable the admin to
-            # shorten the chain of directory servers ...
-
-        # re-retrieve the information
-        address = entry.webfinger_address
-
-        # try to get the profile
         try:
-            entry_fetched = entries.Entry.from_webfinger_address(address, entry.submission_timestamp)
-        except Exception, error:
-            offense = InvalidProfileOffense(address, error, guilty=responsible)
+            self.fetch_entries_from_partner(hashlist, client)
+        except partners.PartnerKickedError:
+            self.logger.debug("Client %s got kicked." % str(client))
+
+        client.log_conversation(len(hashlist))
+
+    def fetch_entries_from_partner(self, hashlist, partner):
+        entryserver_address = (partner.host, partner.entryserver_port)
+
+        # get database entries
+        entrylist = entries.EntryList.from_server(hashlist, entryserver_address)
+
+        try:
+            entrylist = entries.EntryList.from_server(hashlist, entryserver_address)
+        except socket.error, error:
+            offense = partners.ConnectionFailedOffense(error)
             partner.add_offense(offense)
-            entrylist.remove(entry)
+        except InvalidHashError, error:
+            violation = partners.InvalidHashViolation(error)
+            partner.add_violation(violation)
+        except InvalidListError, error:
+            violation = partners.InvalidListViolation(error)
+            partner.add_violation(violation)
+        except WrongEntriesError, error:
+            violation = partners.WrongEntriesViolation(error)
+            partner.add_violation(violation)        
 
-            # TODO: remove entry from own database
+        new_entries = []
 
-        if not entry_fetched.hash==entry.hash:
-            offense = NonConcurrenceOffense(entry_fetched, entry, guilty=responsible)
-            partner.add_offense(offense)
-            entrylist.remove(entry)
+        # take control samples
+        for entry in entrylist:
+            # verify captcha signatures
+            if not entry.captcha_signature_valid():
+                violation = partners.InvalidCaptchaViolation(entry)
+                partner.add_violation(violation)
+                entrylist.remove(entry)
 
-            new_entries.append(entry_fetched)
+            # verify that entry was retrieved after it was submitted
+            if not entry.retrieval_timestamp>=entry.submission_timestamp:
+                violation = partners.InvalidTimestampsViolation(entry)
+                partner.add_violation(violation)
+                entrylist.remove(entry)
 
-    # add valid entries to database
-    entrylist.extend(new_entries)
+            # the partner is only responsible if the entry was retrieved recently
+            if entry.retrieval_timestamp > time.time()-RESPONSIBILITY_TIME_SPAN:
+                responsible = True
 
-    # add valid entries to database
-    entrylist.save()
+                # Only re-retrieve the information with a certain probability
+                if random.random()>partner.control_probability: continue
+            else:
+                responsible = False
 
-def handle_connection(hashserver, clientsocket, address):
-    # authentication
-    f = clientsocket.makefile()
-    username = f.readline().strip()
-    password = f.readline().strip()
-    f.close()
+                raise NotImplementedError, "Not implemented yet."
+                # ... tell the admin that an old timestamp was encourtered, and track it to its origin to enable the admin to
+                # shorten the chain of directory servers ...
 
-    client = partners.Client.from_database(username=username)
+            # re-retrieve the information
+            address = entry.webfinger_address
 
-    if not client:
-        logging.warning("Rejected synchronisation attempt from %s (%s) - unknown username." % (username, str(address)))
-        clientsocket.close()
-        return False
+            # try to get the profile
+            try:
+                entry_fetched = entries.Entry.from_webfinger_address(address, entry.submission_timestamp)
+            except Exception, error:
+                offense = InvalidProfileOffense(address, error, guilty=responsible)
+                partner.add_offense(offense)
+                entrylist.remove(entry)
 
-    if client.kicked():
-        logging.warning("Rejected synchronisation attempt from kicked client %s (%s)." % (username, str(address)))
-        clientsocket.close()
-        return False
+                # TODO: remove entry from own database
+
+            if not entry_fetched.hash==entry.hash:
+                offense = NonConcurrenceOffense(entry_fetched, entry, guilty=responsible)
+                partner.add_offense(offense)
+                entrylist.remove(entry)
+
+                new_entries.append(entry_fetched)
+
+        # add valid entries to database
+        entrylist.extend(new_entries)
+
+        # add valid entries to database
+        hashes = entrylist.save(self.entrydb)
+        self.hashtrie.add(hashes)
+
+    def connect_to_server(self, server):
+        self.logger.debug("Connecting to server %s" % str(server))
+
+        # try establishing connection
+        serversocket = server.authenticated_socket()
+        if not serversocket: return False
+
+        self.logger.debug("Got socket for %s" % str(server))
+
+        hashlist = self.hashtrie.synchronize_with_server(serversocket)
+
+        try:
+            self.fetch_entries_from_partner(hashlist, server)
+        except partners.PartnerKickedError:
+            self.logger.debug("Server %s got kicked." % str(server))
+
+        server.log_conversation(len(hashlist))
+
+    def submit_address(self, webfinger_address, submission_timestamp=None):
+        if submission_timestamp==None:
+            submission_timestamp = int(time.time())
+
+        entry = entries.Entry.from_webfinger_address(webfinger_address, submission_timestamp)
+        if not entry.captcha_signature_valid():
+            raise InvalidCaptchaSignatureError, "%s is not a valid signature for %s" % (binascii.hexlify(entry.captcha_signature), entry.webfinger_address)
+
+        entrylist = entries.EntryList([entry])
+
+        hashes = entrylist.save(self.entrydb)
+        self.hashtrie.add(hashes)
+
+        return hashes
+
+    def close(self):
+        self.hashtrie.close()
+        self.entry_server.terminate()
         
-    if not client.password_valid(password):
-        logging.warning("Rejected synchronisation attempt from %s (%s) - wrong password." % (username, str(address)))
-        clientsocket.close()
-        return False
+        if self.synchronization_socket:
+            serversocket = self.synchronization_socket
 
-    logging.debug("%s (from %s) authenticated successfully." % (username, str(address)))
-    clientsocket.sendall("OK\n")
+            self.synchronization_socket = None
 
-    # initialize the unix domain socket for communication with the ocaml component
-    unix_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    unix_socket.connect("server.ocaml2py.sock")
+            # fake connection to unblock accept() in the run method
+            fsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            fsocket.connect(self.synchronization_address)
+            fsocket.close()
 
-    # tell ocaml the username
-    unix_socket.sendall(username+"\n")
+            serversocket.close()
 
-    # forward traffic on network socket to unix domain socket
-    logging.debug("Synchronising with %s" % str(address))
-    link_sockets(clientsocket, unix_socket)
-    logging.debug("Synchronising with %s" % str(address))
-
-    # close sockets
-    unix_socket.close()
-    clientsocket.close()
-
-    # await received hashes from the ocaml component (will block)
-    logging.debug("Waiting for hashes for username %s" % username)
-    hashlist = hashserver.get(username)
-
-    try:
-        process_hashes(hashlist, client)
-    except partners.PartnerKickedException:
-        logging.debug("Client %s got kicked." % str(client))
-
-    client.log_conversation(len(hashlist))
-
-def connect(hashserver, server):
-    logging.debug("Connecting to server %s" % str(server))
-
-    # try establishing connection
-    serversocket = server.authenticated_socket()
-    if not serversocket: return False
-
-    logging.debug("Got socket for %s" % str(server))
-
-    # initialize the unix domain socket for communication with the ocaml component
-    unix_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    unix_socket.connect("client.ocaml2py.sock")
-
-    # tell ocaml the identifier
-    identifier = server.host+":"+str(server.synchronisation_port)
-    unix_socket.sendall(identifier+"\n")
-    logging.debug("Told %s the identifier %s" % (str(server), identifier))
-
-    # forward traffic on network socket to unix domain socket
-    logging.debug("Synchronising with %s" % str(server))
-    link_sockets(serversocket, unix_socket)
-    logging.debug("Synchronising with %s done" % str(server))
-
-    # close sockets
-    unix_socket.close()
-    serversocket.close()
-
-    # await received hashes from the ocaml component (will block)
-    logging.debug("Waiting for hashes for identifier %s" % identifier)
-    hashlist = hashserver.get(identifier)
-
-    try:
-        process_hashes(hashlist, server)
-    except partners.PartnerKickedException:
-        logging.debug("Server %s got kicked." % str(server))
-
-    server.log_conversation(len(hashlist))
+    def erase(self):
+        # no checking is needed if these are closed, as hashtrie check this by itself
+        # and partnerdb and entrydb close the connections automatically
+        self.hashtrie.erase()
+        self.partnerdb.erase()
+        self.entrydb.erase()
 
 if __name__=="__main__":
     """
@@ -305,12 +240,6 @@ if __name__=="__main__":
     """
 
     import sys, time
-
-    # run the trieserver executable
-    import trieserver
-
-    # run hashserver
-    hashserver = HashServer()
 
     if len(sys.argv)>2:
         # initiate connection if host and port are passed
@@ -336,13 +265,13 @@ if __name__=="__main__":
             print >>sys.stderr, "Invalid EntryServer port."
             sys.exit(1)
 
-        # start EntryServer
-        entryserver = entries.EntryServer("localhost", entryserver_port)
+        # create SDUDS instance with an EntryServer
+        sduds = SDUDS(("localhost", entryserver_port))
 
         # synchronize with another server
         address = (host, port)
 
-        server = partners.Server.from_database(host=host, synchronisation_port=port)
+        server = partners.Server.from_database(sduds.partnerdb, host=host, synchronization_port=port)
 
         if not server:
             print >>sys.stderr, "Address not in known servers list - add it with partners.py."
@@ -353,14 +282,12 @@ if __name__=="__main__":
             sys.exit(1)
 
         try:
-            connect(hashserver, server)
+            sduds.connect_to_server(server)
         except socket.error,e:
             print >>sys.stderr, "Connecting to %s failed: %s" % (str(server), str(e))
             sys.exit(1)
 
-        # give trieserver some time to process the data
-        time.sleep(3)
-
+        sduds.close()
         sys.exit(0)
 
     # otherwise simply run a server
@@ -375,20 +302,26 @@ if __name__=="__main__":
     else:
         entryserver_port = 20001
 
-    # start EntryServer
-    entryserver = entries.EntryServer("localhost", entryserver_port)
+    # start servers
+    sduds = SDUDS(("localhost", entryserver_port))
 
-    # start a server that waits for synchronisation attempts from others
-    interface = "localhost"
-    port = 20000
+    import sys, signal
 
-    serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    serversocket.bind((interface, port))
-    serversocket.listen(5)
-    logging.info("Listening on %s:%d." % (interface, port))
+    # define exitfunc
+    def exit():
+        global sduds
+        sduds.close()
+        sys.exit(0)
 
-    while True:
-        (clientsocket, address) = serversocket.accept()
-        thread = threading.Thread(target=handle_connection, args=(hashserver, clientsocket, address))
-        thread.start()
+    sys.exitfunc = exit
+
+    # call exitfunc also for signals
+    def signal_handler(signal, frame):
+        print >>sys.stderr, "Terminated by signal %d." % signal
+        exit()
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGHUP, signal_handler)
+
+    sduds.run_synchronization_server("localhost", 20000)
