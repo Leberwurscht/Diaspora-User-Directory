@@ -10,16 +10,17 @@ This is to become a first proof of concept.
 
 These are the python scripts:
    * partners.py: manages the synchronisation partners list
-   * test.py: Will create a database entry for testing and run some
-              checks.
+   * test.py: Will test the synchronization automatically
+   * testing/add_entry.py: adds a database entry for manual testing
    * sduds.py: This is the main program. It waits for other servers to
                connect. If you pass it a host and a port, however, it
                will connect to another server and synchronise with it,
                using the SKS reconciliation algorithm.
 
 They make use of the following modules:
-   * trieserver.py: Used to start the trieserver executable.
+   * hashtrie.py: Used to start the trieserver executable.
    * entries.py: database access functionality
+   * lib.py: some custom sqlalchemy types
 
 Executables:
    * ./trieserver: This is the interface between the synchronisation
@@ -29,23 +30,27 @@ Executables:
 
 -- Requirements for Ubuntu -----------
 
-aptitude install ocaml
-aptitude install libdb4.7-dev
-aptitude install python-paramiko python-sqlalchemy
+$ aptitude install ocaml
+$ aptitude install libdb4.7-dev
+$ aptitude install python-paramiko python-sqlalchemy
 
 Go to https://github.com/jcarbaugh/python-webfinger and install it.
 
 -- Building --------------------------
 
-cp Makefile.local.unused Makefile.local
-make dep
-make all
+$ cp Makefile.local.unused Makefile.local
+$ make dep
+$ make all
 
 (tested with Ubuntu 10.04 - Lucid Lynx)
 
 This will result in the 'trieserver' executable to be created.
 
--- Trying it out -----------------
+-- Running the tests -----------------
+
+$ ./test.py
+
+-- Trying it out manually ------------
 
 Make two copies, compile each.
 
@@ -57,7 +62,7 @@ $ ./partners.py -a -c test localhost 20002
          with username 'test' and specified password.
          localhost:20002 is the address to fetch database
          entries from.)
-$ ./test.py
+$ ./testing/add_entry.py
 	(Will create a database entry for an example user.)
 $ ./sduds.py
 
