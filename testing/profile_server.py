@@ -25,7 +25,7 @@ def sign(private_key, text):
 private_key = get_private_key()
 
 # run a test server providing a webfinger profile
-import BaseHTTPServer, urlparse, urllib, json, binascii
+import BaseHTTPServer, urlparse, urllib, json, binascii, random
 import threading
 
 class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -67,9 +67,13 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
             webfinger_address = uri.split("acct:",1)[-1]
 
+            name = webfinger_address.split("@")[0]
+            if name.startswith("Random"):
+                name += "_"+str(random.randrange(1000))
+
             json_dict = {}
             json_dict["webfinger_address"] = webfinger_address
-            json_dict["full_name"] = webfinger_address.split("@")[0]
+            json_dict["full_name"] = name
             json_dict["hometown"] = u"Los Angeles"
             json_dict["country_code"] = u"US"
             json_dict["services"] = "diaspora,email"
