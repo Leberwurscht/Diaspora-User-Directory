@@ -170,7 +170,7 @@ def captcha_signature(profile_server, start_port=20000, keep=False):
 
 def NonConcurrenceOffense(profile_server, start_port=20000, num_entries=70, keep=False):
     """ This test verifies that a server that serves too many entries that do not match the real
-        webfinger profiles gets kicked. """
+        webfinger profiles gets kicked. This test is probabilistic. """
 
     entryserver_port1 = start_port
     entryserver_port2 = start_port+1
