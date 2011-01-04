@@ -149,14 +149,14 @@ class SDUDS:
             try:
                 entry_fetched = entries.Entry.from_webfinger_address(address, entry.submission_timestamp)
             except Exception, error:
-                offense = InvalidProfileOffense(address, error, guilty=responsible)
+                offense = partners.InvalidProfileOffense(address, error, guilty=responsible)
                 partner.add_offense(offense)
                 entrylist.remove(entry)
 
                 # TODO: remove entry from own database
 
             if not entry_fetched.hash==entry.hash:
-                offense = NonConcurrenceOffense(entry_fetched, entry, guilty=responsible)
+                offense = partners.NonConcurrenceOffense(entry_fetched, entry, guilty=responsible)
                 partner.add_offense(offense)
                 entrylist.remove(entry)
 
@@ -180,12 +180,12 @@ class SDUDS:
 
         hashlist = self.hashtrie.synchronize_with_server(serversocket)
 
+        server.log_conversation(len(hashlist))
+
         try:
             self.fetch_entries_from_partner(hashlist, server)
         except partners.PartnerKickedError:
             self.logger.debug("Server %s got kicked." % str(server))
-
-        server.log_conversation(len(hashlist))
 
     def submit_address(self, webfinger_address, submission_timestamp=None):
         if submission_timestamp==None:
