@@ -3,7 +3,7 @@
 # cryptography functions
 import paramiko, os
 
-def get_private_key(path=os.path.join("testing","captchakey")):
+def get_private_key(path):
     if not os.path.exists(path):
         raise Exception, "Private key '%s' not found!" % path
 
@@ -22,7 +22,9 @@ def sign(private_key, text):
     return signature
 
 # load private key from the default location
-private_key = get_private_key()
+private_key_directory = os.path.dirname(__file__)
+private_key_path = os.path.join(private_key_directory ,"captchakey")
+private_key = get_private_key(private_key_path)
 
 # run a test server providing a webfinger profile
 import BaseHTTPServer, urlparse, urllib, json, binascii, random
