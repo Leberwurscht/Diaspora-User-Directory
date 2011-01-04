@@ -3,7 +3,7 @@
 # cryptography functions
 import paramiko, os
 
-def get_private_key(path="captchakey"):
+def get_private_key(path=os.path.join("testing","captchakey")):
     if not os.path.exists(path):
         raise Exception, "Private key '%s' not found!" % path
 
