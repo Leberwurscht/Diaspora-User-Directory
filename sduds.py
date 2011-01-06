@@ -103,13 +103,13 @@ class SDUDS:
         except socket.error, error:
             offense = partners.ConnectionFailedOffense(error)
             partner.add_offense(offense)
-        except InvalidHashError, error:
+        except entries.InvalidHashError, error:
             violation = partners.InvalidHashViolation(error)
             partner.add_violation(violation)
-        except InvalidListError, error:
+        except entries.InvalidListError, error:
             violation = partners.InvalidListViolation(error)
             partner.add_violation(violation)
-        except WrongEntriesError, error:
+        except entries.WrongEntriesError, error:
             violation = partners.WrongEntriesViolation(error)
             partner.add_violation(violation)        
 
