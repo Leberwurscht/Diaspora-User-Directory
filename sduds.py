@@ -19,10 +19,13 @@ from webserver import WebServer
 ###
 
 RESPONSIBILITY_TIME_SPAN = 3600*24*3
+RESUBMISSION_INTERVAL = 3600*24*3
 
 ###
 
 class InvalidCaptchaSignatureError(Exception): pass
+
+class TooFrequentResubmissionError(Exception): pass
 
 ###
 
@@ -193,16 +196,40 @@ class SDUDS:
         if submission_timestamp==None:
             submission_timestamp = int(time.time())
 
-        entry = entries.Entry.from_webfinger_address(webfinger_address, submission_timestamp)
-        if not entry.captcha_signature_valid():
-            raise InvalidCaptchaSignatureError, "%s is not a valid signature for %s" % (binascii.hexlify(entry.captcha_signature), entry.webfinger_address)
+        try:
+            # retrieve entry
+            entry = entries.Entry.from_webfinger_address(webfinger_address, submission_timestamp)
+        except Exception, e: # TODO: better error handling
+            self.logger.debug("error retrieving %s: %s" % (webfinger_address, str(e)))
 
+            # if online profile invalid/non-existant, delete the database entry
+            entrydb.delete_entry(webfinger_address=webfinger_address)
+            return None
+
+        # check captcha signature
+        if not entry.captcha_signature_valid():
+            raise InvalidCaptchaSignatureError, "%s is not a valid signature for %s" % (binascii.hexlify(entry.captcha_signature), webfinger_address)
+
+        # delete old entry
+        old_entry = entries.Entry.from_database(self.entrydb, webfinger_address=webfinger_address)
+
+        if old_entry:
+            # prevent too frequent resubmission
+            if submission_timestamp < old_entry.submission_timestamp + RESUBMISSION_INTERVAL:
+                raise TooFrequentResubmissionError, "Resubmission of %s failed because it was submitted too recently (timestamps: %d/%d)" % (webfinger_address, submission_timestamp, old_entry.submission_timestamp)
+
+            entrydb.delete_entry(hash=old_entry.hash)
+
+        # add new entry
         entrylist = entries.EntryList([entry])
 
         hashes = entrylist.save(self.entrydb)
         self.hashtrie.add(hashes)
 
-        return hashes
+        assert len(hashes)==1
+        binhash = hashes[0]
+
+        return binhash
 
     def close(self):
         self.hashtrie.close()

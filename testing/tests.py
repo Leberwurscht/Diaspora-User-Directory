@@ -67,10 +67,9 @@ def simple_synchronization(profile_server, start_port=20000, keep=False):
 
     ### add an entry to the first server
     webfinger_address = "JohnDoe@%s:%d" % profile_server.address
-    binhashes = sduds1.submit_address(webfinger_address)
+    binhash = sduds1.submit_address(webfinger_address)
 
-    assert len(binhashes)==1
-    binhash = binhashes[0]
+    assert not binhash==None
 
     ### make server2 connect to server1 for synchronisation
     server = partners.Server.from_database(sduds2.partnerdb, partner_name=partner_name1)
@@ -102,10 +101,9 @@ def captcha_signature(profile_server, start_port=20000, keep=False):
 
     ### add an entry to the first server
     webfinger_address = "JohnDoe@%s:%d" % profile_server.address
-    binhashes = sduds1.submit_address(webfinger_address)
+    binhash = sduds1.submit_address(webfinger_address)
 
-    assert len(binhashes)==1
-    binhash = binhashes[0]
+    assert not binhash==None
 
     ### manipulate the captcha signature
     session = sduds1.entrydb.Session()
@@ -153,10 +151,9 @@ def NonConcurrenceOffense(profile_server, start_port=20000, num_entries=70, keep
     ### add entries to the server
     for i in xrange(num_entries):
         webfinger_address = "Random%d@%s:%d" % ((i,) + profile_server.address)
-        binhashes = sduds1.submit_address(webfinger_address)
+        binhash = sduds1.submit_address(webfinger_address)
 
-        assert len(binhashes)==1
-        binhash = binhashes[0]
+        assert not binhash==None
 
     ### make server2 connect to server1 for synchronisation
     server = partners.Server.from_database(sduds2.partnerdb, partner_name=partner_name1)
@@ -193,20 +190,18 @@ def twoway_synchronization(profile_server, start_port=20000, num_entries=30, kee
     # first server
     for i in xrange(num_entries):
         webfinger_address = "First%d@%s:%d" % ((i,) + profile_server.address)
-        binhashes = sduds1.submit_address(webfinger_address)
+        binhash = sduds1.submit_address(webfinger_address)
 
-        assert len(binhashes)==1
-        binhash = binhashes[0]
+        assert not binhash==None
 
         hashes.add(binhash)
 
     ### add entries to the second server
     for i in xrange(num_entries):
         webfinger_address = "Second%d@%s:%d" % ((i,) + profile_server.address)
-        binhashes = sduds2.submit_address(webfinger_address)
+        binhash = sduds2.submit_address(webfinger_address)
 
-        assert len(binhashes)==1
-        binhash = binhashes[0]
+        assert not binhash==None
 
         hashes.add(binhash)
 
