@@ -181,6 +181,17 @@ class Entry(DatabaseObject):
     retrieval_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
 
     @classmethod
+    def from_database(cls, database, **kwargs):
+        session = database.Session()
+
+        try:
+            entry = session.query(Entry).filter_by(**kwargs).one()
+        except sqlalchemy.orm.exc.NoResultFound:
+            entry = None
+
+        return entry
+
+    @classmethod
     def from_webfinger_address(cls, webfinger_address, submission_timestamp):
 
         wf = pywebfinger.finger(webfinger_address)
