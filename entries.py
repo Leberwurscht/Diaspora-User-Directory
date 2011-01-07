@@ -261,6 +261,11 @@ class Entry(DatabaseObject):
 
         return r
 
+class DeletedEntry(DatabaseObject):
+    __tablename__ = 'deleted_entries'
+
+    hash = sqlalchemy.Column(lib.Binary, primary_key=True)
+
 ####
 # database class
 
@@ -280,6 +285,26 @@ class Database:
 
         # create tables if they don't exist
         DatabaseObject.metadata.create_all(engine)
+
+    def delete_entry(self, **kwargs):
+        session = self.Session()
+
+        # delete entry from database
+        try:
+            entry = session.query(Entry).filter(**kwargs).one()
+        except sqlalchemy.orm.exc.NoResultFound:
+            return None
+
+        binhash = entry.hash
+        session.delete(entry)
+
+        # add entry to deleted entries list
+        deleted_entry = DeletedEntry(hash=binhash)
+        session.add(deleted_entry)
+
+        session.commit()
+
+        return binhash
 
     def erase(self):
         if hasattr(self, "Session"): self.Session.close_all()
