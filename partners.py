@@ -6,7 +6,7 @@
 
 import logging
 
-import os, sys, time
+import os, sys, time, urllib
 import hashlib
 import socket
 
@@ -31,8 +31,16 @@ class Partner(DatabaseObject):
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
     host = sqlalchemy.Column(lib.Text)
-    entryserver_port = sqlalchemy.Column(sqlalchemy.Integer)
+    port = sqlalchemy.Column(sqlalchemy.Integer)
     control_probability = sqlalchemy.Column(sqlalchemy.Float)
+
+    # for authenticating to the partner
+    identity = sqlalchemy.Column(lib.Text)
+    password = sqlalchemy.Column(lib.Text)
+
+    # for authenticating the partner
+    partner_name = sqlalchemy.Column(lib.Text, unique=True)
+    passwordhash = sqlalchemy.Column(lib.Binary)
 
     @classmethod
     def from_database(cls, database, **kwargs):
@@ -50,7 +58,10 @@ class Partner(DatabaseObject):
     def list_from_database(cls, database, **kwargs):
         Session = database.Session
 
-        partners = Session.query(cls).filter_by(**kwargs).all()
+        if kwargs:
+            partners = Session.query(cls).filter_by(**kwargs).all()
+        else:
+            partners = Session.query(cls).all()
 
         for partner in partners:
             partner.database = database
@@ -164,21 +175,29 @@ class Partner(DatabaseObject):
         Session.add(conversation)
         Session.commit()
 
+    def __str__(self):
+        r = "%s %s (%s:%d)" % (self.partner_type, self.partner_name, self.host, self.port)
+
+        if self.kicked():
+            r += " [K]"
+
+        return r
+
 class Server(Partner):
-    __tablename__ = 'servers'
     __mapper_args__ = {'polymorphic_identity': 'server'}
     
-    id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'), primary_key=True)
-    synchronization_port = sqlalchemy.Column(sqlalchemy.Integer)
-    username = sqlalchemy.Column(lib.Text)
-    password = sqlalchemy.Column(lib.Text)
+    def authenticated_synchronization_socket(self):
+        # get synchronization port
+        data = urllib.urlopen("http://"+self.host+":"+str(self.port)+"/synchronization_port").read()
+        synchronization_port = int(data)
 
-    def authenticated_socket(self):
-        address = (self.host, self.synchronization_port)
+        # connect
+        address = (self.host, synchronization_port)
         asocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         asocket.connect(address)
 
-        asocket.sendall(self.username+"\n")
+        # authenticate
+        asocket.sendall(self.identity+"\n")
         asocket.sendall(self.password+"\n")
 
         f = asocket.makefile()
@@ -193,34 +212,13 @@ class Server(Partner):
             asocket.close()
             return False
 
-    def __str__(self):
-        r = self.username+"@"+self.host+":"+str(self.synchronization_port)
-
-        if self.kicked():
-            r += " [K]"
-
-        return r
-
 class Client(Partner):
-    __tablename__ = 'clients'
     __mapper_args__ = {'polymorphic_identity': 'client'}
     
-    id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'), primary_key=True)
-    username = sqlalchemy.Column(lib.Text)
-    passwordhash = sqlalchemy.Column(lib.Binary)
-
     def password_valid(self, password):
         comparehash = hashlib.sha1(password).digest()
         
         return comparehash==self.passwordhash
-
-    def __str__(self):
-        r = self.host+" (using username "+self.username+")"
-
-        if self.kicked():
-            r += " [K]"
-
-        return r
 
 ###
 
@@ -419,7 +417,7 @@ if __name__=="__main__":
                 print >>sys.stderr, "ERROR: Passwords do not match."
 
     parser = optparse.OptionParser(
-        usage = "%prog -a -s HOST PORT ENTRYSERVERPORT USERNAME [CONTROL_PROBABILITY]\nOr: %prog -d -s HOST PORT\nOr: %prog -a -c USERNAME HOST ENTRYSERVERPORT [CONTROL_PROBABILITY]\nOr: %prog -d -c USERNAME\nOr: %prog -l [-s|-c]",
+        usage = "%prog -a (-s|-c) HOST PORT PARTNER_NAME IDENTITY [CONTROL_PROBABILITY]\nOr: %prog -d PARTNER_NAME\nOr: %prog -l [-s|-c]",
         description="manage the synchronization partners list"
     )
     
@@ -439,34 +437,28 @@ if __name__=="__main__":
             options.client = True
 
         if options.server:
-            print "Servers:"
             for server in Server.list_from_database(database):
                 print str(server)
-            print
 
         if options.client:
-            print "Clients:"
             for client in Client.list_from_database(database):
                 print str(client)
-            print
 
-    elif options.add and options.server:
+    elif options.add:
+        if not options.server and not options.client:
+            print >>sys.stderr, "ERROR: Need either -s or -c."
+            sys.exit(1)
+
         try:
-            host,synchronization_port,entryserver_port,username = args[:4]
+            host,port,partner_name,identity = args[:4]
         except ValueError:
-            print >>sys.stderr, "ERROR: Need host, port, EntryServer port and username."
+            print >>sys.stderr, "ERROR: Need host, port, partner name and identity"
             sys.exit(1)
             
         try:
-            synchronization_port = int(synchronization_port)
+            port = int(port)
         except ValueError:
             print >>sys.stderr, "ERROR: Invalid port."
-            sys.exit(1)
-            
-        try:
-            entryserver_port = int(entryserver_port)
-        except ValueError:
-            print >>sys.stderr, "ERROR: Invalid EntryServer port."
             sys.exit(1)
 
         control_probability = 0.1
@@ -486,127 +478,57 @@ if __name__=="__main__":
                 print >>sys.stderr, "ERROR: Invalid probability."
                 sys.exit(1)
 
-        print "Adding server \"%s\"." % host
 
-        password = read_password()
-
-        # delete old entry
-        old_server = Server.from_database(database, host=host, synchronization_port=synchronization_port)
-        if old_server:
-            # TODO: this will invalidate all the violations and offenses
-            old_server.delete()
-
-        server = Server(database,
-            host=host,
-            username=username,
-            password=password,
-            synchronization_port=synchronization_port,
-            entryserver_port=entryserver_port,
-            control_probability=control_probability
-        )
-
-        database.Session.add(server)
-        database.Session.commit()
-
-    elif options.add and options.client:
-        try:
-            username,host,entryserver_port = args[:3]
-        except ValueError:
-            print >>sys.stderr, "ERROR: Need username, host and EntryServer port."
-            sys.exit(1)
-
-        try:
-            entryserver_port = int(entryserver_port)
-        except ValueError:
-            print >>sys.stderr, "ERROR: Invalid EntryServer port."
-            sys.exit(1)
-
-        control_probability = 0.1
-
-        if len(args)>4:
-            print >>sys.stderr, "ERROR: Too many arguments."
-            sys.exit(1)
-        elif len(args)==4:
-            try:
-                # might raise ValueError if string is invalid
-                control_probability = float(args[3])
-
-                # if number is not in range, raise ValueError ourselves
-                if control_probability<0 or control_probability>1:
-                    raise ValueError
-            except ValueError:
-                print >>sys.stderr, "ERROR: Invalid probability."
-                sys.exit(1)
-
-        print "Adding client \"%s\"." % username
-
+        print "Type the password the partner uses to authenticate to us (password for %s)" % partner_name
         password = read_password()
         passwordhash = hashlib.sha1(password).digest()
 
-        # delete old entry
-        old_client = Client.from_database(database, username=username)
-        if old_client:
+        print "Type the password we use to authenticate to the partner (password for %s)" % identity
+        password = read_password()
+
+        old_partner = Partner.from_database(database, partner_name=partner_name)
+        if old_partner:
             # TODO: this will invalidate all the violations and offenses
-            old_client.delete()
+            old_partner.delete()
 
-        client = Client(database,
-            host=host,
-            entryserver_port=entryserver_port,
-            username=username,
-            passwordhash=passwordhash,
-            control_probability=control_probability
-        )
+        kwargs = {
+            "host": host,
+            "port": port,
+            "control_probability": control_probability,
+            "identity": identity,
+            "password": password,
+            "partner_name": partner_name,
+            "passwordhash": passwordhash
+        }
 
-        database.Session.add(client)
+        if options.server:
+            print "Adding server \"%s\"." % host
+
+            partner = Server(database, **kwargs)
+        elif options.client:
+            print "Adding server \"%s\"." % host
+
+            partner = Client(database, **kwargs)
+
+        database.Session.add(partner)
         database.Session.commit()
 
-    elif options.add:
-        print >>sys.stderr, "ERROR: Need either -s or -c."
-        sys.exit(1)
-
-    elif options.delete and options.server:
-        try:
-            host,synchronization_port = args
-        except ValueError:
-            print >>sys.stderr, "ERROR: Need host and port."
-            sys.exit(1)
-            
-        try:
-            synchronization_port = int(synchronization_port)
-        except ValueError:
-            print >>sys.stderr, "ERROR: Invalid port."
-            sys.exit(1)
-
-        server = Server.from_database(database, host=host, synchronization_port=synchronization_port)
-
-        if not server:
-            print >>sys.stderr, "ERROR: Server \"%s:%d\" is not in list." % (host, synchronization_port)
-            sys.exit(1)
-
-        print "Deleting server \"%s:%d\"." % (host, synchronization_port)
-
-        server.delete()
-
-    elif options.delete and options.client:
-        try:
-            username, = args
-        except ValueError:
-            print >>sys.stderr, "ERROR: Need username."
-            sys.exit(1)
-
-        client = Client.from_database(database, username=username)
-
-        if not client:
-            print >>sys.stderr, "ERROR: Client username \"%s\" is not in list." % username
-            sys.exit(1)
-
-        print "Deleting client username \"%s\"." % username
-
-        client.delete()
-
     elif options.delete:
-        print >>sys.stderr, "ERROR: Need either -s or -c."
-        sys.exit(1)
+        try:
+            partner_name, = args
+        except ValueError:
+            print >>sys.stderr, "ERROR: Need partner name."
+            sys.exit(1)
+
+        partner = Partner.from_database(database, partner_name=partner_name)
+
+        if not partner:
+            print >>sys.stderr, "ERROR: Partner \"%s\" does not exists." % partner_name
+            sys.exit(1)
+
+        print "Deleting partner \"%s\"." % partner_name
+
+        partner.delete()
 
     else:
         parser.print_help()

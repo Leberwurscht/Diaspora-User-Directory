@@ -7,32 +7,10 @@ import threading
 
 import binascii
 
-import time
-# 
-# class Bla:
-#     def __init__(self, bla):
-#         self.bla=bla
-#     def app(self, environ, start_response):
-#         from StringIO import StringIO
-#         stdout = StringIO()
-#         print >>stdout, "Hello world!"+self.bla
-#         print >>stdout
-#         h = environ.items(); h.sort()
-#         for k,v in h:
-#             print >>stdout, k,'=', repr(v)
-#         start_response("200 OK", [('Content-Type','text/plain')])
-#         time.sleep(3)
-#         return [stdout.getvalue()]
-# 
-# obj = Bla("123")
-# 
-# httpd = wsgiref.simple_server.make_server('', 8000, obj.app, ThreadingHTTPServer)
-# print "Serving HTTP on port 8000..."
-# 
-# # Respond to requests until process is killed
-# httpd.serve_forever()
-
-class ThreadingWSGIServer(SocketServer.ThreadingMixIn, wsgiref.simple_server.WSGIServer): pass
+class ThreadingWSGIServer(SocketServer.ThreadingMixIn, wsgiref.simple_server.WSGIServer):
+    def __init__(self, *args, **kwargs):
+        self.allow_reuse_address = True
+        wsgiref.simple_server.WSGIServer.__init__(self, *args, **kwargs)
 
 class WebServer(threading.Thread):
     def __init__(self, entrydb, interface="", port=20000):
@@ -48,11 +26,13 @@ class WebServer(threading.Thread):
 
     def terminate(self):
         self.httpd.shutdown()
+        self.httpd.socket.close()
 
     # set synchronization port
     def set_synchronization_port(self, synchronization_port):
         self._synchronization_port = synchronization_port
 
+    # WSGI applications
     def dispatch(self, environment, start_response):
         if environment["PATH_INFO"]=="/entrylist":
             func = self.entrylist
@@ -92,14 +72,3 @@ class WebServer(threading.Thread):
     def not_found(self, environment, start_response):
         start_response("404 Not Found", [("Content-type", "text/plain")])
         yield "%s not found." % environment["PATH_INFO"]
-
-#s1 = Server(port=20000)
-#s2 = Server(port=20001)
-#
-#s1.start()
-#s2.start()
-#
-#time.sleep(10)
-#
-#s1.terminate()
-#s2.terminate()

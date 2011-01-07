@@ -7,6 +7,7 @@ import socket
 import time
 import binascii, hashlib
 
+import urllib
 import json
 
 import os
@@ -43,80 +44,6 @@ DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
 
 ######
 
-import threading
-
-class EntryServer(threading.Thread):
-    def __init__(self, database, interface="localhost", port=20001):
-            threading.Thread.__init__(self)
-
-            self.database = database
-            self.logger = logging.getLogger("entryserver"+database.suffix)
-
-            self.address = (interface, port)
-
-            entrysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            entrysocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            entrysocket.bind(self.address)
-            entrysocket.listen(5)
-
-            self.entrysocket = entrysocket
-
-            self.running = True
-            self.start()
-
-    def run(self):
-        while True:
-            (clientsocket, address) = self.entrysocket.accept()
-
-            if not self.running: return
-
-            thread = threading.Thread(
-                target=self.handle_connection,
-                args=(clientsocket, address)
-            )
-
-            thread.start()
-
-    def handle_connection(self, clientsocket, address):
-        f = clientsocket.makefile()
-
-        # get list of hashes to be transmitted
-        binhashes = []
-
-        while True:
-            hexhash = f.readline().strip()
-            if not hexhash: break
-
-            try:
-                binhash = binascii.unhexlify(hexhash)
-            except Exception,e:
-                self.logger.warning("Invalid request for hash \"%s\" by %s: %s" % (hexhash, str(address), str(e)))
-                continue
-
-            binhashes.append(binhash)
-
-        entrylist = EntryList.from_database(self.database, binhashes)
-
-        # serve requested hashes
-        json_string = entrylist.json()
-        f.write(json_string)
-        f.close()
-        clientsocket.close()
-
-    def terminate(self):
-        if not self.running: return
-
-        self.running = False
-
-        # fake connection to unblock accept() in the run method
-        esocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        esocket.connect(self.address)
-        esocket.close()
-
-        self.entrysocket.close()
-
-######
-
 class InvalidHashError(Exception): pass
 """ The partner included a hash field into its JSON string but it was wrong """
 
@@ -145,18 +72,13 @@ class EntryList(list):
 
     @classmethod
     def from_server(cls, binhashes, address):
-        asocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        asocket.connect(address)
-
+        data = []
         for binhash in binhashes:
-            hexhash = binascii.hexlify(binhash)
-            asocket.sendall(hexhash+"\n")
-        asocket.sendall("\n")
+            data.append(("hexhash", binascii.hexlify(binhash)))
 
-        f = asocket.makefile()
-        json_string = f.read()
-        f.close()
-        asocket.close()
+        data = urllib.urlencode(data)
+
+        json_string = urllib.urlopen("http://%s:%d/entrylist" % address, data).read()
 
         try:
             entrylist = cls.from_json(json_string)

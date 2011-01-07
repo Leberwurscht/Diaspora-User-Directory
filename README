@@ -30,8 +30,7 @@ Executables:
 
 -- Requirements for Ubuntu -----------
 
-$ aptitude install ocaml
-$ aptitude install libdb4.7-dev
+$ aptitude install ocaml libdb4.7-dev
 $ aptitude install python-paramiko python-sqlalchemy
 
 Go to https://github.com/jcarbaugh/python-webfinger and install it.
@@ -56,29 +55,30 @@ Make two copies, compile each.
 
 For one copy, do:
 
-$ ./partners.py -a -c test localhost 20002
- ... type password ...
-	(Adds a client that can authenticate to the server
-         with username 'test' and specified password.
-         localhost:20002 is the address to fetch database
-         entries from.)
+$ ./partners.py -a -c localhost 20002 sduds2 sduds1
+ ... type passwords ...
+        (Adds the second instance of the program, which will
+         run on port 20002, as a client named "sduds2", and
+         use the partner name "sduds1" when authenticating to
+         it.)
 $ ./testing/add_entry.py
 	(Will create a database entry for an example user.)
-$ ./sduds.py
+$ ./sduds.py -p 20000
+        (Will run a server with the webserver on port 20000
+         and the synchronization server on port 20001)
 
 For the other copy, do:
 
-$ ./partners.py -a -s localhost 20000 20001 test
-	(Adds a server to which this copy may connect. You
-	 need to supply the password you typed above. The
-	 database entries are available on localhost:20001,
-	 whereas the synchronisation server itself is on
-	 localhost:20000)
-$ ./sduds.py localhost 20000 20002
-	(Connects to localhost:20000, which is the other
-	 copy, and synchronised with it. The own database
-	 entries are exposed on port 20002, as we told
-	 the first copy above with the partners.py command)
+$ ./partners.py -a -s localhost 20000 sduds1 sduds2
+        (Adds the first instance of the program, which runs
+         on port 20000, as a server named "sduds1", and use
+         the partner name "sduds2" when authenticating to
+         it. You need to supply the passwords you typed
+         above, in reversed order.
+$ ./sduds.py -p 20002 sduds1
+	(Connects to the first instance of the program an
+         synchronize with it. The own webserver will be run
+         on port 20002.)
 
 Now, you can see log messages that tell you that a database
 entry was transmitted. You can test whether it worked properly

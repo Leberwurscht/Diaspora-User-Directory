@@ -14,6 +14,7 @@ import partners
 import entries
 
 from hashtrie import HashTrie
+from webserver import WebServer
 
 ###
 
@@ -26,15 +27,16 @@ class InvalidCaptchaSignatureError(Exception): pass
 ###
 
 class SDUDS:
-    def __init__(self, entryserver_address, suffix="", erase=False):
+    def __init__(self, server_address, suffix="", erase=False):
         self.partnerdb = partners.Database(suffix, erase=erase)
         self.entrydb = entries.Database(suffix, erase=erase)
 
         self.hashtrie = HashTrie(suffix, erase=erase)
         self.logger = logging.getLogger("sduds"+suffix) 
 
-        entryserver_interface, entryserver_port = entryserver_address
-        self.entry_server = entries.EntryServer(self.entrydb, entryserver_interface, entryserver_port)
+        interface, port = server_address
+        self.webserver = WebServer(self.entrydb, interface, port)
+        self.webserver.start()
 
         self.synchronization_socket = None
 
@@ -44,6 +46,8 @@ class SDUDS:
         serversocket.bind((interface, port))
         serversocket.listen(5)
         self.logger.info("Listening on %s:%d." % (interface, port))
+
+        self.webserver.set_synchronization_port(port)
 
         self.synchronization_socket = serversocket
         self.synchronization_address = (interface, port)
@@ -59,28 +63,28 @@ class SDUDS:
     def handle_client(self, clientsocket, address):
         # authentication
         f = clientsocket.makefile()
-        username = f.readline().strip()
+        partner_name = f.readline().strip()
         password = f.readline().strip()
         f.close()
 
-        client = partners.Client.from_database(self.partnerdb, username=username)
+        client = partners.Client.from_database(self.partnerdb, partner_name=partner_name)
 
         if not client:
-            self.logger.warning("Rejected synchronization attempt from %s (%s) - unknown username." % (username, str(address)))
+            self.logger.warning("Rejected synchronization attempt from %s (%s) - unknown partner." % (partner_name, str(address)))
             clientsocket.close()
             return False
 
         if client.kicked():
-            self.logger.warning("Rejected synchronization attempt from kicked client %s (%s)." % (username, str(address)))
+            self.logger.warning("Rejected synchronization attempt from kicked client %s (%s)." % (partner_name, str(address)))
             clientsocket.close()
             return False
             
         if not client.password_valid(password):
-            self.logger.warning("Rejected synchronization attempt from %s (%s) - wrong password." % (username, str(address)))
+            self.logger.warning("Rejected synchronization attempt from %s (%s) - wrong password." % (partner_name, str(address)))
             clientsocket.close()
             return False
 
-        self.logger.debug("%s (from %s) authenticated successfully." % (username, str(address)))
+        self.logger.debug("%s (from %s) authenticated successfully." % (partner_name, str(address)))
         clientsocket.sendall("OK\n")
 
         hashlist = self.hashtrie.synchronize_with_client(clientsocket)
@@ -93,14 +97,12 @@ class SDUDS:
         client.log_conversation(len(hashlist))
 
     def fetch_entries_from_partner(self, hashlist, partner):
-        entryserver_address = (partner.host, partner.entryserver_port)
+        address = (partner.host, partner.port)
 
         # get database entries
-        entrylist = entries.EntryList.from_server(hashlist, entryserver_address)
-
         try:
-            entrylist = entries.EntryList.from_server(hashlist, entryserver_address)
-        except socket.error, error:
+            entrylist = entries.EntryList.from_server(hashlist, address)
+        except IOError, error:
             offense = partners.ConnectionFailedOffense(error)
             partner.add_offense(offense)
         except entries.InvalidHashError, error:
@@ -173,7 +175,7 @@ class SDUDS:
         self.logger.debug("Connecting to server %s" % str(server))
 
         # try establishing connection
-        serversocket = server.authenticated_socket()
+        serversocket = server.authenticated_synchronization_socket()
         if not serversocket: return False
 
         self.logger.debug("Got socket for %s" % str(server))
@@ -204,7 +206,7 @@ class SDUDS:
 
     def close(self):
         self.hashtrie.close()
-        self.entry_server.terminate()
+        self.webserver.terminate()
         
         if self.synchronization_socket:
             serversocket = self.synchronization_socket
@@ -228,53 +230,52 @@ class SDUDS:
 if __name__=="__main__":
     """
     Command line interface.
-
-    There are two ways to call this:
-    - You can pass arguments HOST PORT [ENTRYSERVER_PORT] to connect to another
-      server manually.
-    - You can pass no argument or only ENTRYSERVER_PORT to wait for connections
-      from other servers.
-
-    The own EntryServer will run on the port ENTRYSERVER_PORT or on 20001 if
-    ENTRYSERVER_PORT was not specified.
     """
 
-    import sys, time
+    import optparse, sys
 
-    if len(sys.argv)>2:
-        # initiate connection if host and port are passed
+    parser = optparse.OptionParser(
+        usage = "%prog  [-p WEBSERVER_PORT] [-s SYNCHRONIZATION_PORT] [PARTNER]",
+        description="run a sduds server or connect manually to another one"
+    )
+    
+    parser.add_option( "-p", "--webserver-port", metavar="PORT", dest="webserver_port", help="the webserver port of the own server")
+    parser.add_option( "-s", "--synchronization-port", metavar="PORT", dest="synchronization_port", help="the synchronization port of the own server")
+
+    (options, args) = parser.parse_args()
+
+    try:
+        webserver_port = int(options.webserver_port)
+    except TypeError:
+        webserver_port = 20000
+    except ValueError:
+        print >>sys.stderr, "Invalid webserver port."
+        sys.exit(1)
+
+    try:
+        synchronization_port = int(options.synchronization_port)
+    except TypeError:
+        synchronization_port = webserver_port + 1
+    except ValueError:
+        print >>sys.stderr, "Invalid synchronization port."
+        sys.exit(1)
+
+    if len(args)>0:
+        ### initiate connection if a partner is passed
         try:
-            if len(sys.argv)==3:
-                command,host,port = sys.argv
-                entryserver_port = 20001
-            else:
-                command,host,port,entryserver_port = sys.argv
+            partner_name, = args
         except ValueError:
-            print >>sys.stderr, "Pass host and port and (optionally) EntryServer port for manually initiating a connection."
+            print >>sys.stderr, "Invalid number of arguments."
             sys.exit(1)
 
-        try:
-            port = int(port)
-        except ValueError:
-            print >>sys.stderr, "Invalid port."
-            sys.exit(1)
-
-        try:
-            entryserver_port = int(entryserver_port)
-        except ValueError:
-            print >>sys.stderr, "Invalid EntryServer port."
-            sys.exit(1)
-
-        # create SDUDS instance with an EntryServer
-        sduds = SDUDS(("localhost", entryserver_port))
+        # create SDUDS instance
+        sduds = SDUDS(("localhost", webserver_port))
 
         # synchronize with another server
-        address = (host, port)
-
-        server = partners.Server.from_database(sduds.partnerdb, host=host, synchronization_port=port)
+        server = partners.Server.from_database(sduds.partnerdb, partner_name=partner_name)
 
         if not server:
-            print >>sys.stderr, "Address not in known servers list - add it with partners.py."
+            print >>sys.stderr, "Unknown server - add it with partners.py."
             sys.exit(1)
 
         if server.kicked():
@@ -288,40 +289,32 @@ if __name__=="__main__":
             sys.exit(1)
 
         sduds.close()
-        sys.exit(0)
 
-    # otherwise simply run a server
-    interface = "localhost"
-
-    if len(sys.argv)>1:
-        try:
-            entryserver_port = int(sys.argv[1])
-        except ValueError:
-            print >>sys.stderr, "Invalid EntryServer port."
-            sys.exit(1)
     else:
-        entryserver_port = 20001
+        ### otherwise simply run a server
+        interface = "localhost"
 
-    # start servers
-    sduds = SDUDS(("localhost", entryserver_port))
+        # start servers
+        sduds = SDUDS((interface, webserver_port))
 
-    import sys, signal
+        # define exitfunc
+        def exit():
+            global sduds
+            sduds.close()
+            sys.exit(0)
 
-    # define exitfunc
-    def exit():
-        global sduds
-        sduds.close()
-        sys.exit(0)
+        sys.exitfunc = exit
 
-    sys.exitfunc = exit
+        # call exitfunc also for signals
+        import signal
 
-    # call exitfunc also for signals
-    def signal_handler(signal, frame):
-        print >>sys.stderr, "Terminated by signal %d." % signal
-        exit()
+        def signal_handler(sig, frame):
+            print >>sys.stderr, "Terminated by signal %d." % sig
+            exit()
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGHUP, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGHUP, signal_handler)
 
-    sduds.run_synchronization_server("localhost", 20000)
+        # run the synchronization server
+        sduds.run_synchronization_server(interface, synchronization_port)
