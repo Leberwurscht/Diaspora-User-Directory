@@ -321,3 +321,50 @@ def delete_entry(profile_server, start_port=20000, keep=False):
         sduds1.erase()
         sduds2.erase()
 
+def overwrite_entry(profile_server, start_port=20000, keep=False):
+    """ Tests overwriting an entry by resubmitting the webfinger address.
+        This test is probabilistic. It may fail even if everything works as
+        it should. """
+
+    now = int(time.time())
+    submission_timestamp1 = now - 3600*24*4
+    submission_timestamp2 = now
+
+    sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
+    synchronization_port1 = sduds1.synchronization_address[1]
+
+    ### add an entry to the first server
+    webfinger_address = "Random@%s:%d" % profile_server.address
+    binhash1 = sduds1.submit_address(webfinger_address, submission_timestamp1)
+
+    assert not binhash1==None
+
+    ### remove the entry by resubmitting the now dead address
+    binhash2 = sduds1.submit_address(webfinger_address, submission_timestamp2)
+
+    assert not binhash2==None
+    assert not binhash1==binhash2
+
+    ### check that the old database entry vanished
+    session = sduds1.entrydb.Session()
+    num_entries = session.query(entries.Entry).filter_by(hash=binhash1).count()
+    session.close()
+
+    assert num_entries==0
+
+    ### check that the new database entry is there
+    session = sduds1.entrydb.Session()
+    num_entries = session.query(entries.Entry).filter_by(hash=binhash2).count()
+    session.close()
+
+    assert num_entries==1
+
+    ### close servers
+    sduds1.close()
+    sduds2.close()
+
+    ### remove database files
+    if not keep:
+        sduds1.erase()
+        sduds2.erase()
+

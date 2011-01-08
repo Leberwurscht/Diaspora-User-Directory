@@ -16,3 +16,5 @@ tests.twoway_synchronization(profile_server)
 tests.delete_from_trie(profile_server)
 
 tests.delete_entry(profile_server)
+
+tests.overwrite_entry(profile_server)
