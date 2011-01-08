@@ -291,7 +291,7 @@ class Database:
 
         # delete entry from database
         try:
-            entry = session.query(Entry).filter(**kwargs).one()
+            entry = session.query(Entry).filter_by(**kwargs).one()
         except sqlalchemy.orm.exc.NoResultFound:
             return None
 
