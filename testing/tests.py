@@ -236,9 +236,9 @@ def twoway_synchronization(profile_server, start_port=20000, num_entries=30, kee
         sduds2.erase()
 
 def delete_from_trie(profile_server, start_port=20000, keep=False):
-    """ One webfinger address is submitted to one server, which will synchronize
-        with another server. This test verifies that the entry gets to the second
-        server. """
+    """ Tests the HashTrie.delete function by verifying that an entry
+        is not transmitted to another server if the hash is deleted
+        from the trie. """
 
     sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
     synchronization_port1 = sduds1.synchronization_address[1]
@@ -274,9 +274,8 @@ def delete_from_trie(profile_server, start_port=20000, keep=False):
         sduds2.erase()
 
 def delete_entry(profile_server, start_port=20000, keep=False):
-    """ One webfinger address is submitted to one server, which will synchronize
-        with another server. This test verifies that the entry gets to the second
-        server. """
+    """ Tests that an entry is deleted from the database and from the
+        trie when an invalid webfinger address is resubmitted. """
 
     now = int(time.time())
     submission_timestamp1 = now - 3600*24*4
