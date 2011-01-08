@@ -6,7 +6,8 @@ let databasedir = Sys.argv.(1);;
 let serversockfile = Sys.argv.(2);;
 let clientsockfile = Sys.argv.(3);;
 let addsockfile = Sys.argv.(4);;
-let hashessockfile = Sys.argv.(5);;
+let deletesockfile = Sys.argv.(5);;
+let hashessockfile = Sys.argv.(6);;
 
 (***** prefix tree initialisation *****)
 
@@ -46,6 +47,11 @@ let clientsock = Eventloop.create_sock addr;;
 let () = try Unix.unlink addsockfile with Unix.Unix_error _ -> ();;
 let addr = Unix.ADDR_UNIX addsockfile;;
 let addsock = Eventloop.create_sock addr;;
+
+(* create delete hash socket *)
+let () = try Unix.unlink deletesockfile with Unix.Unix_error _ -> ();;
+let addr = Unix.ADDR_UNIX deletesockfile;;
+let deletesock = Eventloop.create_sock addr;;
 
 (***** helper functions *****)
 
@@ -115,6 +121,21 @@ let add_hash hexhash =
 		Common.plerror 1 "received line with invalid length %d (%s)" l databasedir;
 	)
 
+let delete_hash hexhash =
+	let l = String.length hexhash in
+	if (l=32) then (
+		Common.plerror 1 "deleting hash %s from database (%s)" hexhash databasedir;
+		let binary = KeyHash.dehexify hexhash in
+		let modulo = ZZp.of_bytes binary in
+		let txn = new_txnopt () in
+			PTree.delete (get_ptree ()) txn modulo;
+			PTree.clean txn (get_ptree ());
+			commit_txnopt txn;
+		Common.plerror 1 "deleted hash %s from database (%s)" hexhash databasedir;
+	) else (
+		Common.plerror 1 "received line with invalid length %d (%s)" l databasedir;
+	)
+
 (***** eventloop callbacks *****)
 
 let servercb addr cin cout =
@@ -148,11 +169,21 @@ let addcb addr cin cout =
 
 	[];;
 
+let deletecb addr cin cout =
+	Common.plerror 1 "got connection on add.ocaml2py.sock (%s)" databasedir;
+	let cin = (new Channel.sys_in_channel cin)
+	and cout = (new Channel.sys_out_channel cout) in
+		iter_lines cin delete_hash;
+		ignore(cout);
+
+	[];;
+
 (***** main loop *****)
 let run () = Eventloop.evloop [] [
 		(serversock, Eventloop.make_th ~name:"serverhandler" ~cb:servercb ~timeout:timeout);
 		(clientsock, Eventloop.make_th ~name:"clienthandler" ~cb:clientcb ~timeout:timeout);
-		(addsock, Eventloop.make_th ~name:"addhandler" ~cb:addcb ~timeout:timeout)
+		(addsock, Eventloop.make_th ~name:"addhandler" ~cb:addcb ~timeout:timeout);
+		(deletesock, Eventloop.make_th ~name:"deletehandler" ~cb:deletecb ~timeout:timeout)
 	];;
 
 (***** run the main loop *****)

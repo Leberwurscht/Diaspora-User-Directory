@@ -140,6 +140,7 @@ class HashTrie:
         self.server_socket = "server"+suffix+".ocaml2py.sock"
         self.client_socket = "client"+suffix+".ocaml2py.sock"
         self.add_socket = "add"+suffix+".ocaml2py.sock"
+        self.delete_socket = "delete"+suffix+".ocaml2py.sock"
         hashes_socket = "hashes"+suffix+".ocaml2py.sock"
 
         # erase database if requested
@@ -150,12 +151,13 @@ class HashTrie:
         if os.path.exists(self.server_socket): os.remove(self.server_socket)
         if os.path.exists(self.client_socket): os.remove(self.client_socket)
         if os.path.exists(self.add_socket): os.remove(self.add_socket)
+        if os.path.exists(self.delete_socket): os.remove(self.delete_socket)
 
         # a hashtrie is opened until close() is called
         self.opened = True
 
         # run trieserver
-        self.trieserver = subprocess.Popen(["./trieserver", self.dbdir, self.server_socket, self.client_socket, self.add_socket, hashes_socket])
+        self.trieserver = subprocess.Popen(["./trieserver", self.dbdir, self.server_socket, self.client_socket, self.add_socket, self.delete_socket, hashes_socket])
 
         # run HashServer
         self.hashserver = HashServer(hashes_socket)
@@ -167,6 +169,7 @@ class HashTrie:
             if not os.path.exists(self.server_socket): continue
             if not os.path.exists(self.client_socket): continue
             if not os.path.exists(self.add_socket): continue
+            if not os.path.exists(self.delete_socket): continue
 
             break
 
@@ -211,6 +214,16 @@ class HashTrie:
 
         s.close()
 
+    def delete(self, binhashes):
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(self.delete_socket)
+
+        for binhash in binhashes:
+            hexhash = binascii.hexlify(binhash)
+            s.sendall(hexhash+"\n")
+
+        s.close()
+
     def close(self):
         if not self.opened: return
 
@@ -222,6 +235,7 @@ class HashTrie:
         if os.path.exists(self.server_socket): os.remove(self.server_socket)
         if os.path.exists(self.client_socket): os.remove(self.client_socket)
         if os.path.exists(self.add_socket): os.remove(self.add_socket)
+        if os.path.exists(self.delete_socket): os.remove(self.delete_socket)
 
         self.opened = False
 
