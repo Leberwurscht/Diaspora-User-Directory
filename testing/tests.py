@@ -128,6 +128,8 @@ def captcha_signature(profile_server, start_port=20000, keep=False):
     ### verify that no entry got transmitted
     session = sduds2.entrydb.Session()
     number_of_entries = session.query(entries.Entry).count()
+    sesssion.close()
+
     assert number_of_entries==0
 
     ### close servers
@@ -165,6 +167,8 @@ def NonConcurrenceOffense(profile_server, start_port=20000, num_entries=70, keep
     ### verify that no entry got transmitted
     session = sduds2.entrydb.Session()
     number_of_entries = session.query(entries.Entry).count()
+    sesssion.close()
+
     assert number_of_entries==0
 
     ### close servers
@@ -260,9 +264,9 @@ def delete_from_trie(profile_server, start_port=20000, keep=False):
     ### verify that the entry didn't get transmitted
     session = sduds2.entrydb.Session()
     num_entries = session.query(entries.Entry).count()
-    assert num_entries==0
-
     session.close()
+
+    assert num_entries==0
 
     ### close servers
     sduds1.close()
@@ -298,6 +302,8 @@ def delete_entry(profile_server, start_port=20000, keep=False):
     ### check that the database entry vanished
     session = sduds1.entrydb.Session()
     num_entries = session.query(entries.Entry).count()
+    session.close()
+
     assert num_entries==0
 
     ### make server2 connect to server1 for synchronisation
@@ -308,9 +314,9 @@ def delete_entry(profile_server, start_port=20000, keep=False):
     ### verify that no entry got transmitted
     session = sduds2.entrydb.Session()
     num_entries = session.query(entries.Entry).count()
-    assert num_entries==0
-
     session.close()
+
+    assert num_entries==0
 
     ### close servers
     sduds1.close()
