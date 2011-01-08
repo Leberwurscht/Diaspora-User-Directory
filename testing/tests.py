@@ -273,3 +273,52 @@ def delete_from_trie(profile_server, start_port=20000, keep=False):
         sduds1.erase()
         sduds2.erase()
 
+def delete_entry(profile_server, start_port=20000, keep=False):
+    """ One webfinger address is submitted to one server, which will synchronize
+        with another server. This test verifies that the entry gets to the second
+        server. """
+
+    now = int(time.time())
+    submission_timestamp1 = now - 3600*24*4
+    submission_timestamp2 = now
+
+    sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
+    synchronization_port1 = sduds1.synchronization_address[1]
+
+    ### add an entry to the first server
+    webfinger_address = "Vanish@%s:%d" % profile_server.address
+    binhash = sduds1.submit_address(webfinger_address, submission_timestamp1)
+
+    assert not binhash==None
+
+    ### remove the entry by resubmitting the now dead address
+    binhash = sduds1.submit_address(webfinger_address, submission_timestamp2)
+
+    assert binhash==None
+
+    ### check that the database entry vanished
+    session = sduds1.entrydb.Session()
+    num_entries = session.query(entries.Entry).count()
+    assert num_entries==0
+
+    ### make server2 connect to server1 for synchronisation
+    server = partners.Server.from_database(sduds2.partnerdb, partner_name=partner_name1)
+    assert not server.kicked()
+    sduds2.connect_to_server(server)
+
+    ### verify that no entry got transmitted
+    session = sduds2.entrydb.Session()
+    num_entries = session.query(entries.Entry).count()
+    assert num_entries==0
+
+    session.close()
+
+    ### close servers
+    sduds1.close()
+    sduds2.close()
+
+    ### remove database files
+    if not keep:
+        sduds1.erase()
+        sduds2.erase()
+

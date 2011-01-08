@@ -203,7 +203,10 @@ class SDUDS:
             self.logger.debug("error retrieving %s: %s" % (webfinger_address, str(e)))
 
             # if online profile invalid/non-existant, delete the database entry
-            entrydb.delete_entry(webfinger_address=webfinger_address)
+            binhash = self.entrydb.delete_entry(webfinger_address=webfinger_address)
+            if not binhash==None:
+                self.hashtrie.delete([binhash])
+
             return None
 
         # check captcha signature
@@ -218,7 +221,9 @@ class SDUDS:
             if submission_timestamp < old_entry.submission_timestamp + RESUBMISSION_INTERVAL:
                 raise TooFrequentResubmissionError, "Resubmission of %s failed because it was submitted too recently (timestamps: %d/%d)" % (webfinger_address, submission_timestamp, old_entry.submission_timestamp)
 
-            entrydb.delete_entry(hash=old_entry.hash)
+            binhash = self.entrydb.delete_entry(hash=old_entry.hash)
+            assert not binhash==None
+            self.hashtrie.delete([binhash])
 
         # add new entry
         entrylist = entries.EntryList([entry])

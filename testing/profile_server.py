@@ -30,8 +30,12 @@ private_key = get_private_key(private_key_path)
 import BaseHTTPServer, urlparse, urllib, json, binascii, random
 import threading
 
+vanished_addresses = []
+
 class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
+        global vanished_addresses
+
         if self.path=="/.well-known/host-meta":
             self.send_response(200, "OK")
             self.send_header("Content-type", "text/html")
@@ -72,6 +76,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             name = webfinger_address.split("@")[0]
             if name.startswith("Random"):
                 name += "_"+str(random.randrange(1000))
+
+            if name.startswith("Vanish"):
+                if name in vanished_addresses: return
+                vanished_addresses.append(name)
 
             json_dict = {}
             json_dict["webfinger_address"] = webfinger_address
