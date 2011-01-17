@@ -8,9 +8,10 @@ import threading
 import binascii
 
 class ThreadingWSGIServer(SocketServer.ThreadingMixIn, wsgiref.simple_server.WSGIServer):
+    allow_reuse_address = True
+
     def __init__(self, *args, **kwargs):
         wsgiref.simple_server.WSGIServer.__init__(self, *args, **kwargs)
-        self.allow_reuse_address = True
 
 class WebServer(threading.Thread):
     def __init__(self, entrydb, interface="", port=20000):
