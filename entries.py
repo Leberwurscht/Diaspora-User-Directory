@@ -78,7 +78,7 @@ class EntryList(list):
 
         data = urllib.urlencode(data)
 
-        json_string = urllib.urlopen("http://%s:%d/entrylist" % address, data).read()
+        json_string = urllib.urlopen(address+"entrylist", data).read()
 
         try:
             entrylist = cls.from_json(json_string)

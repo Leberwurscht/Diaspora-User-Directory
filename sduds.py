@@ -167,13 +167,14 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
         binhashes = context.hashtrie.synchronize_with_client(self.request)
         context.logger.info("Got %d hashes after a synchronization request from %s" % (len(binhashes), str(partner)))
         self.server.set_data(partner.partner_name, binhashes)
-        context.logger.debug("set_data called of %s" % str(partner))
+        context.logger.debug("set_data called for %s" % str(partner))
 
 ###
 
 class Context:
     """ A context is a collection of all necessary databases. It does not contain any synchronization
         code, that's the job of the SDUDS class. """
+
     def __init__(self, suffix="", erase=False):
         self.partnerdb = partners.Database(suffix, erase=erase)
         self.entrydb = entries.Database(suffix, erase=erase)
@@ -194,12 +195,9 @@ class Context:
 
         # TODO: delete_hashes
 
-        # get webserver address of the partner
-        address = (partner.host, partner.port)
-
         # get database entries
         try:
-            entrylist = entries.EntryList.from_server(hashlist, address)
+            entrylist = entries.EntryList.from_server(add_hashes, partner.address)
         except IOError, error:
             offense = partners.ConnectionFailedOffense(error)
             partner.add_offense(offense)
@@ -268,6 +266,50 @@ class Context:
         # add valid entries to database
         hashes = entrylist.save(self.entrydb)
         self.hashtrie.add(hashes)
+
+    def process_submission(self, webfinger_address, submission_timestamp=None):
+        if submission_timestamp==None:
+            submission_timestamp = int(time.time())
+
+        try:
+            # retrieve entry
+            entry = entries.Entry.from_webfinger_address(webfinger_address, submission_timestamp)
+        except Exception, e: # TODO: better error handling
+            self.logger.debug("error retrieving %s: %s" % (webfinger_address, str(e)))
+
+            # if online profile invalid/non-existant, delete the database entry
+            binhash = self.entrydb.delete_entry(webfinger_address=webfinger_address)
+            if not binhash==None:
+                self.hashtrie.delete([binhash])
+
+            return None
+
+        # check captcha signature
+        if not entry.captcha_signature_valid():
+            raise InvalidCaptchaSignatureError, "%s is not a valid signature for %s" % (binascii.hexlify(entry.captcha_signature), webfinger_address)
+
+        # delete old entry
+        old_entry = entries.Entry.from_database(self.entrydb, webfinger_address=webfinger_address)
+
+        if old_entry:
+            # prevent too frequent resubmission
+            if submission_timestamp < old_entry.submission_timestamp + RESUBMISSION_INTERVAL:
+                raise TooFrequentResubmissionError, "Resubmission of %s failed because it was submitted too recently (timestamps: %d/%d)" % (webfinger_address, submission_timestamp, old_entry.submission_timestamp)
+
+            binhash = self.entrydb.delete_entry(hash=old_entry.hash)
+            assert not binhash==None
+            self.hashtrie.delete([binhash])
+
+        # add new entry
+        entrylist = entries.EntryList([entry])
+
+        hashes = entrylist.save(self.entrydb)
+        self.hashtrie.add(hashes)
+
+        assert len(hashes)==1
+        binhash = hashes[0]
+
+        return binhash
 
 class SDUDS:
     def __init__(self, server_address, suffix="", erase=False):
@@ -411,7 +453,7 @@ class SDUDS:
         deleted_hashes = []
 
         for binhash in add_hashes:
-            if self.entrydb.entry_deleted(binhash):
+            if self.context.entrydb.entry_deleted(binhash):
                 add_hashes.remove(binhash)
                 deleted_hashes.append(binhash)
 
@@ -442,51 +484,10 @@ class SDUDS:
             self.context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
 #            self.fetch_entries_from_partner(hashlist, deletedlist, server)
         except partners.PartnerKickedError:
-            self.logger.debug("Server %s got kicked." % str(partner))
+            self.context.logger.debug("Server %s got kicked." % str(partner))
 
-    def submit_address(self, webfinger_address, submission_timestamp=None):
-        if submission_timestamp==None:
-            submission_timestamp = int(time.time())
-
-        try:
-            # retrieve entry
-            entry = entries.Entry.from_webfinger_address(webfinger_address, submission_timestamp)
-        except Exception, e: # TODO: better error handling
-            self.logger.debug("error retrieving %s: %s" % (webfinger_address, str(e)))
-
-            # if online profile invalid/non-existant, delete the database entry
-            binhash = self.entrydb.delete_entry(webfinger_address=webfinger_address)
-            if not binhash==None:
-                self.hashtrie.delete([binhash])
-
-            return None
-
-        # check captcha signature
-        if not entry.captcha_signature_valid():
-            raise InvalidCaptchaSignatureError, "%s is not a valid signature for %s" % (binascii.hexlify(entry.captcha_signature), webfinger_address)
-
-        # delete old entry
-        old_entry = entries.Entry.from_database(self.entrydb, webfinger_address=webfinger_address)
-
-        if old_entry:
-            # prevent too frequent resubmission
-            if submission_timestamp < old_entry.submission_timestamp + RESUBMISSION_INTERVAL:
-                raise TooFrequentResubmissionError, "Resubmission of %s failed because it was submitted too recently (timestamps: %d/%d)" % (webfinger_address, submission_timestamp, old_entry.submission_timestamp)
-
-            binhash = self.entrydb.delete_entry(hash=old_entry.hash)
-            assert not binhash==None
-            self.hashtrie.delete([binhash])
-
-        # add new entry
-        entrylist = entries.EntryList([entry])
-
-        hashes = entrylist.save(self.entrydb)
-        self.hashtrie.add(hashes)
-
-        assert len(hashes)==1
-        binhash = hashes[0]
-
-        return binhash
+    def submit_address(self, webfinger_address):
+        return self.context.process_submission(webfinger_address)
 
     def terminate(self, erase=False):
         self.webserver.terminate()
