@@ -164,12 +164,11 @@ def NonConcurrenceOffense(profile_server, start_port=20000, num_entries=70, eras
     sduds1.terminate(erase=erase)
     sduds2.terminate(erase=erase)
 
-def twoway_synchronization(profile_server, start_port=20000, num_entries=30, keep=False):
+def twoway_synchronization(profile_server, start_port=20000, num_entries=30, erase=True):
     """ This test adds many entries to two servers who will then synchronize with each other.
         It verifies that both servers know all entries afterwards. """
 
     sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
-    synchronization_port1 = sduds1.synchronization_address[1]
 
     ### add entries to the server
     hashes = set()
@@ -193,13 +192,13 @@ def twoway_synchronization(profile_server, start_port=20000, num_entries=30, kee
         hashes.add(binhash)
 
     ### make server2 connect to server1 for synchronisation
-    server = partners.Server.from_database(sduds2.partnerdb, partner_name=partner_name1)
+    server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
-    sduds2.connect_to_server(server)
+    sduds2.synchronize_with_partner(server)
 
     ### verify that both servers have got all entries
     hashes1 = set()
-    session = sduds1.entrydb.Session()
+    session = sduds1.context.entrydb.Session()
     for entry in session.query(entries.Entry):
         hashes1.add(entry.hash)
     session.close()
@@ -207,7 +206,7 @@ def twoway_synchronization(profile_server, start_port=20000, num_entries=30, kee
     assert hashes1==hashes
 
     hashes2 = set()
-    session = sduds2.entrydb.Session()
+    session = sduds2.context.entrydb.Session()
     for entry in session.query(entries.Entry):
         hashes2.add(entry.hash)
     session.close()
@@ -215,13 +214,8 @@ def twoway_synchronization(profile_server, start_port=20000, num_entries=30, kee
     assert hashes2==hashes
 
     ### close servers
-    sduds1.close()
-    sduds2.close()
-
-    ### remove database files
-    if not keep:
-        sduds1.erase()
-        sduds2.erase()
+    sduds1.terminate(erase=erase)
+    sduds2.terminate(erase=erase)
 
 def delete_from_trie(profile_server, start_port=20000, keep=False):
     """ Tests the HashTrie.delete function by verifying that an entry
