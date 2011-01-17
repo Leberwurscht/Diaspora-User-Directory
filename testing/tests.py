@@ -131,13 +131,12 @@ def captcha_signature(profile_server, start_port=20000, erase=True):
     sduds1.terminate(erase=erase)
     sduds2.terminate(erase=erase)
 
-def NonConcurrenceOffense(profile_server, start_port=20000, num_entries=70, keep=False):
+def NonConcurrenceOffense(profile_server, start_port=20000, num_entries=70, erase=True):
     """ This test verifies that a server that serves too many entries that do not match the real
         webfinger profiles gets kicked. This test is probabilistic, it may fail even if everything
         works as it should. """
 
     sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
-    synchronization_port1 = sduds1.synchronization_address[1]
 
     ### add entries to the server
     for i in xrange(num_entries):
@@ -147,28 +146,23 @@ def NonConcurrenceOffense(profile_server, start_port=20000, num_entries=70, keep
         assert not binhash==None
 
     ### make server2 connect to server1 for synchronisation
-    server = partners.Server.from_database(sduds2.partnerdb, partner_name=partner_name1)
+    server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
-    sduds2.connect_to_server(server)
+    sduds2.synchronize_with_partner(server)
 
     ### verify that the server is kicked
     assert server.kicked()
 
     ### verify that no entry got transmitted
-    session = sduds2.entrydb.Session()
+    session = sduds2.context.entrydb.Session()
     number_of_entries = session.query(entries.Entry).count()
-    sesssion.close()
+    session.close()
 
     assert number_of_entries==0
 
     ### close servers
-    sduds1.close()
-    sduds2.close()
-
-    ### remove database files
-    if not keep:
-        sduds1.erase()
-        sduds2.erase()
+    sduds1.terminate(erase=erase)
+    sduds2.terminate(erase=erase)
 
 def twoway_synchronization(profile_server, start_port=20000, num_entries=30, keep=False):
     """ This test adds many entries to two servers who will then synchronize with each other.
