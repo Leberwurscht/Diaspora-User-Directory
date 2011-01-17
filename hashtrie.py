@@ -144,9 +144,12 @@ class HashTrie:
         self.delete_socket = "delete"+suffix+".ocaml2py.sock"
         hashes_socket = "hashes"+suffix+".ocaml2py.sock"
 
-        # erase database if requested
         self.opened = False
-        if erase: self.erase()
+
+        # erase database if requested
+
+        if erase and os.path.exists(self.dbdir):
+            shutil.rmtree(self.dbdir)
 
         # delete remaining unix domain sockets
         if os.path.exists(self.server_socket): os.remove(self.server_socket)

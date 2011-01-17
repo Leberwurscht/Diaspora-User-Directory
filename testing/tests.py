@@ -5,12 +5,19 @@ import hashlib, threading, time
 
 def _get_partners(start_port=20000):
     webserver_port1 = start_port
-    webserver_port2 = start_port+1
+    control_port1 = start_port+1
     synchronization_port1 = start_port+2
 
+    webserver_port2 = start_port+3
+    control_port2 = start_port+4
+    synchronization_port2 = start_port+5
+
     ### run two servers
-    sduds1 = sduds.SDUDS(("localhost", webserver_port1), "_test1", erase=True)
-    sduds2 = sduds.SDUDS(("localhost", webserver_port2), "_test2", erase=True)
+    sduds1 = sduds.SDUDS(("", webserver_port1), "_test1", erase=True)
+    sduds1.run_synchronization_server("localhost", "", control_port1, synchronization_port1)
+
+    sduds2 = sduds.SDUDS(("", webserver_port2), "_test2", erase=True)
+    sduds2.run_synchronization_server("localhost", "", control_port2, synchronization_port2)
 
     ### connect the servers
     partner_name1 = "test1"
@@ -21,9 +28,8 @@ def _get_partners(start_port=20000):
     passwordhash2 = hashlib.sha1(password2).digest()
 
     # add server2 as a client to server1
-    client = partners.Client(sduds1.partnerdb,
-        host="localhost",
-        port=webserver_port2,
+    client = partners.Client(sduds1.context.partnerdb,
+        address="http://localhost:%d/" % webserver_port2,
         control_probability=0.1,
         identity=partner_name1,
         password=password1,
@@ -31,13 +37,12 @@ def _get_partners(start_port=20000):
         passwordhash=passwordhash2,
     )
 
-    sduds1.partnerdb.Session.add(client)
-    sduds1.partnerdb.Session.commit()
+    sduds1.context.partnerdb.Session.add(client)
+    sduds1.context.partnerdb.Session.commit()
 
     # add server1 as a server to server2
-    server = partners.Server(sduds2.partnerdb,
-        host="localhost",
-        port=webserver_port1,
+    server = partners.Server(sduds2.context.partnerdb,
+        address="http://localhost:%d/" % webserver_port1,
         control_probability=0.7,
         identity=partner_name2,
         password=password2,
@@ -45,24 +50,20 @@ def _get_partners(start_port=20000):
         passwordhash=passwordhash1
     )
 
-    sduds2.partnerdb.Session.add(server)
-    sduds2.partnerdb.Session.commit()
+    sduds2.context.partnerdb.Session.add(server)
+    sduds2.context.partnerdb.Session.commit()
 
-    ### run a synchronization server on the first server
-    thread = threading.Thread(target=sduds1.run_synchronization_server, args=("localhost", synchronization_port1))
-    thread.daemon = True
-    thread.start()
+    ### give the servers some time to start up
     time.sleep(0.5)
 
     return sduds1, partner_name1, sduds2, partner_name2
 
-def simple_synchronization(profile_server, start_port=20000, keep=False):
+def simple_synchronization(profile_server, start_port=20000, erase=True):
     """ One webfinger address is submitted to one server, which will synchronize
         with another server. This test verifies that the entry gets to the second
         server. """
 
     sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
-    synchronization_port1 = sduds1.synchronization_address[1]
 
     ### add an entry to the first server
     webfinger_address = "JohnDoe@%s:%d" % profile_server.address
@@ -71,25 +72,20 @@ def simple_synchronization(profile_server, start_port=20000, keep=False):
     assert not binhash==None
 
     ### make server2 connect to server1 for synchronisation
-    server = partners.Server.from_database(sduds2.partnerdb, partner_name=partner_name1)
+    server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
-    sduds2.connect_to_server(server)
+    sduds2.synchronize_with_partner(server)
 
     ### verify that the entry got transmitted
-    session = sduds2.entrydb.Session()
+    session = sduds2.context.entrydb.Session()
     entry = session.query(entries.Entry).one()
     assert entry.hash==binhash
 
     session.close()
 
     ### close servers
-    sduds1.close()
-    sduds2.close()
-
-    ### remove database files
-    if not keep:
-        sduds1.erase()
-        sduds2.erase()
+    sduds1.terminate(erase=erase)
+    sduds2.terminate(erase=erase)
 
 def captcha_signature(profile_server, start_port=20000, keep=False):
     """ An entry with a bad captcha signature will be sent from one server to the other.

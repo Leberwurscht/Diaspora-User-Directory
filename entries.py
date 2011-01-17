@@ -278,7 +278,8 @@ class Database:
 
         self.dbfile = "entries"+suffix+".sqlite"
 
-        if erase: self.erase()
+        if erase and os.path.exists(self.dbfile):
+            os.remove(self.dbfile)
 
         engine = sqlalchemy.create_engine("sqlite:///"+self.dbfile)
         self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
