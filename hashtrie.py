@@ -11,6 +11,7 @@ import time, uuid, select
 import shutil
 
 class HashServer(threading.Thread):
+    # TODO: use lib.BaseServer
     """ Creates a unix domain socket listening for incoming hashes from the
         synchronization process. Provides a 'get' function that can be used
         to wait for hashes of a certain synchronization identifier. """
@@ -224,7 +225,7 @@ class HashTrie:
 
         s.close()
 
-    def close(self):
+    def close(self, erase=False):
         if not self.opened: return
 
         self.trieserver.terminate()
@@ -239,7 +240,5 @@ class HashTrie:
 
         self.opened = False
 
-    def erase(self):
-        assert not self.opened
-
-        if os.path.exists(self.dbdir): shutil.rmtree(self.dbdir)
+        if erase and os.path.exists(self.dbdir):
+            shutil.rmtree(self.dbdir)

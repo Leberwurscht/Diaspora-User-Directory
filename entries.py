@@ -306,7 +306,19 @@ class Database:
 
         return binhash
 
-    def erase(self):
+    def entry_deleted(self, binhash):
+        session = self.Session()
+
+        try:
+            session.query(DeletedEntry).filter_by(hash=binhash).one()
+            return True
+        except sqlalchemy.orm.exc.NoResultFound:
+            return False
+        finally:
+            session.close()
+
+    def close(self, erase=False):
         if hasattr(self, "Session"): self.Session.close_all()
 
-        if os.path.exists(self.dbfile): os.remove(self.dbfile)
+        if erase and os.path.exists(self.dbfile):
+            os.remove(self.dbfile)
