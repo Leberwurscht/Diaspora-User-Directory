@@ -249,7 +249,7 @@ def delete_from_trie(profile_server, start_port=20000, erase=True):
     sduds1.terminate(erase=erase)
     sduds2.terminate(erase=erase)
 
-def delete_entry(profile_server, start_port=20000, keep=False):
+def delete_entry(profile_server, start_port=20000, erase=True):
     """ Tests that an entry is deleted from the database and from the
         trie when an invalid webfinger address is resubmitted. """
 
@@ -258,46 +258,40 @@ def delete_entry(profile_server, start_port=20000, keep=False):
     submission_timestamp2 = now
 
     sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
-    synchronization_port1 = sduds1.synchronization_address[1]
 
     ### add an entry to the first server
     webfinger_address = "Vanish@%s:%d" % profile_server.address
-    binhash = sduds1.submit_address(webfinger_address, submission_timestamp1)
+    binhash = sduds1.context.process_submission(webfinger_address, submission_timestamp1)
 
     assert not binhash==None
 
     ### remove the entry by resubmitting the now dead address
-    binhash = sduds1.submit_address(webfinger_address, submission_timestamp2)
+    binhash = sduds1.context.process_submission(webfinger_address, submission_timestamp2)
 
     assert binhash==None
 
     ### check that the database entry vanished
-    session = sduds1.entrydb.Session()
+    session = sduds1.context.entrydb.Session()
     num_entries = session.query(entries.Entry).count()
     session.close()
 
     assert num_entries==0
 
     ### make server2 connect to server1 for synchronisation
-    server = partners.Server.from_database(sduds2.partnerdb, partner_name=partner_name1)
+    server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
-    sduds2.connect_to_server(server)
+    sduds2.synchronize_with_partner(server)
 
     ### verify that no entry got transmitted
-    session = sduds2.entrydb.Session()
+    session = sduds2.context.entrydb.Session()
     num_entries = session.query(entries.Entry).count()
     session.close()
 
     assert num_entries==0
 
     ### close servers
-    sduds1.close()
-    sduds2.close()
-
-    ### remove database files
-    if not keep:
-        sduds1.erase()
-        sduds2.erase()
+    sduds1.terminate(erase=erase)
+    sduds2.terminate(erase=erase)
 
 def overwrite_entry(profile_server, start_port=20000, keep=False):
     """ Tests overwriting an entry by resubmitting the webfinger address.
