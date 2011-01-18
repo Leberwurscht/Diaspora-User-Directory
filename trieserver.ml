@@ -1,5 +1,9 @@
 open PTreeDB;;
 
+(***** set log file *****)
+
+Common.set_logfile "trieserver";;
+
 (***** get the database directory and communication sockets from the command line arguments *****)
 
 let databasedir = Sys.argv.(1);;

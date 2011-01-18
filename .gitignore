@@ -2,6 +2,9 @@
 /.depend
 /prepared
 
+# log files
+*.log
+
 # databases
 /PTree*/
 entries*.sqlite
