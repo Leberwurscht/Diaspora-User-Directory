@@ -131,8 +131,8 @@ def link_sockets(socket1, socket2):
             # forward it to the other socket
             other_socket = sockets[ ( sockets.index(input_socket) + 1 ) % 2 ]
             other_socket.sendall(buf)
-import md5
-def tunnel(partnersocket, ocamlsocket, info):
+
+def tunnel(partnersocket, ocamlsocket):
     """ Tunnels traffic from one socket over the other socket, so that the other end will
         know that the connection was closed on the socket to be tunneled without the other
         socket being closed. """
@@ -141,8 +141,6 @@ def tunnel(partnersocket, ocamlsocket, info):
 
     message_length = None
     message_buffer = ""
-
-    print "START TUNNELING", info
 
     while True:
         # wait until at least one socket has data ready
@@ -153,45 +151,31 @@ def tunnel(partnersocket, ocamlsocket, info):
             data = input_socket.recv(255)
 
             if input_socket==partnersocket:
-                print "PACKET (length "+str(len(data))+"): arrived at NETWORK_SOCKET_"+info
-#                print len(data), str(ocamlsocket)
                 # add data to the buffer
                 message_buffer += data
-#                print "RECEIVED RAW FROM PARTNER",binascii.hexlify(data)
-                time.sleep(.5)
 
                 while True:
                     # check if a message is announced
                     if message_length==None and len(message_buffer)>0:
                         message_length = ord(message_buffer[0])
                         message_buffer = message_buffer[1:]
-                    print "MB("+info+"): ("+str(len(message_buffer))+")",binascii.hexlify(message_buffer)
+
                     # check if tunnel should be closed
-                    if message_length==0:
-                        print "EMPTY MESSAGE ARRIVED AT NETWORK_SOCKET_"+info, len(message_buffer)
-                        return
+                    if message_length==0: return
 
                     # check if an announced message if fully transmitted
                     if message_length and len(message_buffer)>=message_length:
                         ocamlsocket.sendall(message_buffer[:message_length])
-                        print "PACKET",md5.md5(message_buffer[:message_length]).hexdigest()[:4],message_length,"sent: NETWORK_SOCKET_"+info+" => OCAML_SOCKET_"+info
-#                        print "RECEIVED FROM PARTNER",message_length,binascii.hexlify(message_buffer[:message_length])
                         message_buffer = message_buffer[message_length:]
                         message_length = None
-                        print "MB2("+info+"): ("+str(len(message_buffer))+")",binascii.hexlify(message_buffer)
                     else:
-                        print info,"no more fully transmitted messages"
                         break
 
             elif input_socket==ocamlsocket:
-                print "PACKET",md5.md5(data).hexdigest()[:4],len(data),"sent: OCAML_SOCKET_"+info+" => NETWORK_SOCKET_"+info
                 announcement = chr(len(data))
                 partnersocket.sendall(announcement+data)
-#                print "SENT TO PARTNER",len(data),binascii.hexlify(data)
 
-                if announcement=="\0":
-                    print "NO MORE DATA FROM OCAML_SOCKET_"+info+" (PROBABLY CLOSED)"
-                    return
+                if announcement=="\0": return
 
 class HashTrie:
     def __init__(self, suffix="", erase=False):
@@ -250,8 +234,7 @@ class HashTrie:
         self.logger.debug("sent identifier %s to %s" % (identifier, address))
 
         # forward traffic on network socket to unix domain socket
-#        link_sockets(partnersocket, ocamlsocket)
-        tunnel(partnersocket, ocamlsocket, self.dbdir)
+        tunnel(partnersocket, ocamlsocket)
 
         # close sockets
         ocamlsocket.close()
@@ -265,11 +248,9 @@ class HashTrie:
         return hashlist
 
     def synchronize_with_server(self, serversocket):
-        print "START SYNCHRONIZING AS SERVER",self.dbdir
         return self._synchronize_common(serversocket, self.client_socket)
 
     def synchronize_with_client(self, clientsocket):
-        print "START SYNCHRONIZING AS CLIENT",self.dbdir
         return self._synchronize_common(clientsocket, self.server_socket)
 
     def add(self, binhashes):
