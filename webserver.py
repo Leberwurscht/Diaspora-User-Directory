@@ -30,10 +30,9 @@ class WebServer(threading.Thread):
         self.httpd.socket.close()
 
     # set synchronization port
-    def set_synchronization_address(self, host, control_port, synchronization_port):
+    def set_synchronization_address(self, host, control_port):
         self._synchronization_host = host
         self._control_port = control_port
-        self._synchronization_port = synchronization_port
 
     # WSGI applications
     def dispatch(self, environment, start_response):
@@ -70,7 +69,7 @@ class WebServer(threading.Thread):
             yield "Synchronization disabled."
         else:
             start_response("200 OK", [('Content-Type','text/plain')])
-            yield json.dumps((self._synchronization_host, self._control_port, self._synchronization_port))
+            yield json.dumps((self._synchronization_host, self._control_port))
         
     def not_found(self, environment, start_response):
         start_response("404 Not Found", [("Content-type", "text/plain")])

@@ -178,10 +178,10 @@ class Partner(DatabaseObject):
 
     def synchronization_address(self):
         data = urllib.urlopen(self.address+"synchronization_address").read()
-        host, control_port, synchronization_port = json.loads(data)
+        host, control_port = json.loads(data)
         host = host.encode("utf8")
 
-        return (host, control_port, synchronization_port)
+        return (host, control_port)
     
     def password_valid(self, password):
         comparehash = hashlib.sha1(password).digest()

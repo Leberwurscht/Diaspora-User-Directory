@@ -97,29 +97,18 @@ class SynchronizationControlRequestHandler(AuthenticatingRequestHandler):
 
         context.logger.info("%s connected from %s to %s" % (str(partner), str(self.client_address), str(self.server)))
 
-        socketfile = self.request.makefile()
-
         ### set up a socket for the synchronization control server of the partner
 
         # get synchronization port
-        host, control_port, synchronization_port = partner.synchronization_address()
-
-        # connect
-        address = (host, synchronization_port)
-        synchronization_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        synchronization_socket.connect(address)
-        context.logger.debug("connection to %s (%s) established" % (str(partner), str(self.client_address)))
-
-        # authenticate
-        success = authenticate_socket_to_partner(synchronization_socket, partner)
-        assert success
-
-        context.logger.debug("successfully authenticated to %s" % str(partner))
+        host, control_port = partner.synchronization_address()
 
         ### get the set of hashes the partner has but we haven't (conduct actual synchronization)
         context.logger.debug("conducting synchronization with %s" % str(partner))
-        add_hashes = context.hashtrie.synchronize_with_server(synchronization_socket)
-        context.logger.debug("Got %d hashes from %s" % (len(add_hashes), str(partner)))
+        add_hashes = context.hashtrie.synchronize_with_server(self.request)
+        context.logger.info("Got %d hashes from %s" % (len(add_hashes), str(partner)))
+
+        ### make file of socket
+        socketfile = self.request.makefile()
 
         ### determine which hashes the partner must delete
         deleted_hashes = []
@@ -147,27 +136,6 @@ class SynchronizationControlRequestHandler(AuthenticatingRequestHandler):
             delete_hashes.append(binhash)
 
         context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
-
-###
-
-class SynchronizationServer(lib.NotifyingServer):
-    """ The actual synchronization server, which is only used to compute the hashes that
-        are missing for each partner. The counterpart for this is implemented directly in
-        SynchronizationControlRequestHandler.handle_partner. """
-
-    def __init__(self, address, context):
-        lib.NotifyingServer.__init__(self, address, SynchronizationRequestHandler)
-
-        self.context = context
-
-class SynchronizationRequestHandler(AuthenticatingRequestHandler):
-    def handle_partner(self, partner):
-        context = self.server.context
-        context.logger.debug("%s connected for synchronization" % str(partner))
-        binhashes = context.hashtrie.synchronize_with_client(self.request)
-        context.logger.info("Got %d hashes after a synchronization request from %s" % (len(binhashes), str(partner)))
-        self.server.set_data(partner.partner_name, binhashes)
-        context.logger.debug("set_data called for %s" % str(partner))
 
 ###
 
@@ -327,20 +295,17 @@ class SDUDS:
         self.synchronization_server = None
         self.control_server = None
 
-    def run_synchronization_server(self, domain, interface="", control_port=20001, synchronization_port=20002):
+    def run_synchronization_server(self, domain, interface="", control_port=20001):
         # set up servers
-        self.synchronization_server = SynchronizationServer((interface, synchronization_port), self.context)
         self.control_server = SynchronizationControlServer((interface, control_port), self.context)
 
         # publish address so that partners can synchronize with us
-        self.webserver.set_synchronization_address(domain, control_port, synchronization_port)
+        self.webserver.set_synchronization_address(domain, control_port)
 
         # set up the server threads
-        self.synchronization_thread = threading.Thread(target=self.synchronization_server.serve_forever)
         self.control_thread = threading.Thread(target=self.control_server.serve_forever)
 
         # run the servers
-        self.synchronization_thread.start()
         self.control_thread.start()
 
 #        self.control_server.serve_forever()
@@ -420,14 +385,13 @@ class SDUDS:
         """ the client side for SynchronizationControlServer """
 
         # get the synchronization address
-        host, control_port, synchronization_port = partner.synchronization_address()
+        host, control_port = partner.synchronization_address()
         address = (host, control_port)
 
         # connect
         self.context.logger.info("Connecting to %s for synchronization with %s" % (str(address), str(partner)))
         partnersocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         partnersocket.connect(address)
-        partnerfile = partnersocket.makefile()
 
         # authenticate
         self.context.logger.debug("Authenticating synchronization socket %s to partner %s" % (str(address), str(partner)))
@@ -436,8 +400,11 @@ class SDUDS:
 
         # get the set of hashes the partner has but we haven't
         self.context.logger.debug("Getting hashes from %s" % str(partner))
-        add_hashes = self.synchronization_server.get_data(partner.partner_name)
+        add_hashes = self.context.hashtrie.synchronize_with_client(partnersocket)
         self.context.logger.info("Got %d hashes from %s" % (len(add_hashes), str(partner)))
+
+        # make file of socket
+        partnerfile = partnersocket.makefile()
 
         # get the hashes that we should delete
         delete_hashes = []
@@ -492,10 +459,6 @@ class SDUDS:
     def terminate(self, erase=False):
         self.webserver.terminate()
 
-        if self.synchronization_server:
-            self.synchronization_server.terminate()
-            self.synchronization_server = None
-
         if self.control_server:
             self.control_server.terminate()
             self.control_server = None
@@ -529,13 +492,12 @@ if __name__=="__main__":
     import optparse, sys
 
     parser = optparse.OptionParser(
-        usage = "%prog  [-p WEBSERVER_PORT] [-s SYNCHRONIZATION_PORT] [PARTNER]",
+        usage = "%prog  [-p WEBSERVER_PORT] [-c CONTROL_PORT] [PARTNER]",
         description="run a sduds server or connect manually to another one"
     )
     
     parser.add_option( "-p", "--webserver-port", metavar="PORT", dest="webserver_port", help="the webserver port of the own server")
     parser.add_option( "-c", "--control-port", metavar="PORT", dest="control_port", help="the control port for synchronization of the own server")
-    parser.add_option( "-s", "--synchronization-port", metavar="PORT", dest="synchronization_port", help="the actual synchronization port of the own server")
 
     (options, args) = parser.parse_args()
 
@@ -553,14 +515,6 @@ if __name__=="__main__":
         control_port = webserver_port + 1
     except ValueError:
         print >>sys.stderr, "Invalid control port."
-        sys.exit(1)
-
-    try:
-        synchronization_port = int(options.synchronization_port)
-    except TypeError:
-        synchronization_port = control_port + 1
-    except ValueError:
-        print >>sys.stderr, "Invalid synchronization port."
         sys.exit(1)
 
     interface = "localhost"
@@ -587,7 +541,7 @@ if __name__=="__main__":
             print >>sys.stderr, "Will not connect - server is kicked!"
             sys.exit(1)
 
-        sduds.run_synchronization_server("localhost", interface, control_port, synchronization_port)
+        sduds.run_synchronization_server("localhost", interface, control_port)
 
         try:
             sduds.synchronize_with_partner(server)
@@ -623,7 +577,7 @@ if __name__=="__main__":
         signal.signal(signal.SIGHUP, signal_handler)
 
         # run the synchronization server
-        sduds.run_synchronization_server("localhost", interface, control_port, synchronization_port)
+        sduds.run_synchronization_server("localhost", interface, control_port)
 
         # wait until program is interrupted
         while True: time.sleep(100)

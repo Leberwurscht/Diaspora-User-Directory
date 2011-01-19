@@ -6,18 +6,16 @@ import hashlib, threading, time
 def _get_partners(start_port=20000):
     webserver_port1 = start_port
     control_port1 = start_port+1
-    synchronization_port1 = start_port+2
 
     webserver_port2 = start_port+3
     control_port2 = start_port+4
-    synchronization_port2 = start_port+5
 
     ### run two servers
     sduds1 = sduds.SDUDS(("", webserver_port1), "_test1", erase=True)
-    sduds1.run_synchronization_server("localhost", "", control_port1, synchronization_port1)
+    sduds1.run_synchronization_server("localhost", "", control_port1)
 
     sduds2 = sduds.SDUDS(("", webserver_port2), "_test2", erase=True)
-    sduds2.run_synchronization_server("localhost", "", control_port2, synchronization_port2)
+    sduds2.run_synchronization_server("localhost", "", control_port2)
 
     ### connect the servers
     partner_name1 = "test1"

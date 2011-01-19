@@ -113,25 +113,6 @@ class HashServer(threading.Thread):
         self.hashessocket.close()
         os.remove(self.address)
 
-def link_sockets(socket1, socket2):
-    """ Forwards traffic from each socket to the other, until one socket
-        is closed. Will block until this happens. """
-
-    sockets = [socket1, socket2]
-
-    while True:
-        # wait until at least one socket has data ready
-        inputready,outputready,exceptready = select.select(sockets,[],[])
-
-        for input_socket in inputready:
-            # receive data
-            buf = input_socket.recv(1024)
-            if not buf: return # connection got closed
-
-            # forward it to the other socket
-            other_socket = sockets[ ( sockets.index(input_socket) + 1 ) % 2 ]
-            other_socket.sendall(buf)
-
 def tunnel(partnersocket, ocamlsocket):
     """ Tunnels traffic from one socket over the other socket, so that the other end will
         know that the connection was closed on the socket to be tunneled without the other
@@ -241,7 +222,6 @@ class HashTrie:
 
         # close sockets
         ocamlsocket.close()
-        partnersocket.close()
 
         # await received hashes from the ocaml component (will block)
         self.logger.debug("Waiting for hashes for identifier %s on %s" % (identifier, address))
