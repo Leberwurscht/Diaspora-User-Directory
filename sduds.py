@@ -16,6 +16,9 @@ import entries
 from hashtrie import HashTrie
 from webserver import WebServer
 
+import SocketServer
+import lib
+
 ###
 
 RESPONSIBILITY_TIME_SPAN = 3600*24*3
@@ -28,83 +31,144 @@ class InvalidCaptchaSignatureError(Exception): pass
 class TooFrequentResubmissionError(Exception): pass
 
 ###
+# Authentication functionality
 
-class SDUDS:
-    def __init__(self, server_address, suffix="", erase=False):
-        self.partnerdb = partners.Database(suffix, erase=erase)
-        self.entrydb = entries.Database(suffix, erase=erase)
+def authenticate_socket_to_partner(partnersocket, partner):
+    # authenticate
+    partnersocket.sendall(partner.identity+"\n")
+    partnersocket.sendall(partner.password+"\n")
 
-        self.hashtrie = HashTrie(suffix, erase=erase)
-        self.logger = logging.getLogger("sduds"+suffix) 
+    f = partnersocket.makefile()
+    answer = f.readline().strip()
+    f.close()
 
-        interface, port = server_address
-        self.webserver = WebServer(self.entrydb, interface, port)
-        self.webserver.start()
+    if answer=="OK":
+        return True
+    else:
+        partnersocket.close()
+        return False
 
-        self.synchronization_socket = None
+class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler):
+    """ Tries to authenticate a partner and calls the method handle_partner in the case of success. Expects the server
+        to have a context attribute. """
 
-    def run_synchronization_server(self, interface, port):
-        serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        serversocket.bind((interface, port))
-        serversocket.listen(5)
-        self.logger.info("Listening on %s:%d." % (interface, port))
+    def handle(self):
+        context = self.server.context
 
-        self.webserver.set_synchronization_port(port)
-
-        self.synchronization_socket = serversocket
-        self.synchronization_address = (interface, port)
-
-        while True:
-            (clientsocket, address) = serversocket.accept()
-
-            if not self.synchronization_socket: return
-            
-            thread = threading.Thread(target=self.handle_client, args=(clientsocket, address))
-            thread.start()
-
-    def handle_client(self, clientsocket, address):
-        # authentication
-        f = clientsocket.makefile()
+        f = self.request.makefile()
         partner_name = f.readline().strip()
         password = f.readline().strip()
         f.close()
 
-        client = partners.Client.from_database(self.partnerdb, partner_name=partner_name)
+        partner = partners.Partner.from_database(context.partnerdb, partner_name=partner_name)
 
-        if not client:
-            self.logger.warning("Rejected synchronization attempt from %s (%s) - unknown partner." % (partner_name, str(address)))
-            clientsocket.close()
+        if not partner:
+            context.logger.warning("Rejected synchronization attempt from %s (%s) - unknown partner." % (partner_name, str(self.client_address)))
             return False
 
-        if client.kicked():
-            self.logger.warning("Rejected synchronization attempt from kicked client %s (%s)." % (partner_name, str(address)))
-            clientsocket.close()
+        if partner.kicked():
+            context.logger.warning("Rejected synchronization attempt from kicked partner %s (%s)." % (partner_name, str(self.client_address)))
             return False
             
-        if not client.password_valid(password):
-            self.logger.warning("Rejected synchronization attempt from %s (%s) - wrong password." % (partner_name, str(address)))
-            clientsocket.close()
+        if not partner.password_valid(password):
+            context.logger.warning("Rejected synchronization attempt from %s (%s) - wrong password." % (partner_name, str(self.client_address)))
             return False
 
-        self.logger.debug("%s (from %s) authenticated successfully." % (partner_name, str(address)))
-        clientsocket.sendall("OK\n")
+        self.request.sendall("OK\n")
 
-        hashlist = self.hashtrie.synchronize_with_client(clientsocket)
+        self.handle_partner(partner)
 
+    def handle_partner(self, partner):
+        raise NotImplementedError, "Override this function in subclasses!"
+
+###
+
+class SynchronizationServer(lib.BaseServer):
+    """ The server partners can connect to for synchronizing. The hashes that must be added
+        and the hashes that must be deleted are computed and context.process_hashes_from_partner
+        is called. The counterpart for this is SDUDS.synchronize_with_partner. """
+
+    def __init__(self, address, context):
+        lib.BaseServer.__init__(self, address, SynchronizationRequestHandler)
+        self.context = context
+
+class SynchronizationRequestHandler(AuthenticatingRequestHandler):
+    def handle_partner(self, partner):
+        context = self.server.context
+
+        context.logger.info("%s connected from %s to %s" % (str(partner), str(self.client_address), str(self.server)))
+
+        ### get the set of hashes the partner has but we haven't (conduct actual synchronization)
+        context.logger.debug("conducting synchronization with %s" % str(partner))
+        add_hashes = context.hashtrie.synchronize_with_server(self.request)
+        context.logger.info("Got %d hashes from %s" % (len(add_hashes), str(partner)))
+
+        ### make file of socket
+        socketfile = self.request.makefile()
+
+        ### determine which hashes the partner must delete
+        deleted_hashes = []
+
+        for binhash in add_hashes:
+            if context.entrydb.entry_deleted(binhash):
+                add_hashes.remove(binhash)
+                deleted_hashes.append(binhash)
+
+        ### send these hashes to the partner
+        for binhash in deleted_hashes:
+            hexhash = binascii.hexlify(binhash)
+            socketfile.write(hexhash+"\n")
+        socketfile.write("\n")
+        socketfile.flush()
+
+        ### receive the hashes we should delete
+        delete_hashes = []
+
+        while True:
+            hexhash = socketfile.readline().strip()
+            if hexhash=="": break
+
+            binhash = binascii.hexlify(hexhash)
+            delete_hashes.append(binhash)
+
+        ### log the conversation
+        partner.log_conversation(len(add_hashes), len(delete_hashes))
+
+        ### call process_hashes_from_partner
         try:
-            self.fetch_entries_from_partner(hashlist, client)
+            context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
         except partners.PartnerKickedError:
-            self.logger.debug("Client %s got kicked." % str(client))
+            context.logger.debug("%s got kicked." % str(partner))
 
-        client.log_conversation(len(hashlist))
+###
 
-    def fetch_entries_from_partner(self, hashlist, partner):
-        address = (partner.host, partner.port)
+class Context:
+    """ A context is a collection of all necessary databases. It does not contain any synchronization
+        code, that's the job of the SDUDS class. """
+
+    def __init__(self, suffix="", erase=False):
+        self.partnerdb = partners.Database(suffix, erase=erase)
+        self.entrydb = entries.Database(suffix, erase=erase)
+        self.hashtrie = HashTrie(suffix, erase=erase)
+
+        self.logger = logging.getLogger("sduds"+suffix) 
+
+    def close(self, erase=False):
+        self.partnerdb.close(erase=erase)
+        self.entrydb.close(erase=erase)
+        self.hashtrie.close(erase=erase)
+
+    def process_hashes_from_partner(self, partner, add_hashes, delete_hashes):
+        """ This function can be called after synchronization with a partner. It will process
+            the lists of hashes that should be added or deleted, get the missing entries from
+            the web server of the partner, check if everything is valid, and update the own
+            database. """
+
+        # TODO: delete_hashes
 
         # get database entries
         try:
-            entrylist = entries.EntryList.from_server(hashlist, address)
+            entrylist = entries.EntryList.from_server(add_hashes, partner.address)
         except IOError, error:
             offense = partners.ConnectionFailedOffense(error)
             partner.add_offense(offense)
@@ -174,25 +238,7 @@ class SDUDS:
         hashes = entrylist.save(self.entrydb)
         self.hashtrie.add(hashes)
 
-    def connect_to_server(self, server):
-        self.logger.debug("Connecting to server %s" % str(server))
-
-        # try establishing connection
-        serversocket = server.authenticated_synchronization_socket()
-        if not serversocket: return False
-
-        self.logger.debug("Got socket for %s" % str(server))
-
-        hashlist = self.hashtrie.synchronize_with_server(serversocket)
-
-        server.log_conversation(len(hashlist))
-
-        try:
-            self.fetch_entries_from_partner(hashlist, server)
-        except partners.PartnerKickedError:
-            self.logger.debug("Server %s got kicked." % str(server))
-
-    def submit_address(self, webfinger_address, submission_timestamp=None):
+    def process_submission(self, webfinger_address, submission_timestamp=None):
         if submission_timestamp==None:
             submission_timestamp = int(time.time())
 
@@ -236,28 +282,99 @@ class SDUDS:
 
         return binhash
 
-    def close(self):
-        self.hashtrie.close()
+class SDUDS:
+    def __init__(self, webserver_address, suffix="", erase=False):
+        self.context = Context(suffix, erase=erase)
+
+        interface, port = webserver_address
+        self.webserver = WebServer(self.context, interface, port)
+        self.webserver.start()
+
+        self.synchronization_server = None
+
+    def run_synchronization_server(self, domain, interface="", synchronization_port=20001):
+        # set up servers
+        self.synchronization_server = SynchronizationServer((interface, synchronization_port), self.context)
+
+        # publish address so that partners can synchronize with us
+        self.webserver.set_synchronization_address(domain, synchronization_port)
+
+        # set up the server threads
+        self.synchronization_thread = threading.Thread(target=self.synchronization_server.serve_forever)
+
+        # run the servers
+        self.synchronization_thread.start()
+
+    def synchronize_with_partner(self, partner):
+        """ the client side for SynchronizationServer """
+
+        # get the synchronization address
+        host, synchronization_port = partner.synchronization_address()
+        address = (host, synchronization_port)
+
+        # connect
+        self.context.logger.info("Connecting to %s for synchronization with %s" % (str(address), str(partner)))
+        partnersocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        partnersocket.connect(address)
+
+        # authenticate
+        self.context.logger.debug("Authenticating synchronization socket %s to partner %s" % (str(address), str(partner)))
+        success = authenticate_socket_to_partner(partnersocket, partner)
+        assert success
+
+        # get the set of hashes the partner has but we haven't
+        self.context.logger.debug("Getting hashes from %s" % str(partner))
+        add_hashes = self.context.hashtrie.synchronize_with_client(partnersocket)
+        self.context.logger.info("Got %d hashes from %s" % (len(add_hashes), str(partner)))
+
+        # make file of socket
+        partnerfile = partnersocket.makefile()
+
+        # get the hashes that we should delete
+        delete_hashes = []
+
+        while True:
+            hexhash = partnerfile.readline().strip()
+            if hexhash=="": break
+
+            binhash = binascii.hexlify(hexhash)
+            delete_hashes.append(binhash)
+
+        # determine which hashes the partner must delete
+        deleted_hashes = []
+
+        for binhash in add_hashes:
+            if self.context.entrydb.entry_deleted(binhash):
+                add_hashes.remove(binhash)
+                deleted_hashes.append(binhash)
+
+        # send these hashes to the partner
+        for binhash in deleted_hashes:
+            hexhash = binascii.hexlify(binhash)
+            partnerfile.write(hexhash+"\n")
+        partnerfile.write("\n")
+        partnerfile.flush()
+
+        ### log the conversation
+        partner.log_conversation(len(add_hashes), len(delete_hashes))
+
+        ### call process_hashes_from_partner
+        try:
+            self.context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
+        except partners.PartnerKickedError:
+            self.context.logger.debug("%s got kicked." % str(partner))
+
+    def submit_address(self, webfinger_address):
+        return self.context.process_submission(webfinger_address)
+
+    def terminate(self, erase=False):
         self.webserver.terminate()
-        
-        if self.synchronization_socket:
-            serversocket = self.synchronization_socket
 
-            self.synchronization_socket = None
+        if self.synchronization_server:
+            self.synchronization_server.terminate()
+            self.synchronization_server = None
 
-            # fake connection to unblock accept() in the run method
-            fsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            fsocket.connect(self.synchronization_address)
-            fsocket.close()
-
-            serversocket.close()
-
-    def erase(self):
-        # no checking is needed if these are closed, as hashtrie check this by itself
-        # and partnerdb and entrydb close the connections automatically
-        self.hashtrie.erase()
-        self.partnerdb.erase()
-        self.entrydb.erase()
+        self.context.close(erase=erase)
 
 if __name__=="__main__":
     """
@@ -292,6 +409,8 @@ if __name__=="__main__":
         print >>sys.stderr, "Invalid synchronization port."
         sys.exit(1)
 
+    interface = "localhost"
+
     if len(args)>0:
         ### initiate connection if a partner is passed
         try:
@@ -304,7 +423,7 @@ if __name__=="__main__":
         sduds = SDUDS(("localhost", webserver_port))
 
         # synchronize with another server
-        server = partners.Server.from_database(sduds.partnerdb, partner_name=partner_name)
+        server = partners.Server.from_database(sduds.context.partnerdb, partner_name=partner_name)
 
         if not server:
             print >>sys.stderr, "Unknown server - add it with partners.py."
@@ -314,17 +433,18 @@ if __name__=="__main__":
             print >>sys.stderr, "Will not connect - server is kicked!"
             sys.exit(1)
 
+        sduds.run_synchronization_server("localhost", interface, synchronization_port)
+
         try:
-            sduds.connect_to_server(server)
+            sduds.synchronize_with_partner(server)
         except socket.error,e:
             print >>sys.stderr, "Connecting to %s failed: %s" % (str(server), str(e))
             sys.exit(1)
 
-        sduds.close()
+        sduds.terminate()
 
     else:
         ### otherwise simply run a server
-        interface = "localhost"
 
         # start servers
         sduds = SDUDS((interface, webserver_port))
@@ -332,7 +452,7 @@ if __name__=="__main__":
         # define exitfunc
         def exit():
             global sduds
-            sduds.close()
+            sduds.terminate()
             sys.exit(0)
 
         sys.exitfunc = exit
@@ -349,4 +469,7 @@ if __name__=="__main__":
         signal.signal(signal.SIGHUP, signal_handler)
 
         # run the synchronization server
-        sduds.run_synchronization_server(interface, synchronization_port)
+        sduds.run_synchronization_server("localhost", interface, synchronization_port)
+
+        # wait until program is interrupted
+        while True: time.sleep(100)

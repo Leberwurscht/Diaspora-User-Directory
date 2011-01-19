@@ -19,4 +19,4 @@ else:
 # wait a bit so trieserver can save the hashes
 time.sleep(1.0)
 
-sduds.close()
+sduds.terminate()

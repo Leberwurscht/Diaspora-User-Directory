@@ -55,7 +55,7 @@ Make two copies, compile each.
 
 For one copy, do:
 
-$ ./partners.py -a -c localhost 20002 sduds2 sduds1
+$ ./partners.py -a -c http://localhost:20100/ sduds2 sduds1
  ... type passwords ...
         (Adds the second instance of the program, which will
          run on port 20002, as a client named "sduds2", and
@@ -64,21 +64,22 @@ $ ./partners.py -a -c localhost 20002 sduds2 sduds1
 $ ./testing/add_entry.py
 	(Will create a database entry for an example user.)
 $ ./sduds.py -p 20000
-        (Will run a server with the webserver on port 20000
-         and the synchronization server on port 20001)
+        (Will run a server with the webserver on port 20000,
+         the synchronization control server on port 20001 and
+         the synchronization server on port 20002.)
 
 For the other copy, do:
 
-$ ./partners.py -a -s localhost 20000 sduds1 sduds2
+$ ./partners.py -a -s http://localhost:20000/ sduds1 sduds2
         (Adds the first instance of the program, which runs
          on port 20000, as a server named "sduds1", and use
          the partner name "sduds2" when authenticating to
          it. You need to supply the passwords you typed
          above, in reversed order.
-$ ./sduds.py -p 20002 sduds1
-	(Connects to the first instance of the program an
-         synchronize with it. The own webserver will be run
-         on port 20002.)
+$ ./sduds.py -p 20100 sduds1
+	(Connects to the first instance of the program and
+         synchronizes with it. The own webserver will be run
+         on port 20100.)
 
 Now, you can see log messages that tell you that a database
 entry was transmitted. You can test whether it worked properly

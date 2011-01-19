@@ -78,7 +78,7 @@ class EntryList(list):
 
         data = urllib.urlencode(data)
 
-        json_string = urllib.urlopen("http://%s:%d/entrylist" % address, data).read()
+        json_string = urllib.urlopen(address+"entrylist", data).read()
 
         try:
             entrylist = cls.from_json(json_string)
@@ -278,7 +278,8 @@ class Database:
 
         self.dbfile = "entries"+suffix+".sqlite"
 
-        if erase: self.erase()
+        if erase and os.path.exists(self.dbfile):
+            os.remove(self.dbfile)
 
         engine = sqlalchemy.create_engine("sqlite:///"+self.dbfile)
         self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
@@ -306,7 +307,19 @@ class Database:
 
         return binhash
 
-    def erase(self):
+    def entry_deleted(self, binhash):
+        session = self.Session()
+
+        try:
+            session.query(DeletedEntry).filter_by(hash=binhash).one()
+            return True
+        except sqlalchemy.orm.exc.NoResultFound:
+            return False
+        finally:
+            session.close()
+
+    def close(self, erase=False):
         if hasattr(self, "Session"): self.Session.close_all()
 
-        if os.path.exists(self.dbfile): os.remove(self.dbfile)
+        if erase and os.path.exists(self.dbfile):
+            os.remove(self.dbfile)
