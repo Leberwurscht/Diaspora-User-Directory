@@ -97,11 +97,6 @@ class SynchronizationControlRequestHandler(AuthenticatingRequestHandler):
 
         context.logger.info("%s connected from %s to %s" % (str(partner), str(self.client_address), str(self.server)))
 
-        ### set up a socket for the synchronization control server of the partner
-
-        # get synchronization port
-        host, control_port = partner.synchronization_address()
-
         ### get the set of hashes the partner has but we haven't (conduct actual synchronization)
         context.logger.debug("conducting synchronization with %s" % str(partner))
         add_hashes = context.hashtrie.synchronize_with_server(self.request)
@@ -280,16 +275,11 @@ class Context:
         return binhash
 
 class SDUDS:
-    def __init__(self, server_address, suffix="", erase=False):
+    def __init__(self, webserver_address, suffix="", erase=False):
         self.context = Context(suffix, erase=erase)
-#        self.partnerdb = partners.Database(suffix, erase=erase)
-#        self.entrydb = entries.Database(suffix, erase=erase)
-#
-#        self.hashtrie = HashTrie(suffix, erase=erase)
-#        self.logger = logging.getLogger("sduds"+suffix) 
 
-        interface, port = server_address
-        self.webserver = WebServer(self.context.entrydb, interface, port)
+        interface, port = webserver_address
+        self.webserver = WebServer(self.context, interface, port)
         self.webserver.start()
 
         self.synchronization_server = None
@@ -307,79 +297,6 @@ class SDUDS:
 
         # run the servers
         self.control_thread.start()
-
-#        self.control_server.serve_forever()
-
-#        serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#        serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-#        serversocket.bind((interface, port))
-#        serversocket.listen(5)
-#        self.logger.info("Listening on %s:%d." % (interface, port))
-#
-#        self.webserver.set_synchronization_port(port)
-#
-#        self.synchronization_socket = serversocket
-#        self.synchronization_address = (interface, port)
-#
-#        while True:
-#            (clientsocket, address) = serversocket.accept()
-#
-#            if not self.synchronization_socket: return
-#            
-#            thread = threading.Thread(target=self.handle_client, args=(clientsocket, address))
-#            thread.start()
-#
-#    def handle_client(self, clientsocket, address):
-#        # authentication
-#        f = clientsocket.makefile()
-#        partner_name = f.readline().strip()
-#        password = f.readline().strip()
-#        f.close()
-#
-#        client = partners.Client.from_database(self.partnerdb, partner_name=partner_name)
-#
-#        if not client:
-#            self.logger.warning("Rejected synchronization attempt from %s (%s) - unknown partner." % (partner_name, str(address)))
-#            clientsocket.close()
-#            return False
-#
-#        if client.kicked():
-#            self.logger.warning("Rejected synchronization attempt from kicked client %s (%s)." % (partner_name, str(address)))
-#            clientsocket.close()
-#            return False
-#            
-#        if not client.password_valid(password):
-#            self.logger.warning("Rejected synchronization attempt from %s (%s) - wrong password." % (partner_name, str(address)))
-#            clientsocket.close()
-#            return False
-#
-#        self.logger.debug("%s (from %s) authenticated successfully." % (partner_name, str(address)))
-#        clientsocket.sendall("OK\n")
-#
-#        hashlist = self.hashtrie.synchronize_with_client(clientsocket)
-#
-#        try:
-#            self.fetch_entries_from_partner(hashlist, client)
-#        except partners.PartnerKickedError:
-#            self.logger.debug("Client %s got kicked." % str(client))
-#
-#        client.log_conversation(len(hashlist))
-#
-#    def fetch_entries_from_partner(self, hashlist, partner):
-#        # get deleted entries
-#        deletedlist = []
-#
-#        for binhash in hashlist:
-#            if self.entrydb.entry_deleted(binhash):
-#                deletedlist.append(binhash)
-#                hashlist.remove(binhash)
-#
-#            # Deleted entries should be pushed to the partner.
-#            # But the partner needs to be able to verify that deletion is legal,
-#            # for that the partner must have already fetched the entries.
-#            # So I need a way to execute push-deletion after the partner requests
-#            # the entries.
-
 
     def exchange_hashes_with_partner(self, partner):
         """ the client side for SynchronizationControlServer """
@@ -434,22 +351,12 @@ class SDUDS:
         return add_hashes, delete_hashes
 
     def synchronize_with_partner(self, partner):
-#        self.logger.debug("Connecting to server %s" % str(server))
-#
-#        # try establishing connection
-#        serversocket = server.authenticated_synchronization_socket()
-#        if not serversocket: return False
-#
-#        self.logger.debug("Got socket for %s" % str(server))
-#
-#        hashlist = self.hashtrie.synchronize_with_server(serversocket)
         add_hashes, delete_hashes = self.exchange_hashes_with_partner(partner)
 
         partner.log_conversation(len(add_hashes), len(delete_hashes))
 
         try:
             self.context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
-#            self.fetch_entries_from_partner(hashlist, deletedlist, server)
         except partners.PartnerKickedError:
             self.context.logger.debug("Server %s got kicked." % str(partner))
 
@@ -464,25 +371,6 @@ class SDUDS:
             self.control_server = None
 
         self.context.close(erase=erase)
-
-#        if self.synchronization_socket:
-#            serversocket = self.synchronization_socket
-#
-#            self.synchronization_socket = None
-#
-#            # fake connection to unblock accept() in the run method
-#            fsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#            fsocket.connect(self.synchronization_address)
-#            fsocket.close()
-#
-#            serversocket.close()
-#
-#    def erase(self):
-#        # no checking is needed if these are closed, as hashtrie check this by itself
-#        # and partnerdb and entrydb close the connections automatically
-#        self.hashtrie.erase()
-#        self.partnerdb.erase()
-#        self.entrydb.erase()
 
 if __name__=="__main__":
     """

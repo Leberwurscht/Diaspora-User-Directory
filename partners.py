@@ -31,8 +31,6 @@ class Partner(DatabaseObject):
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
     address = sqlalchemy.Column(lib.Text)
-#    host = sqlalchemy.Column(lib.Text)
-#    port = sqlalchemy.Column(sqlalchemy.Integer)
     control_probability = sqlalchemy.Column(sqlalchemy.Float)
 
     # for authenticating to the partner
@@ -354,7 +352,7 @@ class NonConcurrenceOffense(Offense):
 # custom exceptions
 
 class PartnerKickedError(Exception):
-    """ The partner got violation """
+    """ The partner got a violation """
     pass
 
 ####

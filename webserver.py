@@ -14,10 +14,10 @@ class ThreadingWSGIServer(SocketServer.ThreadingMixIn, wsgiref.simple_server.WSG
         wsgiref.simple_server.WSGIServer.__init__(self, *args, **kwargs)
 
 class WebServer(threading.Thread):
-    def __init__(self, entrydb, interface="", port=20000):
+    def __init__(self, context, interface="", port=20000):
         threading.Thread.__init__(self)
 
-        self.entrydb = entrydb
+        self.context = context
         self.httpd = wsgiref.simple_server.make_server(interface, port, self.dispatch, ThreadingWSGIServer)
 
         self._synchronization_host = None
@@ -57,7 +57,7 @@ class WebServer(threading.Thread):
             binhash = binascii.unhexlify(hexhash)
             binhashes.append(binhash)
 
-        entrylist = entries.EntryList.from_database(self.entrydb, binhashes)
+        entrylist = entries.EntryList.from_database(self.context.entrydb, binhashes)
 
         # serve requested hashes
         json_string = entrylist.json()
