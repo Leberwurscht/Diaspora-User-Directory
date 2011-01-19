@@ -142,7 +142,7 @@ def tunnel(partnersocket, ocamlsocket):
     message_length = None
     message_buffer = ""
 
-    while True:
+    while sockets:
         # wait until at least one socket has data ready
         inputready,outputready,exceptready = select.select(sockets,[],[])
 
@@ -160,8 +160,10 @@ def tunnel(partnersocket, ocamlsocket):
                         message_length = ord(message_buffer[0])
                         message_buffer = message_buffer[1:]
 
-                    # check if tunnel should be closed
-                    if message_length==0: return
+                    # check if we can stop listening on partnersocket
+                    if message_length==0:
+                        sockets.remove(partnersocket)
+                        break
 
                     # check if an announced message if fully transmitted
                     if message_length and len(message_buffer)>=message_length:
@@ -175,7 +177,8 @@ def tunnel(partnersocket, ocamlsocket):
                 announcement = chr(len(data))
                 partnersocket.sendall(announcement+data)
 
-                if announcement=="\0": return
+                if announcement=="\0":
+                    sockets.remove(ocamlsocket)
 
 class HashTrie:
     def __init__(self, suffix="", erase=False):
