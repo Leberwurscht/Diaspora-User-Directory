@@ -384,12 +384,12 @@ if __name__=="__main__":
     import optparse, sys
 
     parser = optparse.OptionParser(
-        usage = "%prog  [-p WEBSERVER_PORT] [-c CONTROL_PORT] [PARTNER]",
+        usage = "%prog  [-p WEBSERVER_PORT] [-s SYNCHRONIZATION_PORT] [PARTNER]",
         description="run a sduds server or connect manually to another one"
     )
     
     parser.add_option( "-p", "--webserver-port", metavar="PORT", dest="webserver_port", help="the webserver port of the own server")
-    parser.add_option( "-c", "--synchronization-port", metavar="PORT", dest="synchronization_port", help="the synchronization port of the own server")
+    parser.add_option( "-s", "--synchronization-port", metavar="PORT", dest="synchronization_port", help="the synchronization port of the own server")
 
     (options, args) = parser.parse_args()
 
