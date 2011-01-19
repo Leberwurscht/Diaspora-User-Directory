@@ -83,15 +83,16 @@ class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler):
 
 ###
 
-class SynchronizationControlServer(lib.BaseServer):
-    """ The control server for synchronization, which is used to initiate the actual synchronization and to transmit
-        the hashes that need to be deleted. The counterpart for this is SDUDS.exchange_hashes_with_partner. """
+class SynchronizationServer(lib.BaseServer):
+    """ The server partners can connect to for synchronizing. The hashes that must be added
+        and the hashes that must be deleted are computed and context.process_hashes_from_partner
+        is called. The counterpart for this is SDUDS.synchronize_with_partner. """
 
     def __init__(self, address, context):
-        lib.BaseServer.__init__(self, address, SynchronizationControlRequestHandler)
+        lib.BaseServer.__init__(self, address, SynchronizationRequestHandler)
         self.context = context
 
-class SynchronizationControlRequestHandler(AuthenticatingRequestHandler):
+class SynchronizationRequestHandler(AuthenticatingRequestHandler):
     def handle_partner(self, partner):
         context = self.server.context
 
@@ -130,7 +131,14 @@ class SynchronizationControlRequestHandler(AuthenticatingRequestHandler):
             binhash = binascii.hexlify(hexhash)
             delete_hashes.append(binhash)
 
-        context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
+        ### log the conversation
+        partner.log_conversation(len(add_hashes), len(delete_hashes))
+
+        ### call process_hashes_from_partner
+        try:
+            context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
+        except partners.PartnerKickedError:
+            context.logger.debug("%s got kicked." % str(partner))
 
 ###
 
@@ -283,27 +291,26 @@ class SDUDS:
         self.webserver.start()
 
         self.synchronization_server = None
-        self.control_server = None
 
-    def run_synchronization_server(self, domain, interface="", control_port=20001):
+    def run_synchronization_server(self, domain, interface="", synchronization_port=20001):
         # set up servers
-        self.control_server = SynchronizationControlServer((interface, control_port), self.context)
+        self.synchronization_server = SynchronizationServer((interface, synchronization_port), self.context)
 
         # publish address so that partners can synchronize with us
-        self.webserver.set_synchronization_address(domain, control_port)
+        self.webserver.set_synchronization_address(domain, synchronization_port)
 
         # set up the server threads
-        self.control_thread = threading.Thread(target=self.control_server.serve_forever)
+        self.synchronization_thread = threading.Thread(target=self.synchronization_server.serve_forever)
 
         # run the servers
-        self.control_thread.start()
+        self.synchronization_thread.start()
 
-    def exchange_hashes_with_partner(self, partner):
-        """ the client side for SynchronizationControlServer """
+    def synchronize_with_partner(self, partner):
+        """ the client side for SynchronizationServer """
 
         # get the synchronization address
-        host, control_port = partner.synchronization_address()
-        address = (host, control_port)
+        host, synchronization_port = partner.synchronization_address()
+        address = (host, synchronization_port)
 
         # connect
         self.context.logger.info("Connecting to %s for synchronization with %s" % (str(address), str(partner)))
@@ -348,17 +355,14 @@ class SDUDS:
         partnerfile.write("\n")
         partnerfile.flush()
 
-        return add_hashes, delete_hashes
-
-    def synchronize_with_partner(self, partner):
-        add_hashes, delete_hashes = self.exchange_hashes_with_partner(partner)
-
+        ### log the conversation
         partner.log_conversation(len(add_hashes), len(delete_hashes))
 
+        ### call process_hashes_from_partner
         try:
             self.context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
         except partners.PartnerKickedError:
-            self.context.logger.debug("Server %s got kicked." % str(partner))
+            self.context.logger.debug("%s got kicked." % str(partner))
 
     def submit_address(self, webfinger_address):
         return self.context.process_submission(webfinger_address)
@@ -366,9 +370,9 @@ class SDUDS:
     def terminate(self, erase=False):
         self.webserver.terminate()
 
-        if self.control_server:
-            self.control_server.terminate()
-            self.control_server = None
+        if self.synchronization_server:
+            self.synchronization_server.terminate()
+            self.synchronization_server = None
 
         self.context.close(erase=erase)
 
@@ -385,7 +389,7 @@ if __name__=="__main__":
     )
     
     parser.add_option( "-p", "--webserver-port", metavar="PORT", dest="webserver_port", help="the webserver port of the own server")
-    parser.add_option( "-c", "--control-port", metavar="PORT", dest="control_port", help="the control port for synchronization of the own server")
+    parser.add_option( "-c", "--synchronization-port", metavar="PORT", dest="synchronization_port", help="the synchronization port of the own server")
 
     (options, args) = parser.parse_args()
 
@@ -398,11 +402,11 @@ if __name__=="__main__":
         sys.exit(1)
 
     try:
-        control_port = int(options.control_port)
+        synchronization_port = int(options.synchronization_port)
     except TypeError:
-        control_port = webserver_port + 1
+        synchronization_port = webserver_port + 1
     except ValueError:
-        print >>sys.stderr, "Invalid control port."
+        print >>sys.stderr, "Invalid synchronization port."
         sys.exit(1)
 
     interface = "localhost"
@@ -429,7 +433,7 @@ if __name__=="__main__":
             print >>sys.stderr, "Will not connect - server is kicked!"
             sys.exit(1)
 
-        sduds.run_synchronization_server("localhost", interface, control_port)
+        sduds.run_synchronization_server("localhost", interface, synchronization_port)
 
         try:
             sduds.synchronize_with_partner(server)
@@ -465,7 +469,7 @@ if __name__=="__main__":
         signal.signal(signal.SIGHUP, signal_handler)
 
         # run the synchronization server
-        sduds.run_synchronization_server("localhost", interface, control_port)
+        sduds.run_synchronization_server("localhost", interface, synchronization_port)
 
         # wait until program is interrupted
         while True: time.sleep(100)
