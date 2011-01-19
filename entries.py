@@ -145,10 +145,16 @@ class EntryList(list):
         new_hashes = []
 
         for entry in self:
-            hexhash = binascii.hexlify(entry.hash)
+            # ignore entry if a more recent one exists
+            try:
+                existing_entry = session.query(Entry).filter_by(webfinger_address=entry.webfinger_address).one()
+                if existing_entry.submission_timestamp>entry.submission_timestamp: continue
+            except sqlalchemy.orm.exc.NoResultFound: pass
 
             # add entry to database
             session.add(entry)
+
+            hexhash = binascii.hexlify(entry.hash)
 
             try:
                 session.commit()
