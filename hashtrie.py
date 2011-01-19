@@ -10,59 +10,13 @@ import time, uuid, select
 
 import shutil
 
-class HashServer(threading.Thread):
-    # TODO: use lib.BaseServer
-    """ Creates a unix domain socket listening for incoming hashes from the
-        synchronization process. Provides a 'get' function that can be used
-        to wait for hashes of a certain synchronization identifier. """
+import SocketServer, lib
 
-    def __init__(self, address):
-        threading.Thread.__init__(self)
+class HashServerRequestHandler(SocketServer.BaseRequestHandler):
+    def handle(self):
+        logger = self.server.logger
 
-        self.logger = logging.getLogger(address)
-        self.address = address
-
-        if os.path.exists(address): os.remove(address)
-
-        hashessocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        hashessocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        hashessocket.bind(address)
-        hashessocket.listen(5)
-
-        self.lock = threading.Lock() # lock for events and data dictionaries
-        self.events = {} # identifiers -> event dict for "data ready" events
-        self.data = {} # identifiers -> list of hashes dict
-
-        self.hashessocket = hashessocket
-
-        self.running = True
-        self.start()
-
-    def run(self):
-        while True:
-            (clientsocket, address) = self.hashessocket.accept()
-
-            if not self.running: return
-
-            thread = threading.Thread(
-                target=self.handle_connection,
-                args=(clientsocket, address)
-            )
-
-            thread.start()
-
-    def get_event(self, identifier):
-        """ Create event for an identifier if it does not exist and return it,
-            otherwise return existing one. Does not lock the dicts, you must
-            do this yourself! """
-
-        if not identifier in self.events:
-            self.events[identifier] = threading.Event()
-
-        return self.events[identifier]
-
-    def handle_connection(self, clientsocket, address):
-        f = clientsocket.makefile()
+        f = self.request.makefile()
 
         # get identifier
         identifier = f.readline().strip()
@@ -72,46 +26,23 @@ class HashServer(threading.Thread):
 
         for hexhash in f:
             hexhash = hexhash.strip() # remove newline
-            self.logger.debug("Hashserver received  %s from %s" % (hexhash, identifier))
+            logger.debug("Hashserver received  %s from %s" % (hexhash, identifier))
             hashlist.append(binascii.unhexlify(hexhash))
 
-        # save hashlist to data dictionary and notify get function
-        with self.lock:
-            self.data[identifier] = hashlist
-            self.get_event(identifier).set()
+        # set the data for the identifier
+        self.server.set_data(identifier, hashlist)
 
-        self.logger.debug("Data ready for %s in HashServer" % identifier)
+        logger.debug("Data ready for %s in HashServer" % identifier)
 
-    def get(self, identifier):
-        """ waits until data is ready and returns it """
+class HashServer(lib.NotifyingServer):
+    address_family = socket.AF_UNIX
 
-        self.lock.acquire()
-        event = self.get_event(identifier)
-        self.lock.release()
+    def __init__(self, address):
+        if os.path.exists(address): os.remove(address)
 
-        event.wait()
+        lib.NotifyingServer.__init__(self, address, HashServerRequestHandler)
 
-        self.lock.acquire()
-        hashlist = self.data[identifier]
-        del self.data[identifier]
-        del self.events[identifier]
-        self.lock.release()
-
-        self.logger.debug("Data for identifier %s collected from HashServer" % identifier)
-        return hashlist
-
-    def terminate(self):
-        if not self.running: return
-
-        self.running = False
-
-        # fake connection to unblock accept() in handle_connection
-        hsocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        hsocket.connect(self.address)
-        hsocket.close()
-
-        self.hashessocket.close()
-        os.remove(self.address)
+        self.logger = logging.getLogger(str(self.server_address))
 
 def tunnel(partnersocket, ocamlsocket):
     """ Tunnels traffic from one socket over the other socket, so that the other end will
@@ -194,6 +125,8 @@ class HashTrie:
 
         # run HashServer
         self.hashserver = HashServer(hashes_socket)
+        hashserver_thread = threading.Thread(target=self.hashserver.serve_forever)
+        hashserver_thread.start()
 
         # wait until all unix domain sockets are set up by trieserver
         while True:
@@ -225,7 +158,7 @@ class HashTrie:
 
         # await received hashes from the ocaml component (will block)
         self.logger.debug("Waiting for hashes for identifier %s on %s" % (identifier, address))
-        hashlist = self.hashserver.get(identifier)
+        hashlist = self.hashserver.get_data(identifier)
         self.logger.debug("Got %d hashes for identifier %s on %s" % (len(hashlist), identifier, address))
 
         return hashlist
