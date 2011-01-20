@@ -158,7 +158,7 @@ class EntryList(list):
                 else:
                     # delete older entries
                     deleted_hashes.add(existing_entry.hash)
-                    database.delete_entry(hash=existing_entry.hash)
+                    database.delete_entry(entry.retrieval_timestamp, hash=existing_entry.hash)
 
             except sqlalchemy.orm.exc.NoResultFound:
                 # entry is new
@@ -278,6 +278,7 @@ class DeletedEntry(DatabaseObject):
     __tablename__ = 'deleted_entries'
 
     hash = sqlalchemy.Column(lib.Binary, primary_key=True)
+    retrieval_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
 
 ####
 # database class
@@ -300,7 +301,7 @@ class Database:
         # create tables if they don't exist
         DatabaseObject.metadata.create_all(engine)
 
-    def delete_entry(self, **kwargs):
+    def delete_entry(self, retrieval_timestamp, **kwargs):
         session = self.Session()
 
         # delete entry from database
@@ -313,7 +314,7 @@ class Database:
         session.delete(entry)
 
         # add entry to deleted entries list
-        deleted_entry = DeletedEntry(hash=binhash)
+        deleted_entry = DeletedEntry(hash=binhash, retrieval_timestamp=retrieval_timestamp)
         session.add(deleted_entry)
 
         session.commit()
@@ -324,10 +325,10 @@ class Database:
         session = self.Session()
 
         try:
-            session.query(DeletedEntry).filter_by(hash=binhash).one()
-            return True
+            retrieval_timestamp, = session.query(DeletedEntry.retrieval_timestamp).filter_by(hash=binhash).one()
+            return retrieval_timestamp
         except sqlalchemy.orm.exc.NoResultFound:
-            return False
+            return None
         finally:
             session.close()
 

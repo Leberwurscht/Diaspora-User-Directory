@@ -107,30 +107,35 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
         socketfile = self.request.makefile()
 
         ### determine which hashes the partner must delete
-        deleted_hashes = set()
+        deleted_hashes = {}
 
         for binhash in add_hashes:
-            if context.entrydb.entry_deleted(binhash):
-                deleted_hashes.add(binhash)
+            retrieval_timestamp = context.entrydb.entry_deleted(binhash)
 
-        add_hashes -= deleted_hashes
+            if not retrieval_timestamp==None:
+                deleted_hashes[binhash] = retrieval_timestamp
+
+        add_hashes -= set(deleted_hashes)
 
         ### send these hashes to the partner
-        for binhash in deleted_hashes:
+        for binhash,retrieval_timestamp in deleted_hashes.iteritems():
             hexhash = binascii.hexlify(binhash)
-            socketfile.write(hexhash+"\n")
+            socketfile.write(hexhash+" "+str(retrieval_timestamp)+"\n")
         socketfile.write("\n")
         socketfile.flush()
 
         ### receive the hashes we should delete
-        delete_hashes = set()
+        delete_hashes = {}
 
         while True:
-            hexhash = socketfile.readline().strip()
-            if hexhash=="": break
+            try:
+                hexhash, retrieval_timestamp = socketfile.readline().split()
+            except ValueError:
+                # got just a newline, so transmission is finished
+                break
 
             binhash = binascii.hexlify(hexhash)
-            delete_hashes.add(binhash)
+            delete_hashes[binhash] = int(retrieval_timestamp)
 
         ### log the conversation
         partner.log_conversation(len(add_hashes), len(delete_hashes))
@@ -240,8 +245,13 @@ class Context:
         self.hashtrie.add(added_hashes)
         self.hashtrie.delete(deleted_hashes)
 
-        delete_hashes -= deleted_hashes
-        delete_hashes -= ignored_hashes
+        for binhash in deleted_hashes:
+            if binhash in delete_hashes:
+                del delete_hashes[binhash]
+
+        for binhash in ignored_hashes:
+            if binhash in delete_hashes:
+                del delete_hashes[binhash]
 
         # remove the entries for delete_hashes, taking control samples
         # TODO
@@ -257,7 +267,9 @@ class Context:
             self.logger.debug("error retrieving %s: %s" % (webfinger_address, str(e)))
 
             # if online profile invalid/non-existant, delete the database entry
-            binhash = self.entrydb.delete_entry(webfinger_address=webfinger_address)
+            retrieval_timestamp = int(time.time())
+
+            binhash = self.entrydb.delete_entry(retrieval_timestamp, webfinger_address=webfinger_address)
             if not binhash==None:
                 self.hashtrie.delete([binhash])
 
@@ -267,17 +279,12 @@ class Context:
         if not entry.captcha_signature_valid():
             raise InvalidCaptchaSignatureError, "%s is not a valid signature for %s" % (binascii.hexlify(entry.captcha_signature), webfinger_address)
 
-        # delete old entry
+        # prevent too frequent resubmission
+        # TODO: move to Entrylist.save
         old_entry = entries.Entry.from_database(self.entrydb, webfinger_address=webfinger_address)
-
         if old_entry:
-            # prevent too frequent resubmission
             if submission_timestamp < old_entry.submission_timestamp + RESUBMISSION_INTERVAL:
                 raise TooFrequentResubmissionError, "Resubmission of %s failed because it was submitted too recently (timestamps: %d/%d)" % (webfinger_address, submission_timestamp, old_entry.submission_timestamp)
-
-            binhash = self.entrydb.delete_entry(hash=old_entry.hash)
-            assert not binhash==None
-            self.hashtrie.delete([binhash])
 
         # add new entry
         entrylist = entries.EntryList([entry])
@@ -339,28 +346,33 @@ class SDUDS:
         partnerfile = partnersocket.makefile()
 
         # get the hashes that we should delete
-        delete_hashes = set()
+        delete_hashes = {}
 
         while True:
-            hexhash = partnerfile.readline().strip()
-            if hexhash=="": break
+            try:
+                hexhash, retrieval_timestamp = partnerfile.readline().split()
+            except ValueError:
+                # got just a newline, so transmission is finished
+                break
 
             binhash = binascii.hexlify(hexhash)
-            delete_hashes.add(binhash)
+            delete_hashes[binhash] = int(retrieval_timestamp)
 
         # determine which hashes the partner must delete
-        deleted_hashes = set()
+        deleted_hashes = {}
 
         for binhash in add_hashes:
-            if self.context.entrydb.entry_deleted(binhash):
-                deleted_hashes.add(binhash)
+            retrieval_timestamp = self.context.entrydb.entry_deleted(binhash)
+            
+            if not retrieval_timestamp==None:
+                deleted_hashes[binhash] = retrieval_timestamp
 
-        add_hashes -= deleted_hashes
+        add_hashes -= set(deleted_hashes)
 
         # send these hashes to the partner
-        for binhash in deleted_hashes:
+        for binhash,retrieval_timestamp in deleted_hashes.iteritems():
             hexhash = binascii.hexlify(binhash)
-            partnerfile.write(hexhash+"\n")
+            partnerfile.write(hexhash+" "+str(retrieval_timestamp)+"\n")
         partnerfile.write("\n")
         partnerfile.flush()
 
