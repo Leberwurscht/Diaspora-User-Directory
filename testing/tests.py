@@ -250,7 +250,7 @@ def delete_from_trie(profile_server, start_port=20000, erase=True):
     sduds1.terminate(erase=erase)
     sduds2.terminate(erase=erase)
 
-def delete_entry(profile_server, start_port=20000, erase=True):
+def delete_entry_by_submission(profile_server, start_port=20000, erase=True):
     """ Tests that an entry is deleted from the database and from the
         trie when an invalid webfinger address is resubmitted. """
 
@@ -261,7 +261,7 @@ def delete_entry(profile_server, start_port=20000, erase=True):
     sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
 
     ### add an entry to the first server
-    webfinger_address = "Vanish@%s:%d" % profile_server.address
+    webfinger_address = "Vanish|delete_entry_by_submission@%s:%d" % profile_server.address
     binhash = sduds1.context.process_submission(webfinger_address, submission_timestamp1)
 
     assert not binhash==None
@@ -284,6 +284,54 @@ def delete_entry(profile_server, start_port=20000, erase=True):
     sduds2.synchronize_with_partner(server)
 
     ### verify that no entry got transmitted
+    session = sduds2.context.entrydb.Session()
+    num_entries = session.query(entries.Entry).count()
+    session.close()
+
+    assert num_entries==0
+
+    ### close servers
+    sduds1.terminate(erase=erase)
+    sduds2.terminate(erase=erase)
+
+def delete_entry_by_synchronization(profile_server, start_port=20000, erase=True):
+    """ Tests that an entry is deleted from the database and from the
+        trie when an invalid webfinger address is resubmitted. """
+
+    now = int(time.time())
+    submission_timestamp1 = now - 3600*24*4
+    submission_timestamp2 = now
+
+    sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port, control_probability=0)
+
+    ### add an entry to the first server
+    webfinger_address = "Vanish|delete_entry_by_synchronization@%s:%d" % profile_server.address
+    binhash = sduds1.context.process_submission(webfinger_address, submission_timestamp1)
+
+    assert not binhash==None
+
+    ### make server2 connect to server1 for synchronisation
+    server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
+    assert not server.kicked()
+    sduds2.synchronize_with_partner(server)
+
+    ### give sduds1 some time to finish processing
+    time.sleep(1)
+
+    ### remove the entry by resubmitting the now dead address
+    binhash = sduds1.context.process_submission(webfinger_address, submission_timestamp2)
+
+    assert binhash==None
+
+    ### make server2 connect to server1 for synchronisation again
+    server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
+    assert not server.kicked()
+    sduds2.synchronize_with_partner(server)
+
+    ### give sduds1 some time to finish processing
+    time.sleep(1)
+
+    ### check that the database entry vanished at server2
     session = sduds2.context.entrydb.Session()
     num_entries = session.query(entries.Entry).count()
     session.close()

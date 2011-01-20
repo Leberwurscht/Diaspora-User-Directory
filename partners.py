@@ -328,6 +328,19 @@ class InvalidProfileOffense(Offense):
 
         Offense.__init__(self, description, **kwargs)
 
+class InvalidDeletionOffense(Offense):
+    """ hash was submitted for deletion but the profile still exists """
+
+    __mapper_args__ = {"polymorphic_identity": "InvalidDeletion"}
+
+    default_severity = 1
+
+    def __init__(self, webfinger_address, **kwargs):
+        kwargs["webfinger_address"] = webfinger_address
+        description = "The partner claimed that %s is down but it is still a valid profile." % webfinger_address
+
+        Offense.__init__(self, description, **kwargs)
+
 class NonConcurrenceOffense(Offense):
     """ the webfinger profile differs from the one the partner transmitted """
 

@@ -254,8 +254,42 @@ class Context:
             if binhash in delete_hashes:
                 del delete_hashes[binhash]
 
-        # remove the entries for delete_hashes, taking control samples
-        # TODO
+        ### remove the entries for delete_hashes, taking control samples
+        self.logger.info("delete_hashes contains %d hashes" % len(delete_hashes))
+
+        # take control samples
+        for binhash,retrieval_timestamp in delete_hashes.iteritems():
+            # the partner is only responsible if the entry was retrieved recently
+            if retrieval_timestamp > time.time()-RESPONSIBILITY_TIME_SPAN:
+                responsible = True
+
+                # Only re-retrieve the information with a certain probability
+                if random.random()>partner.control_probability: continue
+            else:
+                responsible = False
+
+                raise NotImplementedError, "Not implemented yet."
+                # ... tell the admin that an old timestamp was encourtered, and track it to its origin to enable the admin to
+                # shorten the chain of directory servers ...
+
+            # re-retrieve the information
+            existing_entry = entries.Entry.from_database(self.entrydb, hash=binhash)
+            address = existing_entry.webfinger_address
+
+            # try to get the profile
+            try:
+                entry_fetched = entries.Entry.from_webfinger_address(address, entry.submission_timestamp)
+            except Exception, error:
+                pass
+            else:
+                offense = partners.InvalidProfileOffense(address, guilty=responsible)
+                partner.add_offense(offense)
+                del delete_hashes[binhash]
+
+        # delete the remaining entries
+        for binhash,retrieval_timestamp in delete_hashes.iteritems():
+            self.logger.debug("removing %s in process_hashes" % binascii.hexlify(binhash))
+            self.entrydb.delete_entry(retrieval_timestamp, hash=binhash)
 
     def process_submission(self, webfinger_address, submission_timestamp=None):
         if submission_timestamp==None:
