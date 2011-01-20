@@ -22,12 +22,12 @@ class HashServerRequestHandler(SocketServer.BaseRequestHandler):
         identifier = f.readline().strip()
 
         # receive hexhashes
-        hashlist = []
+        hashlist = set()
 
         for hexhash in f:
             hexhash = hexhash.strip() # remove newline
             logger.debug("Hashserver received  %s from %s" % (hexhash, identifier))
-            hashlist.append(binascii.unhexlify(hexhash))
+            hashlist.add(binascii.unhexlify(hexhash))
 
         # set the data for the identifier
         self.server.set_data(identifier, hashlist)

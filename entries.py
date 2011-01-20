@@ -142,28 +142,35 @@ class EntryList(list):
     def save(self, database):
         session = database.Session()
 
-        new_hashes = []
+        added_hashes = set()
+        deleted_hashes = set()
+        ignored_hashes = set()
 
         for entry in self:
-            # ignore entry if a more recent one exists
             try:
                 existing_entry = session.query(Entry).filter_by(webfinger_address=entry.webfinger_address).one()
-                if existing_entry.submission_timestamp>entry.submission_timestamp: continue
-            except sqlalchemy.orm.exc.NoResultFound: pass
+                session.expunge(existing_entry)
+
+                if existing_entry.submission_timestamp>entry.submission_timestamp:
+                    # ignore entry if a more recent one exists already
+                    ignored_hashes.add(existing_entry.hash)
+                    continue
+                else:
+                    # delete older entries
+                    deleted_hashes.add(existing_entry.hash)
+                    database.delete_entry(hash=existing_entry.hash)
+
+            except sqlalchemy.orm.exc.NoResultFound:
+                # entry is new
+                pass
 
             # add entry to database
             session.add(entry)
+            session.commit()
 
-            hexhash = binascii.hexlify(entry.hash)
+            added_hashes.add(entry.hash)
 
-            try:
-                session.commit()
-            except sqlalchemy.exc.IntegrityError:
-                database.logger.warning("Attempted reinsertion of %s (%s) into the database" % (entry.webfinger_address, hexhash))
-            else:
-                new_hashes.append(entry.hash)
-
-        return new_hashes
+        return added_hashes, deleted_hashes, ignored_hashes
 
 # https://github.com/jcarbaugh/python-webfinger
 import pywebfinger

@@ -107,12 +107,13 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
         socketfile = self.request.makefile()
 
         ### determine which hashes the partner must delete
-        deleted_hashes = []
+        deleted_hashes = set()
 
         for binhash in add_hashes:
             if context.entrydb.entry_deleted(binhash):
-                add_hashes.remove(binhash)
-                deleted_hashes.append(binhash)
+                deleted_hashes.add(binhash)
+
+        add_hashes -= deleted_hashes
 
         ### send these hashes to the partner
         for binhash in deleted_hashes:
@@ -122,14 +123,14 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
         socketfile.flush()
 
         ### receive the hashes we should delete
-        delete_hashes = []
+        delete_hashes = set()
 
         while True:
             hexhash = socketfile.readline().strip()
             if hexhash=="": break
 
             binhash = binascii.hexlify(hexhash)
-            delete_hashes.append(binhash)
+            delete_hashes.add(binhash)
 
         ### log the conversation
         partner.log_conversation(len(add_hashes), len(delete_hashes))
@@ -164,7 +165,7 @@ class Context:
             the web server of the partner, check if everything is valid, and update the own
             database. """
 
-        # TODO: delete_hashes
+        self.logger.info("Start processing hashes - add_hashes: %d, delete_hashes: %d" % (len(add_hashes), len(delete_hashes)))
 
         # get database entries
         try:
@@ -231,12 +232,19 @@ class Context:
 
                 new_entries.append(entry_fetched)
 
-        # add valid entries to database
+        # add newly fetched entries to list
         entrylist.extend(new_entries)
 
         # add valid entries to database
-        hashes = entrylist.save(self.entrydb)
-        self.hashtrie.add(hashes)
+        added_hashes, deleted_hashes, ignored_hashes = entrylist.save(self.entrydb)
+        self.hashtrie.add(added_hashes)
+        self.hashtrie.delete(deleted_hashes)
+
+        delete_hashes -= deleted_hashes
+        delete_hashes -= ignored_hashes
+
+        # remove the entries for delete_hashes, taking control samples
+        # TODO
 
     def process_submission(self, webfinger_address, submission_timestamp=None):
         if submission_timestamp==None:
@@ -274,11 +282,11 @@ class Context:
         # add new entry
         entrylist = entries.EntryList([entry])
 
-        hashes = entrylist.save(self.entrydb)
-        self.hashtrie.add(hashes)
+        add_hashes, delete_hashes, ignore_hashes = entrylist.save(self.entrydb)
+        self.hashtrie.add(add_hashes)
 
-        assert len(hashes)==1
-        binhash = hashes[0]
+        assert len(add_hashes)==1
+        binhash, = add_hashes
 
         return binhash
 
@@ -331,22 +339,23 @@ class SDUDS:
         partnerfile = partnersocket.makefile()
 
         # get the hashes that we should delete
-        delete_hashes = []
+        delete_hashes = set()
 
         while True:
             hexhash = partnerfile.readline().strip()
             if hexhash=="": break
 
             binhash = binascii.hexlify(hexhash)
-            delete_hashes.append(binhash)
+            delete_hashes.add(binhash)
 
         # determine which hashes the partner must delete
-        deleted_hashes = []
+        deleted_hashes = set()
 
         for binhash in add_hashes:
             if self.context.entrydb.entry_deleted(binhash):
-                add_hashes.remove(binhash)
-                deleted_hashes.append(binhash)
+                deleted_hashes.add(binhash)
+
+        add_hashes -= deleted_hashes
 
         # send these hashes to the partner
         for binhash in deleted_hashes:
