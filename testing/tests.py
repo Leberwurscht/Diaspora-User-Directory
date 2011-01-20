@@ -194,6 +194,9 @@ def twoway_synchronization(profile_server, start_port=20000, num_entries=30, era
     assert not server.kicked()
     sduds2.synchronize_with_partner(server)
 
+    ### give sduds1 some time to finish processing
+    time.sleep(1)
+
     ### verify that both servers have got all entries
     hashes1 = set()
     session = sduds1.context.entrydb.Session()
@@ -353,6 +356,9 @@ def overwrite_entry_by_synchronization(profile_server, start_port=20000, erase=T
     server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
     sduds2.synchronize_with_partner(server)
+
+    ### give sduds1 some time to finish processing
+    time.sleep(1)
 
     ### overwrite the entry by resubmitting the address
     binhash2 = sduds1.context.process_submission(webfinger_address, submission_timestamp2)
