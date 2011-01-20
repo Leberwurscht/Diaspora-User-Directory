@@ -134,7 +134,7 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
                 # got just a newline, so transmission is finished
                 break
 
-            binhash = binascii.hexlify(hexhash)
+            binhash = binascii.unhexlify(hexhash)
             delete_hashes[binhash] = int(retrieval_timestamp)
 
         ### log the conversation
@@ -227,6 +227,7 @@ class Context:
                 offense = partners.InvalidProfileOffense(address, error, guilty=responsible)
                 partner.add_offense(offense)
                 entrylist.remove(entry)
+                continue
 
                 # TODO: remove entry from own database
 
@@ -355,7 +356,7 @@ class SDUDS:
                 # got just a newline, so transmission is finished
                 break
 
-            binhash = binascii.hexlify(hexhash)
+            binhash = binascii.unhexlify(hexhash)
             delete_hashes[binhash] = int(retrieval_timestamp)
 
         # determine which hashes the partner must delete
