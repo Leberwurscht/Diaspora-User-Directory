@@ -78,7 +78,7 @@ class EntryList(list):
 
         data = urllib.urlencode(data)
 
-        json_string = urllib.urlopen("http://%s:%d/entrylist" % address, data).read()
+        json_string = urllib.urlopen(address+"entrylist", data).read()
 
         try:
             entrylist = cls.from_json(json_string)
@@ -142,22 +142,35 @@ class EntryList(list):
     def save(self, database):
         session = database.Session()
 
-        new_hashes = []
+        added_hashes = set()
+        deleted_hashes = set()
+        ignored_hashes = set()
 
         for entry in self:
-            hexhash = binascii.hexlify(entry.hash)
+            try:
+                existing_entry = session.query(Entry).filter_by(webfinger_address=entry.webfinger_address).one()
+                session.expunge(existing_entry)
+
+                if existing_entry.submission_timestamp>entry.submission_timestamp:
+                    # ignore entry if a more recent one exists already
+                    ignored_hashes.add(existing_entry.hash)
+                    continue
+                else:
+                    # delete older entries
+                    deleted_hashes.add(existing_entry.hash)
+                    database.delete_entry(entry.retrieval_timestamp, hash=existing_entry.hash)
+
+            except sqlalchemy.orm.exc.NoResultFound:
+                # entry is new
+                pass
 
             # add entry to database
             session.add(entry)
+            session.commit()
 
-            try:
-                session.commit()
-            except sqlalchemy.exc.IntegrityError:
-                database.logger.warning("Attempted reinsertion of %s (%s) into the database" % (entry.webfinger_address, hexhash))
-            else:
-                new_hashes.append(entry.hash)
+            added_hashes.add(entry.hash)
 
-        return new_hashes
+        return added_hashes, deleted_hashes, ignored_hashes
 
 # https://github.com/jcarbaugh/python-webfinger
 import pywebfinger
@@ -179,6 +192,17 @@ class Entry(DatabaseObject):
     captcha_signature = sqlalchemy.Column(lib.Binary)
     submission_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
     retrieval_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
+
+    @classmethod
+    def from_database(cls, database, **kwargs):
+        session = database.Session()
+
+        try:
+            entry = session.query(Entry).filter_by(**kwargs).one()
+        except sqlalchemy.orm.exc.NoResultFound:
+            entry = None
+
+        return entry
 
     @classmethod
     def from_webfinger_address(cls, webfinger_address, submission_timestamp):
@@ -250,6 +274,12 @@ class Entry(DatabaseObject):
 
         return r
 
+class DeletedEntry(DatabaseObject):
+    __tablename__ = 'deleted_entries'
+
+    hash = sqlalchemy.Column(lib.Binary, primary_key=True)
+    retrieval_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
+
 ####
 # database class
 
@@ -262,7 +292,8 @@ class Database:
 
         self.dbfile = "entries"+suffix+".sqlite"
 
-        if erase: self.erase()
+        if erase and os.path.exists(self.dbfile):
+            os.remove(self.dbfile)
 
         engine = sqlalchemy.create_engine("sqlite:///"+self.dbfile)
         self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
@@ -270,7 +301,39 @@ class Database:
         # create tables if they don't exist
         DatabaseObject.metadata.create_all(engine)
 
-    def erase(self):
+    def delete_entry(self, retrieval_timestamp, **kwargs):
+        session = self.Session()
+
+        # delete entry from database
+        try:
+            entry = session.query(Entry).filter_by(**kwargs).one()
+        except sqlalchemy.orm.exc.NoResultFound:
+            return None
+
+        binhash = entry.hash
+        session.delete(entry)
+
+        # add entry to deleted entries list
+        deleted_entry = DeletedEntry(hash=binhash, retrieval_timestamp=retrieval_timestamp)
+        session.add(deleted_entry)
+
+        session.commit()
+
+        return binhash
+
+    def entry_deleted(self, binhash):
+        session = self.Session()
+
+        try:
+            retrieval_timestamp, = session.query(DeletedEntry.retrieval_timestamp).filter_by(hash=binhash).one()
+            return retrieval_timestamp
+        except sqlalchemy.orm.exc.NoResultFound:
+            return None
+        finally:
+            session.close()
+
+    def close(self, erase=False):
         if hasattr(self, "Session"): self.Session.close_all()
 
-        if os.path.exists(self.dbfile): os.remove(self.dbfile)
+        if erase and os.path.exists(self.dbfile):
+            os.remove(self.dbfile)

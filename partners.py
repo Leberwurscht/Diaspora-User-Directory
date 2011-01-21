@@ -7,7 +7,7 @@
 import logging
 
 import os, sys, time, urllib
-import hashlib
+import hashlib, json
 import socket
 
 # initialize database
@@ -30,8 +30,7 @@ class Partner(DatabaseObject):
     __mapper_args__ = {'polymorphic_on': partner_type}
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    host = sqlalchemy.Column(lib.Text)
-    port = sqlalchemy.Column(sqlalchemy.Integer)
+    address = sqlalchemy.Column(lib.Text)
     control_probability = sqlalchemy.Column(sqlalchemy.Float)
 
     # for authenticating to the partner
@@ -129,7 +128,7 @@ class Partner(DatabaseObject):
         severity_sum = per_address_severity_sum + address_independent_severity_sum
 
         # calculate total number of received entries
-        aggregator = sqlalchemy.sql.functions.sum(Conversation.received)
+        aggregator = sqlalchemy.sql.functions.sum(Conversation.add)
         query = Session.query(aggregator.label("received_sum"))
         query = query.filter(Conversation.partner == self)
         query = query.filter(Conversation.timestamp >= timestamp_limit)
@@ -167,16 +166,28 @@ class Partner(DatabaseObject):
         # exception is caught.
         raise PartnerKickedError
 
-    def log_conversation(self, received):
+    def log_conversation(self, add, delete):
         Session = self.database.Session
 
-        conversation = Conversation(partner=self, received=received, timestamp=int(time.time()))
+        conversation = Conversation(partner=self, add=add, delete=delete, timestamp=int(time.time()))
 
         Session.add(conversation)
         Session.commit()
 
+    def synchronization_address(self):
+        data = urllib.urlopen(self.address+"synchronization_address").read()
+        host, control_port = json.loads(data)
+        host = host.encode("utf8")
+
+        return (host, control_port)
+    
+    def password_valid(self, password):
+        comparehash = hashlib.sha1(password).digest()
+        
+        return comparehash==self.passwordhash
+
     def __str__(self):
-        r = "%s %s (%s:%d)" % (self.partner_type, self.partner_name, self.host, self.port)
+        r = "%s %s (%s)" % (self.partner_type, self.partner_name, self.address)
 
         if self.kicked():
             r += " [K]"
@@ -185,40 +196,9 @@ class Partner(DatabaseObject):
 
 class Server(Partner):
     __mapper_args__ = {'polymorphic_identity': 'server'}
-    
-    def authenticated_synchronization_socket(self):
-        # get synchronization port
-        data = urllib.urlopen("http://"+self.host+":"+str(self.port)+"/synchronization_port").read()
-        synchronization_port = int(data)
-
-        # connect
-        address = (self.host, synchronization_port)
-        asocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        asocket.connect(address)
-
-        # authenticate
-        asocket.sendall(self.identity+"\n")
-        asocket.sendall(self.password+"\n")
-
-        f = asocket.makefile()
-        answer = f.readline().strip()
-        f.close()
-
-        if answer=="OK":
-            self.database.logger.info("Successfully authenticated to server %s." % str(address))
-            return asocket
-        else:
-            self.database.logger.error("Authentication to server %s failed." % str(address))
-            asocket.close()
-            return False
 
 class Client(Partner):
     __mapper_args__ = {'polymorphic_identity': 'client'}
-    
-    def password_valid(self, password):
-        comparehash = hashlib.sha1(password).digest()
-        
-        return comparehash==self.passwordhash
 
 ###
 
@@ -230,7 +210,8 @@ class Conversation(DatabaseObject):
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
     partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'))
     partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
-    received = sqlalchemy.Column(sqlalchemy.Integer)
+    add = sqlalchemy.Column(sqlalchemy.Integer)
+    delete = sqlalchemy.Column(sqlalchemy.Integer)
     timestamp = sqlalchemy.Column(sqlalchemy.Integer)
 
 # Violations
@@ -347,6 +328,32 @@ class InvalidProfileOffense(Offense):
 
         Offense.__init__(self, description, **kwargs)
 
+class DeleteExistingOffense(Offense):
+    """ hash was submitted for deletion but the profile still exists """
+
+    __mapper_args__ = {"polymorphic_identity": "DeleteExisting"}
+
+    default_severity = 1
+
+    def __init__(self, webfinger_address, **kwargs):
+        kwargs["webfinger_address"] = webfinger_address
+        description = "The partner claimed that %s is deleted but it is still there." % webfinger_address
+
+        Offense.__init__(self, description, **kwargs)
+
+class DeleteChangedOffense(Offense):
+    """ hash was submitted for deletion when the profile changed but the new profile was not sent """
+
+    __mapper_args__ = {"polymorphic_identity": "DeleteChanged"}
+
+    default_severity = 1
+
+    def __init__(self, webfinger_address, **kwargs):
+        kwargs["webfinger_address"] = webfinger_address
+        description = "The partner claimed that %s is deleted but it just changed." % webfinger_address
+
+        Offense.__init__(self, description, **kwargs)
+
 class NonConcurrenceOffense(Offense):
     """ the webfinger profile differs from the one the partner transmitted """
 
@@ -371,7 +378,7 @@ class NonConcurrenceOffense(Offense):
 # custom exceptions
 
 class PartnerKickedError(Exception):
-    """ The partner got violation """
+    """ The partner got a violation """
     pass
 
 ####
@@ -385,7 +392,8 @@ class Database:
 
         self.dbfile = "partners"+suffix+".sqlite"
 
-        if erase: self.erase()
+        if erase and os.path.exists(self.dbfile):
+            os.remove(self.dbfile)
 
         engine = sqlalchemy.create_engine("sqlite:///"+self.dbfile)
         self.Session = sqlalchemy.orm.scoped_session(sqlalchemy.orm.sessionmaker(bind=engine))
@@ -393,10 +401,11 @@ class Database:
         # create tables if they don't exist
         DatabaseObject.metadata.create_all(engine)
 
-    def erase(self):
+    def close(self, erase=False):
         if hasattr(self, "Session"): self.Session.close_all()
 
-        if os.path.exists(self.dbfile): os.remove(self.dbfile)
+        if erase and os.path.exists(self.dbfile):
+            os.remove(self.dbfile)
 
 ### command line interface
 if __name__=="__main__":
@@ -417,7 +426,7 @@ if __name__=="__main__":
                 print >>sys.stderr, "ERROR: Passwords do not match."
 
     parser = optparse.OptionParser(
-        usage = "%prog -a (-s|-c) HOST PORT PARTNER_NAME IDENTITY [CONTROL_PROBABILITY]\nOr: %prog -d PARTNER_NAME\nOr: %prog -l [-s|-c]",
+        usage = "%prog -a (-s|-c) ADDRESS PARTNER_NAME IDENTITY [CONTROL_PROBABILITY]\nOr: %prog -d PARTNER_NAME\nOr: %prog -l [-s|-c]",
         description="manage the synchronization partners list"
     )
     
@@ -450,15 +459,9 @@ if __name__=="__main__":
             sys.exit(1)
 
         try:
-            host,port,partner_name,identity = args[:4]
+            address,partner_name,identity = args[:3]
         except ValueError:
-            print >>sys.stderr, "ERROR: Need host, port, partner name and identity"
-            sys.exit(1)
-            
-        try:
-            port = int(port)
-        except ValueError:
-            print >>sys.stderr, "ERROR: Invalid port."
+            print >>sys.stderr, "ERROR: Need address, partner name and identity"
             sys.exit(1)
 
         control_probability = 0.1
@@ -492,8 +495,7 @@ if __name__=="__main__":
             old_partner.delete()
 
         kwargs = {
-            "host": host,
-            "port": port,
+            "address": address,
             "control_probability": control_probability,
             "identity": identity,
             "password": password,
@@ -502,11 +504,11 @@ if __name__=="__main__":
         }
 
         if options.server:
-            print "Adding server \"%s\"." % host
+            print "Adding server \"%s\"." % address
 
             partner = Server(database, **kwargs)
         elif options.client:
-            print "Adding server \"%s\"." % host
+            print "Adding client \"%s\"." % address
 
             partner = Client(database, **kwargs)
 
