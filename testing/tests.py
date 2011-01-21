@@ -295,8 +295,8 @@ def delete_entry_by_submission(profile_server, start_port=20000, erase=True):
     sduds2.terminate(erase=erase)
 
 def delete_entry_by_synchronization(profile_server, start_port=20000, erase=True):
-    """ Tests that an entry is deleted from the database and from the
-        trie when an invalid webfinger address is resubmitted. """
+    """ Tests that an entry is deleted from the database when a partner claims
+        that the profile vanished. """
 
     now = int(time.time())
     submission_timestamp1 = now - 3600*24*4
