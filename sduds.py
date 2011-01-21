@@ -257,6 +257,9 @@ class Context:
         ### remove the entries for delete_hashes, taking control samples
         self.logger.info("delete_hashes contains %d hashes" % len(delete_hashes))
 
+        # a list of new entries that might be collected when control samples are taken
+        entrylist = entries.EntryList()
+
         # take control samples
         for binhash,retrieval_timestamp in delete_hashes.iteritems():
             # the partner is only responsible if the entry was retrieved recently
@@ -279,12 +282,28 @@ class Context:
             # try to get the profile
             try:
                 entry_fetched = entries.Entry.from_webfinger_address(address, entry.submission_timestamp)
+                binhash_fetched = entry_fetched.hash
             except Exception, error:
-                pass
-            else:
-                offense = partners.InvalidProfileOffense(address, guilty=responsible)
-                partner.add_offense(offense)
+                binhash_fetched = None
+
+            if binhash_fetched==binhash:
+                # profile still exists and is unchanged
                 del delete_hashes[binhash]
+                offense = partners.DeleteExistingOffense(address, guilty=responsible)
+                partner.add_offense(offense)
+
+            elif not binhash_fetched==None:
+                # profile still exists but changed
+                del delete_hashes[binhash]
+                entrylist.append(fetched_entry)
+
+                offense = partners.DeleteChangedOffense(address, guilty=responsible)
+                partner.add_offense(offense)
+
+        # save the new entries collected during taking the control samples to the database
+        added_hashes, deleted_hashes, ignored_hashes = entrylist.save(self.entrydb)
+        self.hashtrie.add(added_hashes)
+        self.hashtrie.delete(deleted_hashes)
 
         # delete the remaining entries
         for binhash,retrieval_timestamp in delete_hashes.iteritems():

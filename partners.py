@@ -328,16 +328,29 @@ class InvalidProfileOffense(Offense):
 
         Offense.__init__(self, description, **kwargs)
 
-class InvalidDeletionOffense(Offense):
+class DeleteExistingOffense(Offense):
     """ hash was submitted for deletion but the profile still exists """
 
-    __mapper_args__ = {"polymorphic_identity": "InvalidDeletion"}
+    __mapper_args__ = {"polymorphic_identity": "DeleteExisting"}
 
     default_severity = 1
 
     def __init__(self, webfinger_address, **kwargs):
         kwargs["webfinger_address"] = webfinger_address
-        description = "The partner claimed that %s is down but it is still a valid profile." % webfinger_address
+        description = "The partner claimed that %s is deleted but it is still there." % webfinger_address
+
+        Offense.__init__(self, description, **kwargs)
+
+class DeleteChangedOffense(Offense):
+    """ hash was submitted for deletion when the profile changed but the new profile was not sent """
+
+    __mapper_args__ = {"polymorphic_identity": "DeleteChanged"}
+
+    default_severity = 1
+
+    def __init__(self, webfinger_address, **kwargs):
+        kwargs["webfinger_address"] = webfinger_address
+        description = "The partner claimed that %s is deleted but it just changed." % webfinger_address
 
         Offense.__init__(self, description, **kwargs)
 
