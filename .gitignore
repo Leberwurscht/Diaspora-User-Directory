@@ -31,6 +31,8 @@ partners*.sqlite-journal
 /sks
 /sks_add_mail
 
+/test
+
 # sockets
 server*.ocaml2py.sock
 client*.ocaml2py.sock
