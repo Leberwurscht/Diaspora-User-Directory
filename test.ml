@@ -59,14 +59,52 @@ let rec tunnel_encode in_fd out_fd =
 	let cout = Unix.out_channel_of_descr out_fd in
 	tunnel_encode_rec cin cout;;
 
-(* callbacks *)
-
+(* a function to convert a number to a hash and send it to an output channel *)
 let output_hash cout number =
 	let binhash = RMisc.truncate (ZZp.to_bytes number) KeyHash.hash_bytes in
 	let hexhash = KeyHash.hexify binhash in
 	output_string cout hexhash;
 	output_string cout "\n";
 	flush cout;;
+
+(* functions for each command *)
+let rec add_rec txn cin = 
+	let hexhash = input_line cin in
+	let len = String.length hexhash in
+	if (len=32) then (
+		let binary = KeyHash.dehexify hexhash in
+		let modulo = ZZp.of_bytes binary in
+		PTree.insert (get_ptree ()) txn modulo;
+		add_rec txn cin
+	);;
+
+let add cin_fd =
+	let cin = Unix.in_channel_of_descr cin_fd in
+	let txn = new_txnopt () in
+
+	add_rec txn cin;
+
+	PTree.clean txn (get_ptree ());
+	commit_txnopt txn;;
+
+let rec delete_rec txn cin = 
+	let hexhash = input_line cin in
+	let len = String.length hexhash in
+	if (len=32) then (
+		let binary = KeyHash.dehexify hexhash in
+		let modulo = ZZp.of_bytes binary in
+		PTree.delete (get_ptree ()) txn modulo;
+		delete_rec txn cin
+	);;
+
+let delete cin_fd =
+	let cin = Unix.in_channel_of_descr cin_fd in
+	let txn = new_txnopt () in
+
+	delete_rec txn cin;
+
+	PTree.clean txn (get_ptree ());
+	commit_txnopt txn;;
 
 let synchronize handler encoded_cin encoded_cout =
 	(* create a channel decoded_cin that gets the decoded data from stdin *)
@@ -107,11 +145,12 @@ let synchronize handler encoded_cin encoded_cout =
 	output_string cout "\n";
 	flush cout;;
 
+(* dispatch commands *)
 while true do (
 	let line = input_line stdin in
 	match line with
-	  "ADD" -> print_endline "OK"
-	| "DELETE" -> print_endline "OK"
+	  "ADD" -> print_endline "OK"; add Unix.stdin; print_endline "DONE"
+	| "DELETE" -> print_endline "OK"; delete Unix.stdin; print_endline "DONE"
 	| "SYNCHRONIZE_AS_SERVER" -> print_endline "OK"; synchronize Server.handle Unix.stdin Unix.stdout; print_endline "DONE"
 	| "SYNCHRONIZE_AS_CLIENT" -> print_endline "OK"; synchronize Client.handle Unix.stdin Unix.stdout; print_endline "DONE"
 	| "EXIT" -> closedb (); prerr_string databasedir; prerr_endline " EXITING"; exit 0

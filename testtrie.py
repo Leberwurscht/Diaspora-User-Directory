@@ -1,9 +1,30 @@
 #!/usr/bin/env python
 
 import subprocess
+import shutil
+
+try:
+    shutil.rmtree("PTree1")
+    shutil.rmtree("PTree2")
+except: pass
 
 t1 = subprocess.Popen(["./test", "PTree1", "ptree1"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 t2 = subprocess.Popen(["./test", "PTree2", "ptree2"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+
+t1.stdin.write("ADD\n")
+assert t1.stdout.readline()=="OK\n"
+t1.stdin.write("11223344556677881122334455667788\n")
+t1.stdin.write("112233445566778811223344556677aa\n")
+t1.stdin.write("\n")
+t1.stdin.flush()
+assert t1.stdout.readline()=="DONE\n"
+
+t1.stdin.write("DELETE\n")
+assert t1.stdout.readline()=="OK\n"
+t1.stdin.write("11223344556677881122334455667788\n")
+t1.stdin.write("\n")
+t1.stdin.flush()
+assert t1.stdout.readline()=="DONE\n"
 
 t1.stdin.write("SYNCHRONIZE_AS_SERVER\n")
 t1.stdin.flush()
