@@ -47,10 +47,28 @@ while channels:
 
         if message_length==0: channels.remove(cin)
 
+assert t1.stdout.readline()=="NUMBERS\n"
+assert t2.stdout.readline()=="NUMBERS\n"
+
+print "synchronization finished, getting hashes"
+
+while True:
+    hexhash = t1.stdout.readline().strip()
+    if not hexhash: break
+
+    print "got", hexhash
+
 assert t1.stdout.readline()=="DONE\n"
+
+while True:
+    hexhash = t2.stdout.readline().strip()
+    if not hexhash: break
+
+    print "got", hexhash
+
 assert t2.stdout.readline()=="DONE\n"
 
-print "communication finished"
+# exit
 
 t1.stdin.write("EXIT\n")
 t1.stdin.flush()

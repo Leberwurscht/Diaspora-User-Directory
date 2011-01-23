@@ -60,6 +60,14 @@ let rec tunnel_encode in_fd out_fd =
 	tunnel_encode_rec cin cout;;
 
 (* callbacks *)
+
+let output_hash cout number =
+	let binhash = RMisc.truncate (ZZp.to_bytes number) KeyHash.hash_bytes in
+	let hexhash = KeyHash.hexify binhash in
+	output_string cout hexhash;
+	output_string cout "\n";
+	flush cout;;
+
 let synchronize handler encoded_cin encoded_cout =
 	(* create a channel decoded_cin that gets the decoded data from stdin *)
 	let cin_read, cin_write = Unix.pipe() in
@@ -76,17 +84,28 @@ let synchronize handler encoded_cin encoded_cout =
 	let cout = (new Channel.sys_out_channel decoded_cout) in
 
 	(* synchronization *)
-	let data = handler (get_ptree ()) cin cout in
+	let numbers = handler (get_ptree ()) cin cout in
 
-	(* close connections *)
+	(* close tunnels *)
 	close_in decoded_cin;
 	close_out decoded_cout;
 
 	Thread.join decoding_thread;
 	Thread.join encoding_thread;
 
-	(* process data *)
-	ignore(data);;
+	(* get output channel to transmit the hashes *)
+	let cout = Unix.out_channel_of_descr encoded_cout in
+
+	(* announce numbers *)
+	output_string cout "NUMBERS\n";
+	flush cout;
+
+	(* send numbers *)
+	ZSet.iter ~f:(fun number -> output_hash cout number) numbers;
+
+	(* send newline to indicate that we're done *)
+	output_string cout "\n";
+	flush cout;;
 
 while true do (
 	let line = input_line stdin in
@@ -95,6 +114,6 @@ while true do (
 	| "DELETE" -> print_endline "OK"
 	| "SYNCHRONIZE_AS_SERVER" -> print_endline "OK"; synchronize Server.handle Unix.stdin Unix.stdout; print_endline "DONE"
 	| "SYNCHRONIZE_AS_CLIENT" -> print_endline "OK"; synchronize Client.handle Unix.stdin Unix.stdout; print_endline "DONE"
-	| "EXIT" -> closedb (); prerr_string databasedir; prerr_endline "->EXIT"; exit 0
+	| "EXIT" -> closedb (); prerr_string databasedir; prerr_endline " EXITING"; exit 0
 	| _ -> print_endline "ERROR"
 ) done;;
