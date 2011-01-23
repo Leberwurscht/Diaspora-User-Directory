@@ -6,203 +6,126 @@ import threading, socket
 import os, binascii
 
 import subprocess
-import time, uuid, select
+import select
 
 import shutil
 
-import SocketServer, lib
+def _forward_messages(partnersocket, cin, cout):
+    """ Forwards messages from a socket to a Popened process. cin and cout are stdin and stdout for the process.
+        A message is built of an one byte announcement containing the message length and then the message itself. """
+    socketfile = partnersocket.makefile()
 
-class HashServerRequestHandler(SocketServer.BaseRequestHandler):
-    def handle(self):
-        logger = self.server.logger
+    channels = [socketfile, cout]
 
-        f = self.request.makefile()
+    while channels:
+        inputready,outputready,exceptready = select.select(channels,[],[])
 
-        # get identifier
-        identifier = f.readline().strip()
+        for inputfile in inputready:
+            if inputfile==socketfile:
+                outputfile=cin
+            elif inputfile==cout:
+                outputfile=socketfile
 
-        # receive hexhashes
-        hashlist = set()
+            announcement = inputfile.read(1)
+            message_length = ord(announcement)
 
-        for hexhash in f:
-            hexhash = hexhash.strip() # remove newline
-            logger.debug("Hashserver received  %s from %s" % (hexhash, identifier))
-            hashlist.add(binascii.unhexlify(hexhash))
+            message = ""
+            while len(message)<message_length:
+                message += inputfile.read(message_length - len(message))
 
-        # set the data for the identifier
-        self.server.set_data(identifier, hashlist)
+            outputfile.write(announcement)
+            outputfile.write(message)
+            outputfile.flush()
 
-        logger.debug("Data ready for %s in HashServer" % identifier)
+            if message_length==0: channels.remove(inputfile)
 
-class HashServer(lib.NotifyingServer):
-    address_family = socket.AF_UNIX
-
-    def __init__(self, address):
-        if os.path.exists(address): os.remove(address)
-
-        lib.NotifyingServer.__init__(self, address, HashServerRequestHandler)
-
-        self.logger = logging.getLogger(str(self.server_address))
-
-def tunnel(partnersocket, ocamlsocket):
-    """ Tunnels traffic from one socket over the other socket, so that the other end will
-        know that the connection was closed on the socket to be tunneled without the other
-        socket being closed. """
-
-    sockets = [partnersocket, ocamlsocket]
-
-    message_length = None
-    message_buffer = ""
-
-    while sockets:
-        # wait until at least one socket has data ready
-        inputready,outputready,exceptready = select.select(sockets,[],[])
-
-        for input_socket in inputready:
-            # receive data
-            data = input_socket.recv(255)
-
-            if input_socket==partnersocket:
-                # add data to the buffer
-                message_buffer += data
-
-                while True:
-                    # check if a message is announced
-                    if message_length==None and len(message_buffer)>0:
-                        message_length = ord(message_buffer[0])
-                        message_buffer = message_buffer[1:]
-
-                    # check if we can stop listening on partnersocket
-                    if message_length==0:
-                        sockets.remove(partnersocket)
-                        break
-
-                    # check if an announced message if fully transmitted
-                    if message_length and len(message_buffer)>=message_length:
-                        ocamlsocket.sendall(message_buffer[:message_length])
-                        message_buffer = message_buffer[message_length:]
-                        message_length = None
-                    else:
-                        break
-
-            elif input_socket==ocamlsocket:
-                announcement = chr(len(data))
-                partnersocket.sendall(announcement+data)
-
-                if announcement=="\0":
-                    sockets.remove(ocamlsocket)
+    socketfile.close()
 
 class HashTrie:
     def __init__(self, suffix="", erase=False):
-        self.logger = logging.getLogger("hashtrie"+suffix)
+        self.logger = logging.getLogger("HashTrie"+suffix)
 
         self.dbdir = "PTree"+suffix
-
-        self.server_socket = "server"+suffix+".ocaml2py.sock"
-        self.client_socket = "client"+suffix+".ocaml2py.sock"
-        self.add_socket = "add"+suffix+".ocaml2py.sock"
-        self.delete_socket = "delete"+suffix+".ocaml2py.sock"
-        hashes_socket = "hashes"+suffix+".ocaml2py.sock"
-
-        self.opened = False
+        logfile = "trieserver"+suffix
 
         # erase database if requested
-
         if erase and os.path.exists(self.dbdir):
             shutil.rmtree(self.dbdir)
-
-        # delete remaining unix domain sockets
-        if os.path.exists(self.server_socket): os.remove(self.server_socket)
-        if os.path.exists(self.client_socket): os.remove(self.client_socket)
-        if os.path.exists(self.add_socket): os.remove(self.add_socket)
-        if os.path.exists(self.delete_socket): os.remove(self.delete_socket)
-
-        # a hashtrie is opened until close() is called
-        self.opened = True
 
         # run trieserver
-        self.trieserver = subprocess.Popen(["./trieserver", self.dbdir, self.server_socket, self.client_socket, self.add_socket, self.delete_socket, hashes_socket])
+        self.trieserver = subprocess.Popen(["./trieserver", self.dbdir, logfile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
-        # run HashServer
-        self.hashserver = HashServer(hashes_socket)
-        hashserver_thread = threading.Thread(target=self.hashserver.serve_forever)
-        hashserver_thread.start()
+        self.lock = threading.Lock()
 
-        # wait until all unix domain sockets are set up by trieserver
+    def _synchronize_common(self, partnersocket, command):
+        self.lock.acquire()
+
+        # conduct the synchronization
+        self.trieserver.stdin.write(command+"\n")
+        self.trieserver.stdin.flush()
+
+        assert self.trieserver.stdout.readline()=="OK\n"
+
+        _forward_messages(partnersocket, self.trieserver.stdin, self.trieserver.stdout)
+
+        # get the result of the synchronization
+        assert self.trieserver.stdout.readline()=="NUMBERS\n"
+       
+        binhashes = set()
+
         while True:
-            time.sleep(0.1)
+            hexhash = self.trieserver.stdout.readline().strip()
+            if not hexhash: break
 
-            if not os.path.exists(self.server_socket): continue
-            if not os.path.exists(self.client_socket): continue
-            if not os.path.exists(self.add_socket): continue
-            if not os.path.exists(self.delete_socket): continue
+            binhash = binascii.unhexlify(hexhash)
+            binhashes.add(binhash)
 
-            break
+        assert self.trieserver.stdout.readline()=="DONE\n"
 
-    def _synchronize_common(self, partnersocket, address):
-        # connect to the unix domain socket the trieserver listens on
-        self.logger.debug("connect to %s" % address)
-        ocamlsocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        ocamlsocket.connect(address)
+        self.lock.release()
 
-        # transmit an identifier to be able to get the right entries from the hashserver
-        identifier = uuid.uuid4().hex
-        ocamlsocket.sendall(identifier+"\n")
-        self.logger.debug("sent identifier %s to %s" % (identifier, address))
+        return binhashes
 
-        # forward traffic on network socket to unix domain socket
-        tunnel(partnersocket, ocamlsocket)
+    def synchronize_as_server(self, partnersocket):
+        return self._synchronize_common(partnersocket, "SYNCHRONIZE_AS_SERVER")
 
-        # close sockets
-        ocamlsocket.close()
+    def synchronize_as_client(self, partnersocket):
+        return self._synchronize_common(partnersocket, "SYNCHRONIZE_AS_CLIENT")
 
-        # await received hashes from the ocaml component (will block)
-        self.logger.debug("Waiting for hashes for identifier %s on %s" % (identifier, address))
-        hashlist = self.hashserver.get_data(identifier)
-        self.logger.debug("Got %d hashes for identifier %s on %s" % (len(hashlist), identifier, address))
+    def _add_delete_common(self, binhashes, command):
+        self.lock.acquire()
 
-        return hashlist
+        self.trieserver.stdin.write(command+"\n")
+        assert self.trieserver.stdout.readline()=="OK\n"
 
-    def synchronize_with_server(self, serversocket):
-        return self._synchronize_common(serversocket, self.client_socket)
+        for binhash in binhashes:
+            hexhash = binascii.hexlify(binhash)
+            self.trieserver.stdin.write(hexhash+"\n")
+        self.trieserver.stdin.write("\n")
+        self.trieserver.stdin.flush()
 
-    def synchronize_with_client(self, clientsocket):
-        return self._synchronize_common(clientsocket, self.server_socket)
+        assert self.trieserver.stdout.readline()=="DONE\n"
+
+        self.lock.release()
 
     def add(self, binhashes):
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.connect(self.add_socket)
-
-        for binhash in binhashes:
-            hexhash = binascii.hexlify(binhash)
-            s.sendall(hexhash+"\n")
-
-        s.close()
+        self._add_delete_common(binhashes, "ADD")
 
     def delete(self, binhashes):
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.connect(self.delete_socket)
-
-        for binhash in binhashes:
-            hexhash = binascii.hexlify(binhash)
-            s.sendall(hexhash+"\n")
-
-        s.close()
+        self._add_delete_common(binhashes, "DELETE")
 
     def close(self, erase=False):
-        if not self.opened: return
+        if not self.trieserver: return
 
-        self.trieserver.terminate()
-        self.hashserver.terminate()
+        self.lock.acquire()
 
-        time.sleep(1.0)
+        self.trieserver.stdin.write("EXIT\n")
+        self.trieserver.stdin.flush()
 
-        if os.path.exists(self.server_socket): os.remove(self.server_socket)
-        if os.path.exists(self.client_socket): os.remove(self.client_socket)
-        if os.path.exists(self.add_socket): os.remove(self.add_socket)
-        if os.path.exists(self.delete_socket): os.remove(self.delete_socket)
-
-        self.opened = False
+        self.trieserver.wait()
+        self.trieserver = None
 
         if erase and os.path.exists(self.dbdir):
             shutil.rmtree(self.dbdir)
+
+        self.lock.release()

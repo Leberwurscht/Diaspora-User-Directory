@@ -100,7 +100,7 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
 
         ### get the set of hashes the partner has but we haven't (conduct actual synchronization)
         context.logger.debug("conducting synchronization with %s" % str(partner))
-        add_hashes = context.hashtrie.synchronize_with_server(self.request)
+        add_hashes = context.hashtrie.synchronize_as_client(self.request)
         context.logger.info("Got %d hashes from %s" % (len(add_hashes), str(partner)))
 
         ### make file of socket
@@ -393,7 +393,7 @@ class SDUDS:
 
         # get the set of hashes the partner has but we haven't
         self.context.logger.debug("Getting hashes from %s" % str(partner))
-        add_hashes = self.context.hashtrie.synchronize_with_client(partnersocket)
+        add_hashes = self.context.hashtrie.synchronize_as_server(partnersocket)
         self.context.logger.info("Got %d hashes from %s" % (len(add_hashes), str(partner)))
 
         # make file of socket
