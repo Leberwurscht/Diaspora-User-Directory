@@ -8,8 +8,8 @@ try:
     shutil.rmtree("PTree2")
 except: pass
 
-t1 = subprocess.Popen(["./test", "PTree1", "ptree1"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-t2 = subprocess.Popen(["./test", "PTree2", "ptree2"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+t1 = subprocess.Popen(["./trieserver", "PTree1", "ptree1"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+t2 = subprocess.Popen(["./trieserver", "PTree2", "ptree2"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
 t1.stdin.write("ADD\n")
 assert t1.stdout.readline()=="OK\n"
