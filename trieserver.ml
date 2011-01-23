@@ -67,45 +67,27 @@ let output_hash cout number =
 	output_string cout "\n";
 	flush cout;;
 
-(* functions for each command *)
-let rec add_rec txn cin = 
+(* functions for adding/deleting hashes *)
+let rec add_delete_rec operation txn cin = 
 	let hexhash = input_line cin in
 	let len = String.length hexhash in
 	if (len=32) then (
 		let binary = KeyHash.dehexify hexhash in
 		let modulo = ZZp.of_bytes binary in
-		PTree.insert (get_ptree ()) txn modulo;
-		add_rec txn cin
+		operation (get_ptree ()) txn modulo;
+		add_delete_rec operation txn cin
 	);;
 
-let add cin_fd =
+let add_delete operation cin_fd =
 	let cin = Unix.in_channel_of_descr cin_fd in
 	let txn = new_txnopt () in
 
-	add_rec txn cin;
+	add_delete_rec operation txn cin;
 
 	PTree.clean txn (get_ptree ());
 	commit_txnopt txn;;
 
-let rec delete_rec txn cin = 
-	let hexhash = input_line cin in
-	let len = String.length hexhash in
-	if (len=32) then (
-		let binary = KeyHash.dehexify hexhash in
-		let modulo = ZZp.of_bytes binary in
-		PTree.delete (get_ptree ()) txn modulo;
-		delete_rec txn cin
-	);;
-
-let delete cin_fd =
-	let cin = Unix.in_channel_of_descr cin_fd in
-	let txn = new_txnopt () in
-
-	delete_rec txn cin;
-
-	PTree.clean txn (get_ptree ());
-	commit_txnopt txn;;
-
+(* synchronization function *)
 let synchronize handler encoded_cin encoded_cout =
 	(* create a channel decoded_cin that gets the decoded data from stdin *)
 	let cin_read, cin_write = Unix.pipe() in
@@ -149,10 +131,10 @@ let synchronize handler encoded_cin encoded_cout =
 while true do (
 	let line = input_line stdin in
 	match line with
-	  "ADD" -> print_endline "OK"; add Unix.stdin; print_endline "DONE"
-	| "DELETE" -> print_endline "OK"; delete Unix.stdin; print_endline "DONE"
+	  "ADD" -> print_endline "OK"; add_delete PTree.insert Unix.stdin; print_endline "DONE"
+	| "DELETE" -> print_endline "OK"; add_delete PTree.delete Unix.stdin; print_endline "DONE"
 	| "SYNCHRONIZE_AS_SERVER" -> print_endline "OK"; synchronize Server.handle Unix.stdin Unix.stdout; print_endline "DONE"
 	| "SYNCHRONIZE_AS_CLIENT" -> print_endline "OK"; synchronize Client.handle Unix.stdin Unix.stdout; print_endline "DONE"
-	| "EXIT" -> closedb (); prerr_string databasedir; prerr_endline " EXITING"; exit 0
+	| "EXIT" -> closedb (); Common.plerror 1 "trieserver exited."; exit 0
 	| _ -> print_endline "ERROR"
 ) done;;
