@@ -141,10 +141,7 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
         partner.log_conversation(len(add_hashes), len(delete_hashes))
 
         ### call process_hashes_from_partner
-        try:
-            context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
-        except partners.PartnerKickedError:
-            context.logger.debug("%s got kicked." % str(partner))
+        context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
 
 ###
 
@@ -434,10 +431,7 @@ class SDUDS:
         partner.log_conversation(len(add_hashes), len(delete_hashes))
 
         ### call process_hashes_from_partner
-        try:
-            self.context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
-        except partners.PartnerKickedError:
-            self.context.logger.debug("%s got kicked." % str(partner))
+        self.context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
 
     def submit_address(self, webfinger_address):
         return self.context.process_submission(webfinger_address)

@@ -162,10 +162,6 @@ class Partner(DatabaseObject):
         # TODO:
         # notify administrator and partner
 
-        # this will interrupt the processing of data until the
-        # exception is caught.
-        raise PartnerKickedError
-
     def log_conversation(self, add, delete):
         Session = self.database.Session
 
@@ -373,13 +369,6 @@ class NonConcurrenceOffense(Offense):
         description += str(transmitted_entry)
 
         Offense.__init__(self, description, **kwargs)
-
-####
-# custom exceptions
-
-class PartnerKickedError(Exception):
-    """ The partner got a violation """
-    pass
 
 ####
 # database class
