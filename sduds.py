@@ -153,6 +153,7 @@ class Context:
         self.partnerdb = partners.Database(suffix, erase=erase)
         self.entrydb = entries.Database(suffix, erase=erase)
         self.hashtrie = HashTrie(suffix, erase=erase)
+        self.queue = lib.TwoPriorityQueue(500)
 
         self.logger = logging.getLogger("sduds"+suffix) 
 
@@ -161,6 +162,87 @@ class Context:
         self.entrydb.close(erase=erase)
         self.hashtrie.close(erase=erase)
 
+    def process(self):
+        while True:
+            webfinger_address, claim = self.queue.get()
+            if not webfinger_address: break
+
+            self.logger.debug("processing %s from queue" % webfinger_address)
+
+            if not claim:
+                self.logger.debug("%s is a simple submission" % webfinger_address)
+                retrieve_profile = True
+            else:
+                claimed_state, retrieval_timestamp, claiming_partner_id = claim
+                claiming_partner = partners.Partner.from_database(self.partnerdb, id=claiming_partner_id)
+
+                # reject kicked partners
+                if claiming_partner.kicked():
+                    self.logger.warning("%s is kicked, so don't process %s." % (claiming_partner, webfinger_address))
+                    self.queue.task_done()
+                    continue
+
+                # check whether the profile should be retrieved
+                if retrieval_timestamp < time.time()-RESPONSIBILITY_TIME_SPAN:
+                    # TODO: notify administrator
+                    self.logger.warning("%s, gotten from %s was retrieved a too long time ago" % (webfinger_address, claiming_partner))
+                    retrieve_profile = True
+                    responsibility = False
+                elif random.random() < claiming_partner.control_probability:
+                    self.logger.debug("decided to take a control sample for %s, gotten from %s" % (webfinger_address, claiming_partner))
+                    retrieve_profile = True
+                    responsibility = True
+                else:
+                    self.logger.debug("decided not to take a control sample for %s, gotten from %s" % (webfinger_address, claiming_partner))
+                    retrieve_profile = False
+
+            if retrieve_profile:
+                self.logger.debug("retrieving the profile for %s" % webfinger_address)
+
+                try:
+                    state = entries.Entry.from_webfinger_address(webfinger_address)
+                    retrieval_timestamp = state.retrieval_timestamp
+                except Exception, error:
+                    state = None
+                    retrieval_timestamp = int(time.time())
+
+                # check whether claim was right
+                if not claim: pass
+                elif state==None and claimed_state==None: pass
+                elif state.hash==claimed_state.hash: pass
+                else:
+                    self.logger.warning("state of %s is not as %s claimed" % (webfinger_address, claiming_partner))
+                    offense = partners.NonConcurrenceOffense(state, claimed_state, guilty=responsibility)
+                    claiming_partner.add_offense(offense)
+            else:
+                state = claimed_state
+
+                # verify that entry was retrieved after it was submitted
+                if claim and state and state.retrieval_timestamp<state.submission_timestamp:
+                    self.logger.warning("%s transmitted state with invalid timestamps" % claiming_partner)
+                    violation = partners.InvalidTimestampsViolation(state)
+                    claiming_partner.add_violation(violation)
+                    self.queue.task_done()
+                    continue
+
+            # check captcha signature
+            if state and not state.captcha_signature_valid():
+                if claim and not retrieve_profile:
+                    self.logger.warning("invalid captcha for %s from %s" % (webfinger_address, claiming_partner))
+                    violation = partners.InvalidCaptchaViolation(state)
+                    claiming_partner.add_violation(violation)
+                else:
+                    self.logger.warning("invalid captcha for %s" % webfinger_address)
+
+                self.queue.task_done()
+                continue
+
+            added_hashes,deleted_hashes,ignored_hashes = self.entrydb.save_state(webfinger_address, state, retrieval_timestamp)
+            self.hashtrie.add(added_hashes)
+            self.hashtrie.delete(deleted_hashes)
+            self.logger.info("added %d, deleted %d hashes" % (len(added_hashes), len(deleted_hashes)))
+
+            self.queue.task_done()
     def process_hashes_from_partner(self, partner, add_hashes, delete_hashes):
         """ This function can be called after synchronization with a partner. It will process
             the lists of hashes that should be added or deleted, get the missing entries from
