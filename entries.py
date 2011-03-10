@@ -205,7 +205,7 @@ class Entry(DatabaseObject):
         return entry
 
     @classmethod
-    def from_webfinger_address(cls, webfinger_address, submission_timestamp):
+    def from_webfinger_address(cls, webfinger_address):
 
         wf = pywebfinger.finger(webfinger_address)
 
@@ -223,6 +223,7 @@ class Entry(DatabaseObject):
         services = json_dict["services"].encode("utf8")
         captcha_signature = binascii.unhexlify(json_dict["captcha_signature"])
 
+        submission_timestamp = int(json_dict["submission_timestamp"])
         retrieval_timestamp = int(time.time())
 
         entry = cls(
