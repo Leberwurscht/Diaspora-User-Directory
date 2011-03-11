@@ -139,7 +139,7 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
 ###
 
 class Context:
-    """ A context is a collection of all necessary databases. It does not contain any synchronization
+    """ A context is a collection of all necessary databases. It does not contain any trie synchronization
         code, that's the job of the SDUDS class. """
 
     def __init__(self, suffix="", erase=False):
@@ -148,7 +148,7 @@ class Context:
         self.hashtrie = HashTrie(suffix, erase=erase)
         self.queue = lib.TwoPriorityQueue(500)
 
-        self.logger = logging.getLogger("sduds"+suffix) 
+        self.logger = logging.getLogger("sduds"+suffix)
 
     def close(self, erase=False):
         self.partnerdb.close(erase=erase)
@@ -301,16 +301,16 @@ class SDUDS:
         self.worker.start()
 
     def run_synchronization_server(self, domain, interface="", synchronization_port=20001):
-        # set up servers
+        # set up server
         self.synchronization_server = SynchronizationServer((interface, synchronization_port), self.context)
 
         # publish address so that partners can synchronize with us
         self.webserver.set_synchronization_address(domain, synchronization_port)
 
-        # set up the server threads
+        # set up the server thread
         self.synchronization_thread = threading.Thread(target=self.synchronization_server.serve_forever)
 
-        # run the servers
+        # run the server
         self.synchronization_thread.start()
 
     def synchronize_with_partner(self, partner):
@@ -344,6 +344,7 @@ class SDUDS:
         while True:
             try:
                 hexhash, retrieval_timestamp = partnerfile.readline().split()
+                self.context.logger.debug("%s asks us to delete hash %s" % (str(partner), hexhash))
             except ValueError:
                 # got just a newline, so transmission is finished
                 break

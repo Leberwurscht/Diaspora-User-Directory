@@ -66,7 +66,7 @@ class EntryList(list):
             try:
                 entry = session.query(Entry).filter_by(hash=binhash).one()
             except sqlalchemy.orm.exc.NoResultFound:
-                database.logger.warning("Requested hash \"%s\" does not exist." % binascii.hexlify(binhash))
+                database.logger.warning("Requested hash \"%s\" does not exist in database." % binascii.hexlify(binhash))
             else:
                 entrylist.append(entry)
 
