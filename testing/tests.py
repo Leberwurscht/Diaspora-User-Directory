@@ -3,6 +3,8 @@
 import sduds, partners, entries
 import hashlib, threading, time
 
+from profile_server import Profile
+
 def _get_partners(start_port=20000, control_probability=.7):
     webserver_port1 = start_port
     control_port1 = start_port+1
@@ -65,14 +67,21 @@ def simple_synchronization(profile_server, start_port=20000, erase=True):
 
     ### add an entry to the first server
     webfinger_address = "JohnDoe@%s:%d" % profile_server.address
-    binhash = sduds1.submit_address(webfinger_address)
+    profile = Profile(webfinger_address)
+    profile_server.profiles[webfinger_address] = profile
+    sduds1.submit_address(webfinger_address)
+    sduds1.context.queue.join()
 
-    assert not binhash==None
+    ### verify that the entry was saved
+    session = sduds1.context.entrydb.Session()
+    binhash, = session.query(entries.Entry.hash).one()
+    session.close()
 
     ### make server2 connect to server1 for synchronisation
     server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
     sduds2.synchronize_with_partner(server)
+    sduds2.context.queue.join()
 
     ### verify that the entry got transmitted
     session = sduds2.context.entrydb.Session()
@@ -89,15 +98,21 @@ def captcha_signature(profile_server, start_port=20000, erase=True):
     """ An entry with a bad captcha signature will be sent from one server to the other.
         This test verifies that the server gets kicked. """
 
-    sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
+    sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port, 0.)
 
     ### add an entry to the first server
     webfinger_address = "JohnDoe@%s:%d" % profile_server.address
-    binhash = sduds1.submit_address(webfinger_address)
+    profile = Profile(webfinger_address)
+    profile_server.profiles[webfinger_address] = profile
+    sduds1.submit_address(webfinger_address)
+    sduds1.context.queue.join()
 
-    assert not binhash==None
+    ### verify that the entry was saved
+    session = sduds1.context.entrydb.Session()
+    binhash, = session.query(entries.Entry.hash).one()
+    session.close()
 
-    ### manipulate the captcha signature
+    ### manipulate the captcha signature at the first server
     session = sduds1.context.entrydb.Session()
     entry = session.query(entries.Entry).one()
 
@@ -114,6 +129,7 @@ def captcha_signature(profile_server, start_port=20000, erase=True):
     server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
     sduds2.synchronize_with_partner(server)
+    sduds2.context.queue.join()
 
     ### verify that the server is kicked
     assert server.kicked()
@@ -131,32 +147,41 @@ def captcha_signature(profile_server, start_port=20000, erase=True):
 
 def NonConcurrenceOffense(profile_server, start_port=20000, num_entries=70, erase=True):
     """ This test verifies that a server that serves too many entries that do not match the real
-        webfinger profiles gets kicked. This test is probabilistic, it may fail even if everything
-        works as it should. """
+        webfinger profiles gets kicked. """
 
-    sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
+    sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port, 1.)
 
     ### add entries to the server
-    for i in xrange(num_entries):
-        webfinger_address = "Random%d@%s:%d" % ((i,) + profile_server.address)
-        binhash = sduds1.submit_address(webfinger_address)
+    profiles = []
 
-        assert not binhash==None
+    for i in xrange(num_entries):
+        webfinger_address = "JohnDoe%d@%s:%d" % ((i,) + profile_server.address)
+        profile = Profile(webfinger_address)
+        profile_server.profiles[webfinger_address] = profile
+        profiles.append(profile)
+        sduds1.submit_address(webfinger_address)
+
+    sduds1.context.queue.join()
+
+    ### manipulate profiles
+    for profile in profiles:
+        profile.name = ""
 
     ### make server2 connect to server1 for synchronisation
     server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
     sduds2.synchronize_with_partner(server)
+    sduds2.context.queue.join()
 
     ### verify that the server is kicked
     assert server.kicked()
 
-    ### verify that no entry got transmitted
-    session = sduds2.context.entrydb.Session()
-    number_of_entries = session.query(entries.Entry).count()
-    session.close()
-
-    assert number_of_entries==0
+#    ### verify that no entry got transmitted
+#    session = sduds2.context.entrydb.Session()
+#    number_of_entries = session.query(entries.Entry).count()
+#    session.close()
+#
+#    assert number_of_entries==0
 
     ### close servers
     sduds1.terminate(erase=erase)
@@ -168,34 +193,45 @@ def twoway_synchronization(profile_server, start_port=20000, num_entries=30, era
 
     sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
 
-    ### add entries to the server
     hashes = set()
 
-    # first server
+    ### add entries to the first server
     for i in xrange(num_entries):
         webfinger_address = "First%d@%s:%d" % ((i,) + profile_server.address)
-        binhash = sduds1.submit_address(webfinger_address)
+        profile = Profile(webfinger_address)
+        profile_server.profiles[webfinger_address] = profile
+        sduds1.submit_address(webfinger_address)
 
-        assert not binhash==None
+    sduds1.context.queue.join()
 
-        hashes.add(binhash)
+    session = sduds1.context.entrydb.Session()
+    for entry in session.query(entries.Entry):
+        hashes.add(entry.hash)
+    session.close()
 
     ### add entries to the second server
     for i in xrange(num_entries):
         webfinger_address = "Second%d@%s:%d" % ((i,) + profile_server.address)
-        binhash = sduds2.submit_address(webfinger_address)
+        profile = Profile(webfinger_address)
+        profile_server.profiles[webfinger_address] = profile
+        sduds2.submit_address(webfinger_address)
 
-        assert not binhash==None
+    sduds2.context.queue.join()
 
-        hashes.add(binhash)
+    session = sduds2.context.entrydb.Session()
+    for entry in session.query(entries.Entry):
+        hashes.add(entry.hash)
+    session.close()
 
     ### make server2 connect to server1 for synchronisation
     server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
     sduds2.synchronize_with_partner(server)
+    sduds2.context.queue.join()
+    sduds1.context.queue.join()
 
-    ### give sduds1 some time to finish processing
-    time.sleep(1)
+#    ### give sduds1 some time to finish processing
+#    time.sleep(1)
 
     ### verify that both servers have got all entries
     hashes1 = set()
@@ -227,9 +263,15 @@ def delete_from_trie(profile_server, start_port=20000, erase=True):
 
     ### add an entry to the first server
     webfinger_address = "JohnDoe@%s:%d" % profile_server.address
-    binhash = sduds1.submit_address(webfinger_address)
+    profile = Profile(webfinger_address)
+    profile_server.profiles[webfinger_address] = profile
+    sduds1.submit_address(webfinger_address)
+    sduds1.context.queue.join()
 
-    assert not binhash==None
+    ### verify that the entry was saved
+    session = sduds1.context.entrydb.Session()
+    binhash, = session.query(entries.Entry.hash).one()
+    session.close()
 
     ### remove the corresponding hash from the trie
     sduds1.context.hashtrie.delete([binhash])    
@@ -238,6 +280,7 @@ def delete_from_trie(profile_server, start_port=20000, erase=True):
     server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
     sduds2.synchronize_with_partner(server)
+    sduds2.context.queue.join()
 
     ### verify that the entry didn't get transmitted
     session = sduds2.context.entrydb.Session()
@@ -254,22 +297,35 @@ def delete_entry_by_submission(profile_server, start_port=20000, erase=True):
     """ Tests that an entry is deleted from the database and from the
         trie when an invalid webfinger address is resubmitted. """
 
+    ### PROBLEM: A user may bother the server by resubmitting an address very often.
+    ### We can't reject him if he sets his first submission timestamp very far in the
+    ### past and increases it by the amount needed every time.
+    # -> Solution: backlog
+
+    #
+    # Problem: WILL ALSO CAUSE SYNCHRONIZATION TRAFFIC
+    # but only once per synchronization cycle
+    #
+
+    ### PROBLEM: A single user can still resubmit all addresses, which will cause a lot of
+    ### traffic (but no synchronization traffic). This should be handled by a queue jam.
+
     now = int(time.time())
-    submission_timestamp1 = now - 3600*24*4
-    submission_timestamp2 = now
+    submission_timestamp = now - 3600*24*4
 
     sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
 
     ### add an entry to the first server
-    webfinger_address = "Vanish|delete_entry_by_submission@%s:%d" % profile_server.address
-    binhash = sduds1.context.process_submission(webfinger_address, submission_timestamp1)
-
-    assert not binhash==None
+    webfinger_address = "JohnDoe@%s:%d" % profile_server.address
+    profile = Profile(webfinger_address, submission_timestamp=submission_timestamp)
+    profile_server.profiles[webfinger_address] = profile
+    sduds1.submit_address(webfinger_address)
+    sduds1.context.queue.join()
 
     ### remove the entry by resubmitting the now dead address
-    binhash = sduds1.context.process_submission(webfinger_address, submission_timestamp2)
-
-    assert binhash==None
+    del profile_server.profiles[webfinger_address]
+    sduds1.submit_address(webfinger_address)
+    sduds1.context.queue.join()
 
     ### check that the database entry vanished
     session = sduds1.context.entrydb.Session()
@@ -282,6 +338,7 @@ def delete_entry_by_submission(profile_server, start_port=20000, erase=True):
     server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
     sduds2.synchronize_with_partner(server)
+    sduds2.context.queue.join()
 
     ### verify that no entry got transmitted
     session = sduds2.context.entrydb.Session()
@@ -299,37 +356,40 @@ def delete_entry_by_synchronization(profile_server, start_port=20000, erase=True
         that the profile vanished. """
 
     now = int(time.time())
-    submission_timestamp1 = now - 3600*24*4
-    submission_timestamp2 = now
+    submission_timestamp = now - 3600*24*4
 
     sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port, control_probability=0)
 
     ### add an entry to the first server
-    webfinger_address = "Vanish|delete_entry_by_synchronization@%s:%d" % profile_server.address
-    binhash = sduds1.context.process_submission(webfinger_address, submission_timestamp1)
-
-    assert not binhash==None
+    webfinger_address = "JohnDoe@%s:%d" % profile_server.address
+    profile = Profile(webfinger_address, submission_timestamp=submission_timestamp)
+    profile_server.profiles[webfinger_address] = profile
+    sduds1.submit_address(webfinger_address)
+    sduds1.context.queue.join()
 
     ### make server2 connect to server1 for synchronisation
     server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
     sduds2.synchronize_with_partner(server)
-
-    ### give sduds1 some time to finish processing
-    time.sleep(1)
+    sduds2.context.queue.join()
 
     ### remove the entry by resubmitting the now dead address
-    binhash = sduds1.context.process_submission(webfinger_address, submission_timestamp2)
+    del profile_server.profiles[webfinger_address]
+    sduds1.submit_address(webfinger_address)
+    sduds1.context.queue.join()
 
-    assert binhash==None
+    ### check that the database entry vanished at server1
+    session = sduds1.context.entrydb.Session()
+    num_entries = session.query(entries.Entry).count()
+    session.close()
+
+    assert num_entries==0
 
     ### make server2 connect to server1 for synchronisation again
     server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
     sduds2.synchronize_with_partner(server)
-
-    ### give sduds1 some time to finish processing
-    time.sleep(1)
+    sduds2.context.queue.join()
 
     ### check that the database entry vanished at server2
     session = sduds2.context.entrydb.Session()
@@ -343,38 +403,43 @@ def delete_entry_by_synchronization(profile_server, start_port=20000, erase=True
     sduds2.terminate(erase=erase)
 
 def overwrite_entry_by_submission(profile_server, start_port=20000, erase=True):
-    """ Tests overwriting an entry by resubmitting the webfinger address.
-        This test is probabilistic. It may fail even if everything works as
-        it should. """
+    """ Tests overwriting an entry by resubmitting the webfinger address. """
 
     now = int(time.time())
+
     submission_timestamp1 = now - 3600*24*4
+    name1 = u"JohnDoe"
+
     submission_timestamp2 = now
+    name2 = u"JohnDoe2"
 
     sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
 
     ### add an entry to the first server
-    webfinger_address = "Random@%s:%d" % profile_server.address
-    binhash1 = sduds1.context.process_submission(webfinger_address, submission_timestamp1)
+    webfinger_address = "JohnDoe@%s:%d" % profile_server.address
+    profile = Profile(webfinger_address, submission_timestamp=submission_timestamp1, name=name1)
+    profile_server.profiles[webfinger_address] = profile
+    sduds1.submit_address(webfinger_address)
+    sduds1.context.queue.join()
 
-    assert not binhash1==None
+    ### Change the profile
+    profile.submission_timestamp = submission_timestamp2
+    profile.name = name2
 
     ### overwrite the entry by resubmitting the address
-    binhash2 = sduds1.context.process_submission(webfinger_address, submission_timestamp2)
-
-    assert not binhash2==None
-    assert not binhash1==binhash2
+    sduds1.submit_address(webfinger_address)
+    sduds1.context.queue.join()
 
     ### check that the old database entry vanished
     session = sduds1.context.entrydb.Session()
-    num_entries = session.query(entries.Entry).filter_by(hash=binhash1).count()
+    num_entries = session.query(entries.Entry).filter_by(full_name=name1).count()
     session.close()
 
     assert num_entries==0
 
     ### check that the new database entry is there
     session = sduds1.context.entrydb.Session()
-    num_entries = session.query(entries.Entry).filter_by(hash=binhash2).count()
+    num_entries = session.query(entries.Entry).filter_by(full_name=name2).count()
     session.close()
 
     assert num_entries==1
@@ -384,54 +449,55 @@ def overwrite_entry_by_submission(profile_server, start_port=20000, erase=True):
     sduds2.terminate(erase=erase)
 
 def overwrite_entry_by_synchronization(profile_server, start_port=20000, erase=True):
-    """ Tests if overwritten entries arrive at partners.
-        This test is probabilistic. It may fail even if everything works as
-        it should. """
+    """ Tests if overwritten entries arrive at partners. """
 
     now = int(time.time())
-    submission_timestamp1 = now - 3600*24*4
-    submission_timestamp2 = now
 
-    sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port, control_probability=0)
+    submission_timestamp1 = now - 3600*24*4
+    name1 = u"JohnDoe"
+
+    submission_timestamp2 = now
+    name2 = u"JohnDoe2"
+
+    sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
 
     ### add an entry to the first server
-    webfinger_address = "Random@%s:%d" % profile_server.address
-    binhash1 = sduds1.context.process_submission(webfinger_address, submission_timestamp1)
-
-    assert not binhash1==None
+    webfinger_address = "JohnDoe@%s:%d" % profile_server.address
+    profile = Profile(webfinger_address, submission_timestamp=submission_timestamp1, name=name1)
+    profile_server.profiles[webfinger_address] = profile
+    sduds1.submit_address(webfinger_address)
+    sduds1.context.queue.join()
 
     ### make server2 connect to server1 for synchronisation
     server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
     sduds2.synchronize_with_partner(server)
+    sduds2.context.queue.join()
 
-    ### give sduds1 some time to finish processing
-    time.sleep(1)
+    ### Change the profile
+    profile.submission_timestamp = submission_timestamp2
+    profile.name = name2
 
     ### overwrite the entry by resubmitting the address
-    binhash2 = sduds1.context.process_submission(webfinger_address, submission_timestamp2)
-
-    assert not binhash2==None
-    assert not binhash1==binhash2
+    sduds1.submit_address(webfinger_address)
+    sduds1.context.queue.join()
 
     ### make server2 connect to server1 for synchronisation again
     server = partners.Server.from_database(sduds2.context.partnerdb, partner_name=partner_name1)
     assert not server.kicked()
     sduds2.synchronize_with_partner(server)
+    sduds2.context.queue.join()
 
     ### check that the new database entry arrived at the partner
-    # We use a random testing profile, so control samples will fail. But
-    # since we have set the control probability to 0, the partner should have
-    # accepted the entry.
     session = sduds2.context.entrydb.Session()
-    num_entries = session.query(entries.Entry).filter_by(hash=binhash2).count()
+    num_entries = session.query(entries.Entry).filter_by(full_name=name2).count()
     session.close()
 
     assert num_entries==1
 
     ### check that the old database entry vanished at the partner
     session = sduds2.context.entrydb.Session()
-    num_entries = session.query(entries.Entry).filter_by(hash=binhash1).count()
+    num_entries = session.query(entries.Entry).filter_by(full_name=name1).count()
     session.close()
 
     assert num_entries==0

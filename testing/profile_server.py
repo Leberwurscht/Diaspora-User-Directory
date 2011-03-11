@@ -28,14 +28,58 @@ private_key = get_private_key(private_key_path)
 
 # run a test server providing a webfinger profile
 import BaseHTTPServer, urlparse, urllib, json, binascii, random
-import threading
+import threading, time
 
-vanished_addresses = []
+class Profile:
+    def __init__(self, address, **kwargs):
+        self.address = address
+
+        if "name" in kwargs:
+            self.name = kwargs["name"]
+        else:
+            self.name = self.address.split("@")[0]
+        
+        if "hometown" in kwargs:
+            self.hometown = kwargs["hometown"]
+        else:
+            self.hometown = "Los Angeles"
+
+        if "country_code" in kwargs:
+            self.country_code = kwargs["country_code"]
+        else:
+            self.country_code = "US"
+
+        if "services" in kwargs:
+            self.services = kwargs["services"]
+        else:
+            self.services = "diaspora,email"
+
+        if "submission_timestamp" in kwargs:
+            self.submission_timestamp = kwargs["submission_timestamp"]
+        else:
+            self.submission_timestamp = time.time()
+
+        if "captcha_signature" in kwargs:
+            self.captcha_signature = kwargs["captcha_signature"]
+        else:
+            self.captcha_signature = sign(private_key, self.address.encode("utf-8"))
+
+    def json(self):
+        json_dict = {}
+        json_dict["webfinger_address"] = self.address
+        json_dict["full_name"] = unicode(self.name)
+        json_dict["hometown"] = unicode(self.hometown)
+        json_dict["country_code"] = unicode(self.country_code)
+        json_dict["services"] = unicode(self.services)
+        json_dict["submission_timestamp"] = self.submission_timestamp
+        json_dict["captcha_signature"] = unicode(binascii.hexlify(self.captcha_signature))
+
+        json_string = json.dumps(json_dict)
+        
+        return json_string
 
 class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
-        global vanished_addresses
-
         if self.path=="/.well-known/host-meta":
             self.send_response(200, "OK")
             self.send_header("Content-type", "text/html")
@@ -73,23 +117,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
             webfinger_address = uri.split("acct:",1)[-1]
 
-            name = webfinger_address.split("@")[0]
-            if name.startswith("Random"):
-                name += "_"+str(random.randrange(1000))
+            if not webfinger_address in self.server.profiles: return
 
-            if name.startswith("Vanish"):
-                if name in vanished_addresses: return
-                vanished_addresses.append(name)
-
-            json_dict = {}
-            json_dict["webfinger_address"] = webfinger_address
-            json_dict["full_name"] = name
-            json_dict["hometown"] = u"Los Angeles"
-            json_dict["country_code"] = u"US"
-            json_dict["services"] = "diaspora,email"
-            json_dict["captcha_signature"] = binascii.hexlify(sign(private_key, webfinger_address.encode("utf-8")))
-
-            json_string = json.dumps(json_dict)
+            profile = self.server.profiles[webfinger_address]
+            json_string = profile.json()
 
             self.send_response(200, "OK")
             self.send_header("Content-type", "text/html")
@@ -104,6 +135,9 @@ class ProfileServer(threading.Thread):
         self.daemon = True
         self.start()
 
+        self.profiles = {}
+
     def run(self):
         webfinger_profile_server = BaseHTTPServer.HTTPServer(self.address, RequestHandler)
+        webfinger_profile_server.profiles = self.profiles
         webfinger_profile_server.serve_forever()

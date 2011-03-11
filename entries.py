@@ -12,6 +12,8 @@ import json
 
 import os
 
+RESUBMISSION_INTERVAL = 3600*24*3
+
 # load public key for verifying captcha signatures
 
 import base64, paramiko
@@ -64,7 +66,7 @@ class EntryList(list):
             try:
                 entry = session.query(Entry).filter_by(hash=binhash).one()
             except sqlalchemy.orm.exc.NoResultFound:
-                database.logger.warning("Requested hash \"%s\" does not exist." % binascii.hexlify(binhash))
+                database.logger.warning("Requested hash \"%s\" does not exist in database." % binascii.hexlify(binhash))
             else:
                 entrylist.append(entry)
 
@@ -205,7 +207,7 @@ class Entry(DatabaseObject):
         return entry
 
     @classmethod
-    def from_webfinger_address(cls, webfinger_address, submission_timestamp):
+    def from_webfinger_address(cls, webfinger_address):
 
         wf = pywebfinger.finger(webfinger_address)
 
@@ -223,6 +225,7 @@ class Entry(DatabaseObject):
         services = json_dict["services"].encode("utf8")
         captcha_signature = binascii.unhexlify(json_dict["captcha_signature"])
 
+        submission_timestamp = int(json_dict["submission_timestamp"])
         retrieval_timestamp = int(time.time())
 
         entry = cls(
@@ -332,8 +335,77 @@ class Database:
         finally:
             session.close()
 
+    def save_state(self, webfinger_address, state, retrieval_timestamp):
+        """ Updates the Entry and DeletedEntry tables to reflect the current state of the profile at
+            'webfinger_address'. Takes care that only older entries are overwritten, that we don't
+            accept submission_timestamps from the future, and that users don't update their profiles
+            too often.
+            'state' may be an Entry instance or None, which indicates that the profile is non-existant
+            or invalid. """
+
+        session = self.Session()
+
+        added = set()
+        deleted = set()
+        ignored = set()
+
+        # get old database entry
+        try:
+            old_entry = session.query(Entry).filter_by(webfinger_address=webfinger_address).one()
+        except sqlalchemy.orm.exc.NoResultFound:
+            old_entry = None
+
+        if state and state.submission_timestamp>time.time():
+            self.logger.warning("Entry for '%s' has a submission timestamp in the future, will not be saved." % (
+                webfinger_address,
+                old_entry.submission_timestamp,
+                state.submission_timestamp
+            ))
+            ignored.add(state.hash)
+
+        elif state==None and old_entry:
+            # delete entry
+            deleted_entry = DeletedEntry(hash=old_entry.hash, retrieval_timestamp=retrieval_timestamp)
+            session.add(deleted_entry)
+
+            deleted.add(old_entry.hash)
+            session.delete(old_entry)
+
+        elif old_entry: # and state
+            if state.submission_timestamp<old_entry.submission_timestamp:
+                # ignore if we have more recent information in the database
+                ignored.add(state.hash)
+            elif state.submission_timestamp>old_entry.submission_timestamp+RESUBMISSION_INTERVAL:
+                # overwrite
+                deleted_entry = DeletedEntry(hash=old_entry.hash, retrieval_timestamp=retrieval_timestamp)
+                session.add(deleted_entry)
+
+                deleted.add(old_entry.hash)
+                session.delete(old_entry)
+                session.commit()
+
+                added.add(state.hash)
+                session.add(state)
+            else:
+                self.logger.warning("Webfinger address '%s' was resubmitted too frequently (%d/%d)" % (
+                    webfinger_address,
+                    old_entry.submission_timestamp,
+                    state.submission_timestamp
+                ))
+                ignored.add(state.hash)
+
+        elif state:
+            added.add(state.hash)
+            session.add(state)
+
+        session.commit()
+
+        return added,deleted,ignored
+
     def close(self, erase=False):
-        if hasattr(self, "Session"): self.Session.close_all()
+        if hasattr(self, "Session"):
+            self.Session.close_all()
+            del self.Session
 
         if erase and os.path.exists(self.dbfile):
             os.remove(self.dbfile)
