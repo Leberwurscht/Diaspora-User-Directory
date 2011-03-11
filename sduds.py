@@ -22,13 +22,6 @@ import lib
 ###
 
 RESPONSIBILITY_TIME_SPAN = 3600*24*3
-RESUBMISSION_INTERVAL = 3600*24*3
-
-###
-
-class InvalidCaptchaSignatureError(Exception): pass
-
-class TooFrequentResubmissionError(Exception): pass
 
 ###
 # Authentication functionality
@@ -243,192 +236,56 @@ class Context:
             self.logger.info("added %d, deleted %d hashes" % (len(added_hashes), len(deleted_hashes)))
 
             self.queue.task_done()
+
     def process_hashes_from_partner(self, partner, add_hashes, delete_hashes):
-        """ This function can be called after synchronization with a partner. It will process
-            the lists of hashes that should be added or deleted, get the missing entries from
-            the web server of the partner, check if everything is valid, and update the own
-            database. """
+        self.logger.debug("process_hashes_from_partner: add %d/delete %d from %s" % (len(add_hashes), len(delete_hashes), partner))
 
-        self.logger.info("Start processing hashes - add_hashes: %d, delete_hashes: %d" % (len(add_hashes), len(delete_hashes)))
+        claimed_states = {}
 
-        # get database entries
-        try:
-            entrylist = entries.EntryList.from_server(add_hashes, partner.address)
-        except IOError, error:
-            offense = partners.ConnectionFailedOffense(error)
-            partner.add_offense(offense)
-        except entries.InvalidHashError, error:
-            violation = partners.InvalidHashViolation(error)
-            partner.add_violation(violation)
-        except entries.InvalidListError, error:
-            violation = partners.InvalidListViolation(error)
-            partner.add_violation(violation)
-        except entries.WrongEntriesError, error:
-            violation = partners.WrongEntriesViolation(error)
-            partner.add_violation(violation)        
-
-        new_entries = []
-
-        # take control samples
-        for entry in entrylist:
-            # verify captcha signatures
-            if not entry.captcha_signature_valid():
-                violation = partners.InvalidCaptchaViolation(entry)
-                partner.add_violation(violation)
-                entrylist.remove(entry)
-
-            # verify that entry was retrieved after it was submitted
-            if not entry.retrieval_timestamp>=entry.submission_timestamp:
-                violation = partners.InvalidTimestampsViolation(entry)
-                partner.add_violation(violation)
-                entrylist.remove(entry)
-
-            # the partner is only responsible if the entry was retrieved recently
-            if entry.retrieval_timestamp > time.time()-RESPONSIBILITY_TIME_SPAN:
-                responsible = True
-
-                # Only re-retrieve the information with a certain probability
-                if random.random()>partner.control_probability: continue
-            else:
-                responsible = False
-
-                raise NotImplementedError, "Not implemented yet."
-                # ... tell the admin that an old timestamp was encourtered, and track it to its origin to enable the admin to
-                # shorten the chain of directory servers ...
-
-            # re-retrieve the information
+        # process delete_hashes first as new entries overwrite old entries
+        for binhash,retrieval_timestamp in delete_hashes.iteritems():
+            entry = entries.Entry.from_database(self.entrydb, hash=binhash)
             address = entry.webfinger_address
 
-            # try to get the profile
-            try:
-                entry_fetched = entries.Entry.from_webfinger_address(address, entry.submission_timestamp)
-            except Exception, error:
-                offense = partners.InvalidProfileOffense(address, error, guilty=responsible)
-                partner.add_offense(offense)
-                entrylist.remove(entry)
-                continue
+            claimed_states[address] = (None, retrieval_timestamp)
 
-                # TODO: remove entry from own database
-
-            if not entry_fetched.hash==entry.hash:
-                offense = partners.NonConcurrenceOffense(entry_fetched, entry, guilty=responsible)
-                partner.add_offense(offense)
-                entrylist.remove(entry)
-
-                new_entries.append(entry_fetched)
-
-        # add newly fetched entries to list
-        entrylist.extend(new_entries)
-
-        # add valid entries to database
-        added_hashes, deleted_hashes, ignored_hashes = entrylist.save(self.entrydb)
-        self.hashtrie.add(added_hashes)
-        self.hashtrie.delete(deleted_hashes)
-
-        for binhash in deleted_hashes:
-            if binhash in delete_hashes:
-                del delete_hashes[binhash]
-
-        for binhash in ignored_hashes:
-            if binhash in delete_hashes:
-                del delete_hashes[binhash]
-
-        ### remove the entries for delete_hashes, taking control samples
-        self.logger.info("delete_hashes contains %d hashes" % len(delete_hashes))
-
-        # a list of new entries that might be collected when control samples are taken
-        entrylist = entries.EntryList()
-
-        # take control samples
-        for binhash,retrieval_timestamp in delete_hashes.iteritems():
-            # the partner is only responsible if the entry was retrieved recently
-            if retrieval_timestamp > time.time()-RESPONSIBILITY_TIME_SPAN:
-                responsible = True
-
-                # Only re-retrieve the information with a certain probability
-                if random.random()>partner.control_probability: continue
-            else:
-                responsible = False
-
-                raise NotImplementedError, "Not implemented yet."
-                # ... tell the admin that an old timestamp was encourtered, and track it to its origin to enable the admin to
-                # shorten the chain of directory servers ...
-
-            # re-retrieve the information
-            existing_entry = entries.Entry.from_database(self.entrydb, hash=binhash)
-            address = existing_entry.webfinger_address
-
-            # try to get the profile
-            try:
-                entry_fetched = entries.Entry.from_webfinger_address(address, entry.submission_timestamp)
-                binhash_fetched = entry_fetched.hash
-            except Exception, error:
-                binhash_fetched = None
-
-            if binhash_fetched==binhash:
-                # profile still exists and is unchanged
-                del delete_hashes[binhash]
-                offense = partners.DeleteExistingOffense(address, guilty=responsible)
-                partner.add_offense(offense)
-
-            elif not binhash_fetched==None:
-                # profile still exists but changed
-                del delete_hashes[binhash]
-                entrylist.append(fetched_entry)
-
-                offense = partners.DeleteChangedOffense(address, guilty=responsible)
-                partner.add_offense(offense)
-
-        # save the new entries collected during taking the control samples to the database
-        added_hashes, deleted_hashes, ignored_hashes = entrylist.save(self.entrydb)
-        self.hashtrie.add(added_hashes)
-        self.hashtrie.delete(deleted_hashes)
-
-        # delete the remaining entries
-        for binhash,retrieval_timestamp in delete_hashes.iteritems():
-            self.logger.debug("removing %s in process_hashes" % binascii.hexlify(binhash))
-            self.entrydb.delete_entry(retrieval_timestamp, hash=binhash)
-
-    def process_submission(self, webfinger_address, submission_timestamp=None):
-        if submission_timestamp==None:
-            submission_timestamp = int(time.time())
-
+        # process add_hashes
         try:
-            # retrieve entry
-            entry = entries.Entry.from_webfinger_address(webfinger_address, submission_timestamp)
-        except Exception, e: # TODO: better error handling
-            self.logger.debug("error retrieving %s: %s" % (webfinger_address, str(e)))
+            self.logger.info("Requesting %d hashes from %s" % (len(add_hashes), partner))
+            entrylist = entries.EntryList.from_server(add_hashes, partner.address)
+        except IOError, error:
+            self.logger.warning("IOError with %s" % partner)
+            offense = partners.ConnectionFailedOffense(error)
+            partner.add_offense(offense)
+            return
+        except entries.InvalidHashError, error:
+            self.logger.warning("invalid hash from %s" % partner)
+            violation = partners.InvalidHashViolation(error)
+            partner.add_violation(violation)
+            return
+        except entries.InvalidListError, error:
+            self.logger.warning("invalid list from %s" % partner)
+            violation = partners.InvalidListViolation(error)
+            partner.add_violation(violation)
+            return
+        except entries.WrongEntriesError, error:
+            self.logger.warning("wrong entries from %s" % partner)
+            violation = partners.WrongEntriesViolation(error)
+            partner.add_violation(violation)
+            return
 
-            # if online profile invalid/non-existant, delete the database entry
-            retrieval_timestamp = int(time.time())
+        for entry in entrylist:
+            claimed_states[entry.webfinger_address] = (entry, entry.retrieval_timestamp)
 
-            binhash = self.entrydb.delete_entry(retrieval_timestamp, webfinger_address=webfinger_address)
-            if not binhash==None:
-                self.hashtrie.delete([binhash])
+        # create jobs
+        for address, claimed_state in claimed_states.iteritems():
+            self.queue.put_high((address, claimed_state + (partner.id,)))
 
-            return None
-
-        # check captcha signature
-        if not entry.captcha_signature_valid():
-            raise InvalidCaptchaSignatureError, "%s is not a valid signature for %s" % (binascii.hexlify(entry.captcha_signature), webfinger_address)
-
-        # prevent too frequent resubmission
-        # TODO: move to Entrylist.save
-        old_entry = entries.Entry.from_database(self.entrydb, webfinger_address=webfinger_address)
-        if old_entry:
-            if submission_timestamp < old_entry.submission_timestamp + RESUBMISSION_INTERVAL:
-                raise TooFrequentResubmissionError, "Resubmission of %s failed because it was submitted too recently (timestamps: %d/%d)" % (webfinger_address, submission_timestamp, old_entry.submission_timestamp)
-
-        # add new entry
-        entrylist = entries.EntryList([entry])
-
-        add_hashes, delete_hashes, ignore_hashes = entrylist.save(self.entrydb)
-        self.hashtrie.add(add_hashes)
-
-        assert len(add_hashes)==1
-        binhash, = add_hashes
-
-        return binhash
+    def process_submission(self, webfinger_address):
+        try:
+            self.queue.put_low((webfinger_address, None))
+        except lib.Full:
+            self.logger.error("Submission queue full, rejected %s!" % webfinger_address)
 
 class SDUDS:
     def __init__(self, webserver_address, suffix="", erase=False):
