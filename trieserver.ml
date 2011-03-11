@@ -1,3 +1,8 @@
+(* ignore SIGINT - if we press Ctrl+C in sduds.py, the kernel will send
+   SIGINT to all child processes, so without this, trieserver would die
+   before sduds.py can send EXIT. *)
+Sys.set_signal Sys.sigint Sys.Signal_ignore;;
+
 (* get the command line options *)
 let databasedir = Sys.argv.(1);;
 let logfile = Sys.argv.(2);;
