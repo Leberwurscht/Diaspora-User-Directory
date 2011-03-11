@@ -403,7 +403,9 @@ class Database:
         return added,deleted,ignored
 
     def close(self, erase=False):
-        if hasattr(self, "Session"): self.Session.close_all()
+        if hasattr(self, "Session"):
+            self.Session.close_all()
+            del self.Session
 
         if erase and os.path.exists(self.dbfile):
             os.remove(self.dbfile)
