@@ -297,6 +297,9 @@ class SDUDS:
 
         self.synchronization_server = None
 
+        self.worker = threading.Thread(target=self.context.process)
+        self.worker.start()
+
     def run_synchronization_server(self, domain, interface="", synchronization_port=20001):
         # set up servers
         self.synchronization_server = SynchronizationServer((interface, synchronization_port), self.context)
@@ -378,10 +381,13 @@ class SDUDS:
     def terminate(self, erase=False):
         self.webserver.terminate()
 
+        self.context.queue.put_high((None, None))
+
         if self.synchronization_server:
             self.synchronization_server.terminate()
             self.synchronization_server = None
 
+        self.worker.join()
         self.context.close(erase=erase)
 
 if __name__=="__main__":
