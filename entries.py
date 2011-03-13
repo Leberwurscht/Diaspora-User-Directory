@@ -324,6 +324,44 @@ class Database:
 
         return binhash
 
+    def search(self, words=[], services=[]):
+        """ Searches the database for certain words, and limits the results
+            to entries that use a certain service.
+            'words' must be a list of unicode objects and 'services' must be
+            a list of str objects.
+            Warning: Probably very slow! """
+
+        session = self.Session()
+
+        query = session.query(Entry)
+
+        for word in words:
+            condition = Entry.webfinger_address
+
+            scondition = "%" + word.encode("utf8") + "%"
+            ucondition = u"%" + word + u"%"
+
+            condition = Entry.webfinger_address.like(scondition)
+            condition |= Entry.full_name.like(ucondition)
+            condition |= Entry.hometown.like(ucondition)
+            condition |= Entry.country_code.like(scondition)
+
+            query = query.filter(condition)
+
+        for service in services:
+            query = query.filter(
+                  Entry.services.like(service)
+                | Entry.services.like(service+",%")
+                | Entry.services.like("%,"+service+",%")
+                | Entry.services.like("%,"+service)
+            )
+
+        query = query.limit(50)
+
+        for entry in query:
+            session.expunge(entry)
+            yield entry
+
     def entry_deleted(self, binhash):
         session = self.Session()
 

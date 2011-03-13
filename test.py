@@ -22,3 +22,5 @@ tests.delete_entry_by_synchronization(profile_server)
 tests.overwrite_entry_by_submission(profile_server)
 
 tests.overwrite_entry_by_synchronization(profile_server)
+
+tests.search(profile_server)

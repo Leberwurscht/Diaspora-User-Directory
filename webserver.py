@@ -40,6 +40,8 @@ class WebServer(threading.Thread):
             func = self.index
         elif environment["PATH_INFO"]=="/submit":
             func = self.submit
+        elif environment["PATH_INFO"]=="/search":
+            func = self.search
         elif environment["PATH_INFO"]=="/entrylist":
             func = self.entrylist
         elif environment["PATH_INFO"]=="/synchronization_address":
@@ -52,8 +54,15 @@ class WebServer(threading.Thread):
     def index(self, environment, start_response):
         start_response("200 OK", [('Content-Type','text/html')])
 
+        yield '<h1>Submit entry</h1>'
         yield '<form action="/submit" method="post">'
         yield '<input type="text" name="address">'
+        yield '<input type="submit">'
+        yield '</form>'
+
+        yield '<h1>Search entry</h1>'
+        yield '<form action="/search" method="post" accept-charset="utf-8">'
+        yield '<input type="text" name="words">'
         yield '<input type="submit">'
         yield '</form>'
 
@@ -64,7 +73,6 @@ class WebServer(threading.Thread):
 
         webfinger_address = fs.getvalue("address")
 
-
         success = self.context.process_submission(webfinger_address)
 
         if success:
@@ -73,6 +81,21 @@ class WebServer(threading.Thread):
         else:
             start_response("500 Internal Server Error", [('Content-Type','text/plain')])
             yield "Queue is full - rejected %s." % webfinger_address
+
+    def search(self, environment, start_response):
+        fs = cgi.FieldStorage(fp=environment['wsgi.input'],
+                          environ=environment,
+                          keep_blank_values=1)
+
+        words = fs.getvalue("words")
+        words = unicode(words, "utf-8")
+        words = words.split()
+
+        start_response("200 OK", [('Content-Type','text/plain')])
+
+        for entry in self.context.entrydb.search(words):
+            yield str(entry)
+            yield "\n"
 
     def entrylist(self, environment, start_response):
         fs = cgi.FieldStorage(fp=environment['wsgi.input'],

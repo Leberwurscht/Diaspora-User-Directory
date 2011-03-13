@@ -505,3 +505,31 @@ def overwrite_entry_by_synchronization(profile_server, start_port=20000, erase=T
     ### close servers
     sduds1.terminate(erase=erase)
     sduds2.terminate(erase=erase)
+
+def search(profile_server, start_port=20000, erase=True):
+    """ An entry is added and the search function is be used to find it. """
+
+    sduds1, partner_name1, sduds2, partner_name2 = _get_partners(start_port)
+
+    ### add an entry to the first server
+    webfinger_address = "JohnDoe@%s:%d" % profile_server.address
+    profile = Profile(webfinger_address, name=u"John Doe")
+    profile_server.profiles[webfinger_address] = profile
+    sduds1.submit_address(webfinger_address)
+    sduds1.context.queue.join()
+
+    ### search the entry
+    entry, = sduds1.context.entrydb.search([u"ohn",u"Doe"], ["diaspora"])
+    assert entry.full_name==u"John Doe"
+
+    ### search a non-existing entry
+    try:
+        entry, = sduds1.context.entrydb.search([u"BLA"])
+    except ValueError: pass
+    else:
+        # this should never be executed, as we expect a ValueError
+        assert False
+
+    ### close servers
+    sduds1.terminate(erase=erase)
+    sduds2.terminate(erase=erase)
