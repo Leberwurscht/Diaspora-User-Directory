@@ -41,6 +41,9 @@ class Partner(DatabaseObject):
     partner_name = sqlalchemy.Column(lib.Text, unique=True)
     passwordhash = sqlalchemy.Column(lib.Binary)
 
+    # to be able to determine offense percentage
+    control_samples_taken = sqlalchemy.Column(sqlalchemy.Integer, default=0)
+
     @classmethod
     def from_database(cls, database, **kwargs):
         Session = database.Session
@@ -127,17 +130,9 @@ class Partner(DatabaseObject):
         # calculate total severity sum
         severity_sum = per_address_severity_sum + address_independent_severity_sum
 
-        # calculate total number of received entries
-        aggregator = sqlalchemy.sql.functions.sum(Conversation.add)
-        query = Session.query(aggregator.label("received_sum"))
-        query = query.filter(Conversation.partner == self)
-        query = query.filter(Conversation.timestamp >= timestamp_limit)
-        received_sum = query.one().received_sum
-        if received_sum==None: received_sum = 0
-
         # if there are enough entries to make a reliable calculation and if there were to
         # many offenses, add the violation.
-        if received_sum>3/OFFENSES_THRESHOLD and severity_sum>OFFENSES_THRESHOLD*received_sum:
+        if self.control_samples_taken>3/OFFENSES_THRESHOLD and severity_sum>OFFENSES_THRESHOLD*self.control_samples_taken:
             # set guilty=False on offenses; guiltiness is absorbed into violation.
             query = Session.query(Offense)
             query = query.filter(Offense.partner == self)
@@ -147,7 +142,7 @@ class Partner(DatabaseObject):
             Session.commit()
 
             # add a violation
-            violation = TooManyOffensesViolation(severity_sum, received_sum)
+            violation = TooManyOffensesViolation(severity_sum, self.control_samples_taken)
             self.add_violation(violation)
         
     def add_violation(self, violation):
@@ -162,12 +157,11 @@ class Partner(DatabaseObject):
         # TODO:
         # notify administrator and partner
 
-    def log_conversation(self, add, delete):
+    def register_control_sample(self):
         Session = self.database.Session
 
-        conversation = Conversation(partner=self, add=add, delete=delete, timestamp=int(time.time()))
-
-        Session.add(conversation)
+        self.control_samples_taken += 1
+        Session.add(self)
         Session.commit()
 
     def synchronization_address(self):
@@ -195,20 +189,6 @@ class Server(Partner):
 
 class Client(Partner):
     __mapper_args__ = {'polymorphic_identity': 'client'}
-
-###
-
-# Conversations
-
-class Conversation(DatabaseObject):
-    __tablename__ = 'conversations'
-
-    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'))
-    partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
-    add = sqlalchemy.Column(sqlalchemy.Integer)
-    delete = sqlalchemy.Column(sqlalchemy.Integer)
-    timestamp = sqlalchemy.Column(sqlalchemy.Integer)
 
 # Violations
 
@@ -310,45 +290,7 @@ class ConnectionFailedOffense(Offense):
 
     __mapper_args__ = {"polymorphic_identity": "ConnectionFailed"}
 
-    default_severity = 1
-
-class InvalidProfileOffense(Offense):
-    """ webfinger profile is invalid but the partner transmitted information """
-
-    __mapper_args__ = {"polymorphic_identity": "InvalidProfile"}
-
-    default_severity = 1
-
-    def __init__(self, webfinger_address, description, **kwargs):
-        kwargs["webfinger_address"] = webfinger_address
-
-        Offense.__init__(self, description, **kwargs)
-
-class DeleteExistingOffense(Offense):
-    """ hash was submitted for deletion but the profile still exists """
-
-    __mapper_args__ = {"polymorphic_identity": "DeleteExisting"}
-
-    default_severity = 1
-
-    def __init__(self, webfinger_address, **kwargs):
-        kwargs["webfinger_address"] = webfinger_address
-        description = "The partner claimed that %s is deleted but it is still there." % webfinger_address
-
-        Offense.__init__(self, description, **kwargs)
-
-class DeleteChangedOffense(Offense):
-    """ hash was submitted for deletion when the profile changed but the new profile was not sent """
-
-    __mapper_args__ = {"polymorphic_identity": "DeleteChanged"}
-
-    default_severity = 1
-
-    def __init__(self, webfinger_address, **kwargs):
-        kwargs["webfinger_address"] = webfinger_address
-        description = "The partner claimed that %s is deleted but it just changed." % webfinger_address
-
-        Offense.__init__(self, description, **kwargs)
+    default_severity = 0
 
 class NonConcurrenceOffense(Offense):
     """ the webfinger profile differs from the one the partner transmitted """

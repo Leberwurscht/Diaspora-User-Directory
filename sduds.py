@@ -130,9 +130,6 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
             binhash = binascii.unhexlify(hexhash)
             delete_hashes[binhash] = int(retrieval_timestamp)
 
-        ### log the conversation
-        partner.log_conversation(len(add_hashes), len(delete_hashes))
-
         ### call process_hashes_from_partner
         context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
 
@@ -185,6 +182,7 @@ class Context:
                     self.logger.debug("decided to take a control sample for %s, gotten from %s" % (webfinger_address, claiming_partner))
                     retrieve_profile = True
                     responsibility = True
+                    claiming_partner.register_control_sample()
                 else:
                     self.logger.debug("decided not to take a control sample for %s, gotten from %s" % (webfinger_address, claiming_partner))
                     retrieve_profile = False
@@ -369,9 +367,6 @@ class SDUDS:
             partnerfile.write(hexhash+" "+str(retrieval_timestamp)+"\n")
         partnerfile.write("\n")
         partnerfile.flush()
-
-        ### log the conversation
-        partner.log_conversation(len(add_hashes), len(delete_hashes))
 
         ### call process_hashes_from_partner
         self.context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
