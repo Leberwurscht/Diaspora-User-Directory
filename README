@@ -82,6 +82,11 @@ $ ./sduds.py -p 20100 sduds1
          on port 20100.)
 
 Now, you can see log messages that tell you that a database
-entry was transmitted. You can test whether it worked properly
-by for example opening the entries.sqlite files of both copies
-with the firefox extension "SQLite Manager".
+entry was transmitted. Now you can run again the second
+instance of the program by
+
+$ ./sduds.py -p 20100
+
+and visit http://localhost:20100. You will see an interface
+for searching entries. If you search for "John Doe", the
+transmitted entry will be displayed.
