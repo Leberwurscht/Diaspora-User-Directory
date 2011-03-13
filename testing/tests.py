@@ -176,13 +176,6 @@ def NonConcurrenceOffense(profile_server, start_port=20000, num_entries=70, eras
     ### verify that the server is kicked
     assert server.kicked()
 
-#    ### verify that no entry got transmitted
-#    session = sduds2.context.entrydb.Session()
-#    number_of_entries = session.query(entries.Entry).count()
-#    session.close()
-#
-#    assert number_of_entries==0
-
     ### close servers
     sduds1.terminate(erase=erase)
     sduds2.terminate(erase=erase)
@@ -229,9 +222,6 @@ def twoway_synchronization(profile_server, start_port=20000, num_entries=30, era
     sduds2.synchronize_with_partner(server)
     sduds2.context.queue.join()
     sduds1.context.queue.join()
-
-#    ### give sduds1 some time to finish processing
-#    time.sleep(1)
 
     ### verify that both servers have got all entries
     hashes1 = set()
@@ -296,19 +286,6 @@ def delete_from_trie(profile_server, start_port=20000, erase=True):
 def delete_entry_by_submission(profile_server, start_port=20000, erase=True):
     """ Tests that an entry is deleted from the database and from the
         trie when an invalid webfinger address is resubmitted. """
-
-    ### PROBLEM: A user may bother the server by resubmitting an address very often.
-    ### We can't reject him if he sets his first submission timestamp very far in the
-    ### past and increases it by the amount needed every time.
-    # -> Solution: backlog
-
-    #
-    # Problem: WILL ALSO CAUSE SYNCHRONIZATION TRAFFIC
-    # but only once per synchronization cycle
-    #
-
-    ### PROBLEM: A single user can still resubmit all addresses, which will cause a lot of
-    ### traffic (but no synchronization traffic). This should be handled by a queue jam.
 
     now = int(time.time())
     submission_timestamp = now - 3600*24*4
