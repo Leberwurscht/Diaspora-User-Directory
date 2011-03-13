@@ -36,7 +36,11 @@ class WebServer(threading.Thread):
 
     # WSGI applications
     def dispatch(self, environment, start_response):
-        if environment["PATH_INFO"]=="/entrylist":
+        if environment["PATH_INFO"]=="/":
+            func = self.index
+        elif environment["PATH_INFO"]=="/submit":
+            func = self.submit
+        elif environment["PATH_INFO"]=="/entrylist":
             func = self.entrylist
         elif environment["PATH_INFO"]=="/synchronization_address":
             func = self.synchronization_address
@@ -44,6 +48,31 @@ class WebServer(threading.Thread):
             func = self.not_found
 
         for chunk in func(environment, start_response): yield chunk
+
+    def index(self, environment, start_response):
+        start_response("200 OK", [('Content-Type','text/html')])
+
+        yield '<form action="/submit" method="post">'
+        yield '<input type="text" name="address">'
+        yield '<input type="submit">'
+        yield '</form>'
+
+    def submit(self, environment, start_response):
+        fs = cgi.FieldStorage(fp=environment['wsgi.input'],
+                          environ=environment,
+                          keep_blank_values=1)
+
+        webfinger_address = fs.getvalue("address")
+
+
+        success = self.context.process_submission(webfinger_address)
+
+        if success:
+            start_response("200 OK", [('Content-Type','text/plain')])
+            yield "Added %s to queue." % webfinger_address
+        else:
+            start_response("500 Internal Server Error", [('Content-Type','text/plain')])
+            yield "Queue is full - rejected %s." % webfinger_address
 
     def entrylist(self, environment, start_response):
         fs = cgi.FieldStorage(fp=environment['wsgi.input'],

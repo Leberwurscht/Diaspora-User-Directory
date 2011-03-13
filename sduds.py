@@ -282,8 +282,10 @@ class Context:
     def process_submission(self, webfinger_address):
         try:
             self.queue.put_low((webfinger_address, None))
+            return True
         except lib.Full:
             self.logger.error("Submission queue full, rejected %s!" % webfinger_address)
+            return False
 
 class SDUDS:
     def __init__(self, webserver_address, suffix="", erase=False):
