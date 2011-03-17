@@ -325,8 +325,8 @@ class Database:
         return binhash
 
     def search(self, words=[], services=[]):
-        """ Searches the database for certain words, and limits the results
-            to entries that use a certain service.
+        """ Searches the database for certain words, and yields only profiles
+            of users who use certain services.
             'words' must be a list of unicode objects and 'services' must be
             a list of str objects.
             Warning: Probably very slow! """
