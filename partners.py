@@ -32,6 +32,7 @@ class Partner(DatabaseObject):
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
     address = sqlalchemy.Column(lib.Text)
     control_probability = sqlalchemy.Column(sqlalchemy.Float)
+    last_connection = sqlalchemy.Column(sqlalchemy.Integer)
 
     # for authenticating to the partner
     identity = sqlalchemy.Column(lib.Text)
@@ -163,6 +164,15 @@ class Partner(DatabaseObject):
         self.control_samples_taken += 1
         Session.add(self)
         Session.commit()
+
+    def register_connection(self):
+        Session = self.database.Session
+
+        self.last_connection = time.time()
+        Session.add(self)
+        Session.commit()
+
+        return self.last_connection
 
     def synchronization_address(self):
         data = urllib.urlopen(self.address+"synchronization_address").read()
