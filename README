@@ -64,9 +64,8 @@ $ ./partners.py -a -c http://localhost:20100/ sduds2 sduds1
 $ ./testing/add_entry.py
 	(Will create a database entry for an example user.)
 $ ./sduds.py -p 20000
-        (Will run a server with the webserver on port 20000,
-         the synchronization control server on port 20001 and
-         the synchronization server on port 20002.)
+        (Will run a webserver on port 20000 and the
+         synchronization server on port 20001.)
 
 For the other copy, do:
 
@@ -78,8 +77,9 @@ $ ./partners.py -a -s http://localhost:20000/ sduds1 sduds2
          above, in reversed order.
 $ ./sduds.py -p 20100 sduds1
 	(Connects to the first instance of the program and
-         synchronizes with it. The own webserver will be run
-         on port 20100.)
+         synchronizes with it. The webserver will be run
+         on port 20100. When the operation is completed, the
+         program terminates.)
 
 Now, you can see log messages that tell you that a database
 entry was transmitted. Now you can run again the second
