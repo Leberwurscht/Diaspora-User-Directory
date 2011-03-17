@@ -271,7 +271,7 @@ class CronPattern:
             year, month, dom, hour, minute, dow = CronPattern.normalize(year, month, dom, hour, minute)
 
 class Job(threading.Thread):
-    def __init__(self, pattern, callback, last_clearance=0):
+    def __init__(self, pattern, callback, last_clearance=None):
         threading.Thread.__init__(self)
 
         self.pattern = pattern
@@ -281,6 +281,11 @@ class Job(threading.Thread):
         self.finish = threading.Event()
 
     def run(self):
+        if self.last_clearance==None:
+            now = time.time()
+            self.last_clearance = now
+            self.callback(now)
+
         while True:
             # calculate the time the callback must be called next
             next_clearance = self.pattern.next_clearance(self.last_clearance)
