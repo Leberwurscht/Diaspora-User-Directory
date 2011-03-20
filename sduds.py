@@ -163,8 +163,8 @@ class Context:
                 self.logger.debug("%s is a simple submission" % webfinger_address)
                 retrieve_profile = True
             else:
-                claimed_state, retrieval_timestamp, claiming_partner_id = claim
-                claiming_partner = partners.Partner.from_database(self.partnerdb, id=claiming_partner_id)
+                claimed_state, retrieval_timestamp, claiming_partner_name = claim
+                claiming_partner = partners.Partner.from_database(self.partnerdb, partner_name=claiming_partner_name)
 
                 # reject kicked partners
                 if claiming_partner.kicked():
@@ -277,7 +277,7 @@ class Context:
 
         # create jobs
         for address, claimed_state in claimed_states.iteritems():
-            self.queue.put_high((address, claimed_state + (partner.id,)))
+            self.queue.put_high((address, claimed_state + (partner.partner_name,)))
 
     def process_submission(self, webfinger_address):
         try:
