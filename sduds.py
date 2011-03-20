@@ -300,6 +300,18 @@ class SDUDS:
         self.worker = threading.Thread(target=self.context.process)
         self.worker.start()
 
+        # go through servers, add jobs
+        self.jobs = []
+        servers = partners.Server.list_from_database(self.context.partnerdb)
+
+        for server in servers:
+            minute,hour,dom,month,dow = server.connection_schedule.split()
+            pattern = lib.CronPattern(minute,hour,dom,month,dow)
+            job = lib.Job(pattern, self.try_synchronization_with_server, (server.partner_name,), server.last_connection)
+            job.start()
+
+        # TODO: expiration job
+
     def run_synchronization_server(self, domain, interface="", synchronization_port=20001):
         # set up server
         self.synchronization_server = SynchronizationServer((interface, synchronization_port), self.context)
@@ -312,6 +324,20 @@ class SDUDS:
 
         # run the server
         self.synchronization_thread.start()
+
+    def try_synchronization_with_server(self, server_name):
+        # load partner
+        server = partners.Server.from_database(self.context.partnerdb, partner_name=server_name)
+
+        try:
+            self.synchronize_with_partner(self, server)
+        except Exception,error:
+            self.context.logger.warning("Error synchronizing with %s" % server)
+            offense = partners.ConnectionFailedOffense(error)
+            server.add_offense(offense)
+
+        # save synchronization attempt, returning timestamp
+        return server.register_connection()
 
     def synchronize_with_partner(self, partner):
         """ the client side for SynchronizationServer """
@@ -377,6 +403,8 @@ class SDUDS:
         return self.context.process_submission(webfinger_address)
 
     def terminate(self, erase=False):
+        for job in self.jobs: job.terminate()
+
         self.webserver.terminate()
 
         self.context.queue.put_high((None, None))
