@@ -132,14 +132,15 @@ A cron-like job scheduler
 
 Usage:
     pattern = CronPattern("0-30/5", "4,5", "3", "*", "*")
-    job = Job(pattern, callback, last_execution_timestamp)
+    job = Job(pattern, callback, arguments)
     job.start()
 
-    ... callback(execution_timestamp) will be executed regularly ...
+    ... callback(arguments) will be executed regularly ...
 
     job.terminate()
 
 Notes:
+ * callback must call time.time() and return the value
  * Does not check whether pattern is valid; if no timestamp fits
    the pattern there will be an infinite loop.
  * All times are UTC.
@@ -271,40 +272,37 @@ class CronPattern:
             year, month, dom, hour, minute, dow = CronPattern.normalize(year, month, dom, hour, minute)
 
 class Job(threading.Thread):
-    def __init__(self, pattern, callback, last_clearance=None):
+    def __init__(self, pattern, callback, args=(), last_execution=None):
         threading.Thread.__init__(self)
 
         self.pattern = pattern
+
         self.callback = callback
-        self.last_clearance = last_clearance
+        self.args = args
+ 
+        self.last_execution = last_execution
 
         self.finish = threading.Event()
 
     def run(self):
-        if self.last_clearance==None:
-            now = time.time()
-            self.last_clearance = now
-            self.callback(now)
+        if self.last_execution==None:
+            self.last_execution = self.callback(*self.args)
 
         while True:
             # calculate the time the callback must be called next
-            next_clearance = self.pattern.next_clearance(self.last_clearance)
+            clearance = self.pattern.next_clearance(self.last_execution)
 
             # calculate interval
             now = time.time()
-            interval = next_clearance - now
+            interval = clearance - now
             if interval<=0: interval=0
 
             # wait 
             self.finish.wait(interval)
             if self.finish.is_set(): return
 
-            # update last_clearance
-            now = time.time()
-            self.last_clearance = now
-
             # call callback
-            self.callback(now)
+            self.last_execution = self.callback(*self.args)
 
     def terminate(self):
         self.finish.set()
