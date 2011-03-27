@@ -330,7 +330,7 @@ class SDUDS:
         server = partners.Server.from_database(self.context.partnerdb, partner_name=server_name)
 
         try:
-            self.synchronize_with_partner(self, server)
+            self.synchronize_with_partner(server)
         except Exception,error:
             self.context.logger.warning("Error synchronizing with %s" % server)
             offense = partners.ConnectionFailedOffense(error)
