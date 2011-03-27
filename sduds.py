@@ -200,7 +200,7 @@ class Context:
                 # check whether claim was right
                 if not claim: pass
                 elif state==None and claimed_state==None: pass
-                elif state.hash==claimed_state.hash: pass
+                elif state and claimed_state and state.hash==claimed_state.hash: pass
                 else:
                     self.logger.warning("state of %s is not as %s claimed" % (webfinger_address, claiming_partner))
                     offense = partners.NonConcurrenceOffense(state, claimed_state, guilty=responsibility)
