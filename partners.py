@@ -471,8 +471,10 @@ if __name__=="__main__":
             "password": password,
             "partner_name": partner_name,
             "passwordhash": passwordhash,
-            "connection_schedule": connection_schedule
         }
+
+        if connection_schedule:
+            kwargs["connection_schedule"] = connection_schedule
 
         if options.server:
             print "Adding server \"%s\"." % address
