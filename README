@@ -9,12 +9,12 @@ transform it into a diaspora user directory server.
 This is to become a first proof of concept.
 
 These are the python scripts:
-   * partners.py: manages the synchronisation partners list
+   * partners.py: manages the synchronization partners list
    * test.py: Will test the synchronization automatically
    * testing/add_entry.py: adds a database entry for manual testing
    * sduds.py: This is the main program. It waits for other servers to
                connect. If you pass it a host and a port, however, it
-               will connect to another server and synchronise with it,
+               will connect to another server and synchronize with it,
                using the SKS reconciliation algorithm.
 
 They make use of the following modules:
@@ -23,7 +23,7 @@ They make use of the following modules:
    * lib.py: some custom sqlalchemy types
 
 Executables:
-   * ./trieserver: This is the interface between the synchronisation
+   * ./trieserver: This is the interface between the synchronization
                    algorithm of the SKS key server and python. The
                    python scripts make use of this executable, but
                    you never need to execute it manually.
@@ -69,12 +69,14 @@ $ ./sduds.py -p 20000
 
 For the other copy, do:
 
-$ ./partners.py -a -s http://localhost:20000/ sduds1 sduds2
+$ ./partners.py -a -s http://localhost:20000/ sduds1 sduds2 0.0
         (Adds the first instance of the program, which runs
          on port 20000, as a server named "sduds1", and use
          the partner name "sduds2" when authenticating to
          it. You need to supply the passwords you typed
-         above, in reversed order.
+         above, in reversed order. The 0.0 tells the server
+	 to fully trust the other server, that means no control
+         samples will be taken.)
 $ ./sduds.py -p 20100 sduds1
 	(Connects to the first instance of the program and
          synchronizes with it. The webserver will be run
