@@ -340,6 +340,23 @@ class Database:
 
         session.commit()
 
+    def cleanup(self):
+        session = self.Session()
+
+        now = time.time()
+
+        query = session.query(Entry).filter(Entry.submission_timestamp < now-ENTRY_LIFETIME)
+
+        deleted = set()
+        for entry in query:
+            binhash = entry.hash
+            session.delete(entry)
+            deleted.add(binhash)
+
+        session.close()
+
+        return now, deleted
+
     def delete_entry(self, retrieval_timestamp, **kwargs):
         session = self.Session()
 
