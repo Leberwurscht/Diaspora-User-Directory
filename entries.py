@@ -13,6 +13,7 @@ import json
 import os
 
 RESUBMISSION_INTERVAL = 3600*24*3
+ENTRY_LIFETIME = 3600*24*365
 
 # load public key for verifying captcha signatures
 
@@ -262,6 +263,9 @@ class Entry(DatabaseObject):
         global captcha_key
 
         return signature_valid(captcha_key, self.captcha_signature, self.webfinger_address.encode("utf-8"))
+
+    def expired(self, now=time.time()):
+        return self.submission_timestamp < now - ENTRY_LIFETIME
 
     def __str__(self):
         """ for debbuging and log messages """
