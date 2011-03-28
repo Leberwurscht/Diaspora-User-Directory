@@ -144,6 +144,7 @@ class Context:
         self.entrydb = entries.Database(suffix, erase=erase)
         self.hashtrie = HashTrie(suffix, erase=erase)
         self.queue = lib.TwoPriorityQueue(500)
+        self.clean = threading.Event()  # signalizes if cleanup was called recently enough
 
         self.logger = logging.getLogger("sduds"+suffix)
 
@@ -286,6 +287,17 @@ class Context:
         except lib.Full:
             self.logger.error("Submission queue full, rejected %s!" % webfinger_address)
             return False
+
+    def cleanup(self):
+        now, delete_hashes = self.entrydb.cleanup()
+        self.hashtrie.delete(delete_hashes)
+
+        self.entrydb.set_variable("last_cleanup", str(now))
+        self.clean.set()
+
+        self.logger.debug("cleanup executed, deleted %d entries." % len(delete_hashes))
+
+        return now
 
 class SDUDS:
     def __init__(self, webserver_address, suffix="", erase=False):
