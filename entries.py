@@ -287,6 +287,12 @@ class DeletedEntry(DatabaseObject):
     hash = sqlalchemy.Column(lib.Binary, primary_key=True)
     retrieval_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
 
+class Variable(DatabaseObject):
+    __tablename__ = "variables"
+
+    key = sqlalchemy.Column(lib.Text, primary_key=True)
+    value = sqlalchemy.Column(lib.Text)
+
 ####
 # database class
 
@@ -307,6 +313,32 @@ class Database:
 
         # create tables if they don't exist
         DatabaseObject.metadata.create_all(engine)
+
+        # make sure cleanup_schedule is set
+        if not self.get_variable("cleanup_schedule"):
+            # NOTE: must be frequent enough for ENTRY_LIFETIME
+            self.set_variable("cleanup_schedule", "0 0 * * *")
+
+    def get_variable(self, key):
+        session = self.Session()
+
+        try:
+            value, = session.query(Variable.value).filter_by(key=key).one()
+            return value
+        except sqlalchemy.orm.exc.NoResultFound:
+            return None
+        finally:
+            session.close()
+    
+    def set_variable(self, key, value):
+        session = self.Session()
+
+        session.query(Variable).filter_by(key=key).delete()
+
+        variable = Variable(key=key, value=value)
+        session.add(variable)
+
+        session.commit()
 
     def delete_entry(self, retrieval_timestamp, **kwargs):
         session = self.Session()
