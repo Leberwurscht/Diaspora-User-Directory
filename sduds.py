@@ -312,8 +312,9 @@ class SDUDS:
         self.worker = threading.Thread(target=self.context.process)
         self.worker.start()
 
-        # go through servers, add jobs
         self.jobs = []
+
+        # go through servers, add jobs
         servers = partners.Server.list_from_database(self.context.partnerdb)
 
         for server in servers:
@@ -322,9 +323,25 @@ class SDUDS:
             job = lib.Job(pattern, self.try_synchronization_with_server, (server.partner_name,), server.last_connection)
             job.start()
 
-        # TODO: expiration job
+            self.jobs.append(job)
+
+        # add cleanup job
+        cleanup_schedule = self.context.entrydb.get_variable("cleanup_schedule")
+        minute,hour,dom,month,dow = cleanup_schedule.split()
+
+        last_cleanup = self.context.entrydb.get_variable("last_cleanup")
+        if not last_cleanup==None: last_cleanup = float(last_cleanup)
+
+        pattern = lib.CronPattern(minute,hour,dom,month,dow)
+        job = lib.Job(pattern, self.context.cleanup, (), last_cleanup)
+        if not job.overdue(): self.context.clean.set()
+        job.start()
+
+        self.jobs.append(job)
 
     def run_synchronization_server(self, domain, interface="", synchronization_port=20001):
+        self.context.clean.wait()
+
         # set up server
         self.synchronization_server = SynchronizationServer((interface, synchronization_port), self.context)
 
@@ -353,6 +370,8 @@ class SDUDS:
 
     def synchronize_with_partner(self, partner):
         """ the client side for SynchronizationServer """
+
+        self.context.clean.wait()
 
         # get the synchronization address
         host, synchronization_port = partner.synchronization_address()
