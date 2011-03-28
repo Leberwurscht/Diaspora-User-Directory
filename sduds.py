@@ -22,6 +22,7 @@ import lib
 ###
 
 RESPONSIBILITY_TIME_SPAN = 3600*24*3
+EXPIRY_GRACE_PERIOD = 3600*24*3
 
 ###
 # Authentication functionality
@@ -216,6 +217,20 @@ class Context:
                     claiming_partner.add_violation(violation)
                     self.queue.task_done()
                     continue
+
+            # check if entry is expired
+            if state and state.expired():
+                self.logger.warning("got expired entry for %s" % state.webfinger_address)
+
+                if not claim: pass # partner not responsible, address was submitted directly
+                elif retrieve_profile: pass # partner not responsible, retrieved profile ourselves
+                elif time.time()-state.submission_timestamp < entries.ENTRY_LIFETIME+EXPIRY_GRACE_PERIOD: pass # grace period
+                else:
+                    violation = partners.ExpiredEntryViolation(claimed_state)
+                    claiming_partner.add_violation(violation)
+
+                self.queue.task_done()
+                continue
 
             # check captcha signature
             if state and not state.captcha_signature_valid():

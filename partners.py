@@ -263,6 +263,11 @@ class TooManyOffensesViolation(Violation):
 
         Violation.__init__(self, description, **kwargs)
 
+class ExpiredEntryViolation(Violation):
+    """ The partner sent a too-long-ago expired entry """
+
+    __mapper_args__ = {"polymorphic_identity": "ExpiredEntry"}
+
 # Offences
 
 class Offense(DatabaseObject):
