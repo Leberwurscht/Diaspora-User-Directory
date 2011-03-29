@@ -32,6 +32,7 @@ class Partner(DatabaseObject):
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
     address = sqlalchemy.Column(lib.Text)
     control_probability = sqlalchemy.Column(sqlalchemy.Float)
+    last_connection = sqlalchemy.Column(sqlalchemy.Integer)
 
     # for authenticating to the partner
     identity = sqlalchemy.Column(lib.Text)
@@ -164,6 +165,15 @@ class Partner(DatabaseObject):
         Session.add(self)
         Session.commit()
 
+    def register_connection(self):
+        Session = self.database.Session
+
+        self.last_connection = time.time()
+        Session.add(self)
+        Session.commit()
+
+        return self.last_connection
+
     def synchronization_address(self):
         data = urllib.urlopen(self.address+"synchronization_address").read()
         host, control_port = json.loads(data)
@@ -186,6 +196,8 @@ class Partner(DatabaseObject):
 
 class Server(Partner):
     __mapper_args__ = {'polymorphic_identity': 'server'}
+
+    connection_schedule = sqlalchemy.Column(lib.Text)
 
 class Client(Partner):
     __mapper_args__ = {'polymorphic_identity': 'client'}
@@ -250,6 +262,11 @@ class TooManyOffensesViolation(Violation):
         description = "Too many offenses accumulated: A severity sum of %f was reached with a total of %d received entries." % (severity_sum, received_sum)
 
         Violation.__init__(self, description, **kwargs)
+
+class ExpiredEntryViolation(Violation):
+    """ The partner sent a too-long-ago expired entry """
+
+    __mapper_args__ = {"polymorphic_identity": "ExpiredEntry"}
 
 # Offences
 
@@ -343,6 +360,8 @@ if __name__=="__main__":
     import optparse
     import getpass
 
+    import lib, random
+
     database = Database()
 
     def read_password():
@@ -357,7 +376,7 @@ if __name__=="__main__":
                 print >>sys.stderr, "ERROR: Passwords do not match."
 
     parser = optparse.OptionParser(
-        usage = "%prog -a (-s|-c) ADDRESS PARTNER_NAME IDENTITY [CONTROL_PROBABILITY]\nOr: %prog -d PARTNER_NAME\nOr: %prog -l [-s|-c]",
+        usage = "%prog -a (-s|-c) ADDRESS PARTNER_NAME IDENTITY [CONTROL_PROBABILITY ['CRON_LINE']]\nOr: %prog -d PARTNER_NAME\nOr: %prog -l [-s|-c]",
         description="manage the synchronization partners list"
     )
     
@@ -400,10 +419,12 @@ if __name__=="__main__":
         if len(args)>5:
             print >>sys.stderr, "ERROR: Too many arguments."
             sys.exit(1)
-        elif len(args)==5:
+ 
+        # control probability
+        if len(args)>=4:
             try:
                 # might raise ValueError if string is invalid
-                control_probability = float(args[4])
+                control_probability = float(args[3])
 
                 # if number is not in range, raise ValueError ourselves
                 if control_probability<0 or control_probability>1:
@@ -412,6 +433,29 @@ if __name__=="__main__":
                 print >>sys.stderr, "ERROR: Invalid probability."
                 sys.exit(1)
 
+        # connection schedule
+        connection_schedule=None
+
+        if options.server:
+            if len(args)==5:
+                try:
+                    # check cron pattern format by trying to parse it
+                    minute,hour,dom,month,dow = args[4].split()
+                    lib.CronPattern(minute,hour,dom,month,dow)
+                except ValueError:
+                    print >>sys.stderr, "ERROR: Invalid format of cron line."
+                    print >>sys.stderr, "Use 'MINUTE HOUR DAY_OF_MONTH MONTH DAY_OF_WEEK'"
+                    print >>sys.stderr, "Valid fields are e.g. 5, */3, 5-10 or a comma-separated combination of these."
+                    sys.exit(1)
+
+                connection_schedule = args[4]
+            else:
+                minute = random.randrange(0,60)
+                hour = random.randrange(0,24)
+                connection_schedule = "%d %d * * *" % (minute, hour)
+        elif len(args)==5:
+            print >>sys.stderr, "ERROR: Cron line is only suitable for servers."
+            sys.exit(1)
 
         print "Type the password the partner uses to authenticate to us (password for %s)" % partner_name
         password = read_password()
@@ -431,8 +475,11 @@ if __name__=="__main__":
             "identity": identity,
             "password": password,
             "partner_name": partner_name,
-            "passwordhash": passwordhash
+            "passwordhash": passwordhash,
         }
+
+        if connection_schedule:
+            kwargs["connection_schedule"] = connection_schedule
 
         if options.server:
             print "Adding server \"%s\"." % address

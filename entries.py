@@ -13,6 +13,7 @@ import json
 import os
 
 RESUBMISSION_INTERVAL = 3600*24*3
+ENTRY_LIFETIME = 3600*24*365
 
 # load public key for verifying captcha signatures
 
@@ -263,6 +264,9 @@ class Entry(DatabaseObject):
 
         return signature_valid(captcha_key, self.captcha_signature, self.webfinger_address.encode("utf-8"))
 
+    def expired(self, now=time.time()):
+        return self.submission_timestamp < now - ENTRY_LIFETIME
+
     def __str__(self):
         """ for debbuging and log messages """
         r = "Hash: "+binascii.hexlify(self.hash)+"\n"
@@ -282,6 +286,12 @@ class DeletedEntry(DatabaseObject):
 
     hash = sqlalchemy.Column(lib.Binary, primary_key=True)
     retrieval_timestamp = sqlalchemy.Column(sqlalchemy.Integer)
+
+class Variable(DatabaseObject):
+    __tablename__ = "variables"
+
+    key = sqlalchemy.Column(lib.Text, primary_key=True)
+    value = sqlalchemy.Column(lib.Text)
 
 ####
 # database class
@@ -303,6 +313,49 @@ class Database:
 
         # create tables if they don't exist
         DatabaseObject.metadata.create_all(engine)
+
+        # make sure cleanup_schedule is set
+        if not self.get_variable("cleanup_schedule"):
+            # NOTE: must be frequent enough for ENTRY_LIFETIME
+            self.set_variable("cleanup_schedule", "0 0 * * *")
+
+    def get_variable(self, key):
+        session = self.Session()
+
+        try:
+            value, = session.query(Variable.value).filter_by(key=key).one()
+            return value
+        except sqlalchemy.orm.exc.NoResultFound:
+            return None
+        finally:
+            session.close()
+    
+    def set_variable(self, key, value):
+        session = self.Session()
+
+        session.query(Variable).filter_by(key=key).delete()
+
+        variable = Variable(key=key, value=value)
+        session.add(variable)
+
+        session.commit()
+
+    def cleanup(self):
+        session = self.Session()
+
+        now = time.time()
+
+        query = session.query(Entry).filter(Entry.submission_timestamp < now-ENTRY_LIFETIME)
+
+        deleted = set()
+        for entry in query:
+            binhash = entry.hash
+            session.delete(entry)
+            deleted.add(binhash)
+
+        session.close()
+
+        return now, deleted
 
     def delete_entry(self, retrieval_timestamp, **kwargs):
         session = self.Session()

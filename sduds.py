@@ -22,6 +22,7 @@ import lib
 ###
 
 RESPONSIBILITY_TIME_SPAN = 3600*24*3
+EXPIRY_GRACE_PERIOD = 3600*24*3
 
 ###
 # Authentication functionality
@@ -144,6 +145,7 @@ class Context:
         self.entrydb = entries.Database(suffix, erase=erase)
         self.hashtrie = HashTrie(suffix, erase=erase)
         self.queue = lib.TwoPriorityQueue(500)
+        self.clean = threading.Event()  # signalizes if cleanup was called recently enough
 
         self.logger = logging.getLogger("sduds"+suffix)
 
@@ -163,8 +165,8 @@ class Context:
                 self.logger.debug("%s is a simple submission" % webfinger_address)
                 retrieve_profile = True
             else:
-                claimed_state, retrieval_timestamp, claiming_partner_id = claim
-                claiming_partner = partners.Partner.from_database(self.partnerdb, id=claiming_partner_id)
+                claimed_state, retrieval_timestamp, claiming_partner_name = claim
+                claiming_partner = partners.Partner.from_database(self.partnerdb, partner_name=claiming_partner_name)
 
                 # reject kicked partners
                 if claiming_partner.kicked():
@@ -215,6 +217,20 @@ class Context:
                     claiming_partner.add_violation(violation)
                     self.queue.task_done()
                     continue
+
+            # check if entry is expired
+            if state and state.expired():
+                self.logger.warning("got expired entry for %s" % state.webfinger_address)
+
+                if not claim: pass # partner not responsible, address was submitted directly
+                elif retrieve_profile: pass # partner not responsible, retrieved profile ourselves
+                elif time.time()-state.submission_timestamp < entries.ENTRY_LIFETIME+EXPIRY_GRACE_PERIOD: pass # grace period
+                else:
+                    violation = partners.ExpiredEntryViolation(claimed_state)
+                    claiming_partner.add_violation(violation)
+
+                self.queue.task_done()
+                continue
 
             # check captcha signature
             if state and not state.captcha_signature_valid():
@@ -277,7 +293,7 @@ class Context:
 
         # create jobs
         for address, claimed_state in claimed_states.iteritems():
-            self.queue.put_high((address, claimed_state + (partner.id,)))
+            self.queue.put_high((address, claimed_state + (partner.partner_name,)))
 
     def process_submission(self, webfinger_address):
         try:
@@ -286,6 +302,17 @@ class Context:
         except lib.Full:
             self.logger.error("Submission queue full, rejected %s!" % webfinger_address)
             return False
+
+    def cleanup(self):
+        now, delete_hashes = self.entrydb.cleanup()
+        self.hashtrie.delete(delete_hashes)
+
+        self.entrydb.set_variable("last_cleanup", str(now))
+        self.clean.set()
+
+        self.logger.debug("cleanup executed, deleted %d entries." % len(delete_hashes))
+
+        return now
 
 class SDUDS:
     def __init__(self, webserver_address, suffix="", erase=False):
@@ -300,7 +327,36 @@ class SDUDS:
         self.worker = threading.Thread(target=self.context.process)
         self.worker.start()
 
+        self.jobs = []
+
+        # go through servers, add jobs
+        servers = partners.Server.list_from_database(self.context.partnerdb)
+
+        for server in servers:
+            minute,hour,dom,month,dow = server.connection_schedule.split()
+            pattern = lib.CronPattern(minute,hour,dom,month,dow)
+            job = lib.Job(pattern, self.try_synchronization_with_server, (server.partner_name,), server.last_connection)
+            job.start()
+
+            self.jobs.append(job)
+
+        # add cleanup job
+        cleanup_schedule = self.context.entrydb.get_variable("cleanup_schedule")
+        minute,hour,dom,month,dow = cleanup_schedule.split()
+
+        last_cleanup = self.context.entrydb.get_variable("last_cleanup")
+        if not last_cleanup==None: last_cleanup = float(last_cleanup)
+
+        pattern = lib.CronPattern(minute,hour,dom,month,dow)
+        job = lib.Job(pattern, self.context.cleanup, (), last_cleanup)
+        if not job.overdue(): self.context.clean.set()
+        job.start()
+
+        self.jobs.append(job)
+
     def run_synchronization_server(self, domain, interface="", synchronization_port=20001):
+        self.context.clean.wait()
+
         # set up server
         self.synchronization_server = SynchronizationServer((interface, synchronization_port), self.context)
 
@@ -313,8 +369,24 @@ class SDUDS:
         # run the server
         self.synchronization_thread.start()
 
+    def try_synchronization_with_server(self, server_name):
+        # load partner
+        server = partners.Server.from_database(self.context.partnerdb, partner_name=server_name)
+
+        try:
+            self.synchronize_with_partner(server)
+        except Exception,error:
+            self.context.logger.warning("Error synchronizing with %s" % server)
+            offense = partners.ConnectionFailedOffense(error)
+            server.add_offense(offense)
+
+        # save synchronization attempt, returning timestamp
+        return server.register_connection()
+
     def synchronize_with_partner(self, partner):
         """ the client side for SynchronizationServer """
+
+        self.context.clean.wait()
 
         # get the synchronization address
         host, synchronization_port = partner.synchronization_address()
@@ -377,6 +449,8 @@ class SDUDS:
         return self.context.process_submission(webfinger_address)
 
     def terminate(self, erase=False):
+        for job in self.jobs: job.terminate()
+
         self.webserver.terminate()
 
         self.context.queue.put_high((None, None))
