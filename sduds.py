@@ -79,16 +79,16 @@ class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler):
 
 ###
 
-class SynchronizationServer(lib.BaseServer):
-    """ The server partners can connect to for synchronizing. The hashes that must be added
-        and the hashes that must be deleted are computed and context.process_hashes_from_partner
-        is called. The counterpart for this is SDUDS.synchronize_with_partner. """
+#class SynchronizationServer(lib.BaseServer):
+#    """ The server partners can connect to for synchronizing. The hashes that must be added
+#        and the hashes that must be deleted are computed and context.process_hashes_from_partner
+#        is called. The counterpart for this is SDUDS.synchronize_with_partner. """
+#
+#    def __init__(self, address, context):
+#        lib.BaseServer.__init__(self, address, SynchronizationRequestHandler)
+#        self.context = context
 
-    def __init__(self, address, context):
-        lib.BaseServer.__init__(self, address, SynchronizationRequestHandler)
-        self.context = context
-
-class SynchronizationRequestHandler(AuthenticatingRequestHandler):
+class SynchronizationRequestHandler(AuthenticatingRequestHandler): # old version
     def handle_partner(self, partner):
         context = self.server.context
 
@@ -135,6 +135,24 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
 
         ### call process_hashes_from_partner
         context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
+
+class SynchronizationServer(lib.BaseServer):
+    def __init__(self, context, fqdn, interface, port):
+        # initialize server
+        address = (interface, port)
+        lib.BaseServer.__init__(self, address, SynchronizationRequestHandler)
+
+        # expose context so that the RequestHandler can access it
+        self.context = context
+
+        # expose public address
+        self.public_address = (fqdn, port)
+
+class SynchronizationRequestHandler(AuthenticatingRequestHandler):
+    def handle_partner(self, partner):
+        self.server.context.synchronize_as_server(self.request)
+        # TODO: This function will get the entries from the partner.
+        # So it needs to know which partner it talks to for the WrongEntriesViolation.
 
 ###
 
