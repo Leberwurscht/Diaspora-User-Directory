@@ -476,7 +476,6 @@ class Application:
         # set default values
         self.web_server = None
         self.synchronization_server = None
-        self.published_synchronization_address = {}
         self.jobs = []
         self.submission_workers = []
         self.validation_workers = []
@@ -522,10 +521,7 @@ class Application:
             self.configure_synchronization_server(*args, **kwargs)
 
         # publish address so that partners can synchronize with us
-        self.published_synchronization_address = {
-            "fqdn": self.synchronization_server.fqdn,
-            "port": self.synchronization_server.port
-        }
+        self.context.synchronization_address = self.synchronization_server.public_address
 
         # set up the server thread
         self.synchronization_thread = threading.Thread(target=self.synchronization_server.serve_forever)
@@ -536,7 +532,7 @@ class Application:
     def terminate_synchronization_server(self):
         if not self.synchronization_server: return
 
-        self.published_synchronization_address = {}
+        self.context.synchronization_address = None
 
         self.synchronization_server.terminate()
         self.synchronization_thread.join()
