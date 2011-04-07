@@ -22,6 +22,8 @@ import lib
 ###
 
 RESPONSIBILITY_TIME_SPAN = 3600*24*3
+
+CLEANUP_INTERVAL = 3600*24
 EXPIRY_GRACE_PERIOD = 3600*24*3
 
 ###
@@ -315,92 +317,92 @@ class Context:
         return now
 
 class SDUDS:
-    def __init__(self, webserver_address, suffix="", erase=False):
-        self.context = Context(suffix, erase=erase)
+#    def __init__(self, webserver_address, suffix="", erase=False):
+#        self.context = Context(suffix, erase=erase)
+#
+#        interface, port = webserver_address
+#        self.webserver = WebServer(self.context, interface, port)
+#        self.webserver.start()
+#
+#        self.synchronization_server = None
+#
+#        self.worker = threading.Thread(target=self.context.process)
+#        self.worker.start()
+#
+#        self.jobs = []
+#
+#        # go through servers, add jobs
+#        servers = partners.Server.list_from_database(self.context.partnerdb)
+#
+#        for server in servers:
+#            minute,hour,dom,month,dow = server.connection_schedule.split()
+#            pattern = lib.CronPattern(minute,hour,dom,month,dow)
+#            job = lib.Job(pattern, self.try_synchronization_with_server, (server.partner_name,), server.last_connection)
+#            job.start()
+#
+#            self.jobs.append(job)
+#
+#        # add cleanup job
+#        cleanup_schedule = self.context.entrydb.get_variable("cleanup_schedule")
+#        minute,hour,dom,month,dow = cleanup_schedule.split()
+#
+#        last_cleanup = self.context.entrydb.get_variable("last_cleanup")
+#        if not last_cleanup==None: last_cleanup = float(last_cleanup)
+#
+#        pattern = lib.CronPattern(minute,hour,dom,month,dow)
+#        job = lib.Job(pattern, self.context.cleanup, (), last_cleanup)
+#        if not job.overdue(): self.context.clean.set()
+#        job.start()
+#
+#        self.jobs.append(job)
+#
+#    def run_synchronization_server(self, domain, interface="", synchronization_port=20001):
+#        self.context.clean.wait()
+#
+#        # set up server
+#        self.synchronization_server = SynchronizationServer((interface, synchronization_port), self.context)
+#
+#        # publish address so that partners can synchronize with us
+#        self.webserver.set_synchronization_address(domain, synchronization_port)
+#
+#        # set up the server thread
+#        self.synchronization_thread = threading.Thread(target=self.synchronization_server.serve_forever)
+#
+#        # run the server
+#        self.synchronization_thread.start()
 
-        interface, port = webserver_address
-        self.webserver = WebServer(self.context, interface, port)
-        self.webserver.start()
-
-        self.synchronization_server = None
-
-        self.worker = threading.Thread(target=self.context.process)
-        self.worker.start()
-
-        self.jobs = []
-
-        # go through servers, add jobs
-        servers = partners.Server.list_from_database(self.context.partnerdb)
-
-        for server in servers:
-            minute,hour,dom,month,dow = server.connection_schedule.split()
-            pattern = lib.CronPattern(minute,hour,dom,month,dow)
-            job = lib.Job(pattern, self.try_synchronization_with_server, (server.partner_name,), server.last_connection)
-            job.start()
-
-            self.jobs.append(job)
-
-        # add cleanup job
-        cleanup_schedule = self.context.entrydb.get_variable("cleanup_schedule")
-        minute,hour,dom,month,dow = cleanup_schedule.split()
-
-        last_cleanup = self.context.entrydb.get_variable("last_cleanup")
-        if not last_cleanup==None: last_cleanup = float(last_cleanup)
-
-        pattern = lib.CronPattern(minute,hour,dom,month,dow)
-        job = lib.Job(pattern, self.context.cleanup, (), last_cleanup)
-        if not job.overdue(): self.context.clean.set()
-        job.start()
-
-        self.jobs.append(job)
-
-    def run_synchronization_server(self, domain, interface="", synchronization_port=20001):
-        self.context.clean.wait()
-
-        # set up server
-        self.synchronization_server = SynchronizationServer((interface, synchronization_port), self.context)
-
-        # publish address so that partners can synchronize with us
-        self.webserver.set_synchronization_address(domain, synchronization_port)
-
-        # set up the server thread
-        self.synchronization_thread = threading.Thread(target=self.synchronization_server.serve_forever)
-
-        # run the server
-        self.synchronization_thread.start()
-
-    def try_synchronization_with_server(self, server_name):
-        # load partner
-        server = partners.Server.from_database(self.context.partnerdb, partner_name=server_name)
-
-        try:
-            self.synchronize_with_partner(server)
-        except Exception,error:
-            self.context.logger.warning("Error synchronizing with %s" % server)
-            offense = partners.ConnectionFailedOffense(error)
-            server.add_offense(offense)
-
-        # save synchronization attempt, returning timestamp
-        return server.register_connection()
+#    def try_synchronization_with_server(self, server_name):
+#        # load partner
+#        server = partners.Server.from_database(self.context.partnerdb, partner_name=server_name)
+#
+#        try:
+#            self.synchronize_with_partner(server)
+#        except Exception,error:
+#            self.context.logger.warning("Error synchronizing with %s" % server)
+#            offense = partners.ConnectionFailedOffense(error)
+#            server.add_offense(offense)
+#
+#        # save synchronization attempt, returning timestamp
+#        return server.register_connection()
 
     def synchronize_with_partner(self, partner):
         """ the client side for SynchronizationServer """
 
         self.context.clean.wait()
 
-        # get the synchronization address
-        host, synchronization_port = partner.synchronization_address()
-        address = (host, synchronization_port)
-
-        # connect
-        self.context.logger.info("Connecting to %s for synchronization with %s" % (str(address), str(partner)))
-        partnersocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        partnersocket.connect(address)
-
-        # authenticate
-        self.context.logger.debug("Authenticating synchronization socket %s to partner %s" % (str(address), str(partner)))
-        success = authenticate_socket_to_partner(partnersocket, partner)
-        assert success
+#        # get the synchronization address
+#        host, synchronization_port = partner.synchronization_address()
+#        address = (host, synchronization_port)
+#
+#        # connect
+#        self.context.logger.info("Connecting to %s for synchronization with %s" % (str(address), str(partner)))
+#        partnersocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+#        partnersocket.connect(address)
+#
+#        # authenticate
+#        self.context.logger.debug("Authenticating synchronization socket %s to partner %s" % (str(address), str(partner)))
+#        success = authenticate_socket_to_partner(partnersocket, partner)
+#        assert success
 
         # get the set of hashes the partner has but we haven't
         self.context.logger.debug("Getting hashes from %s" % str(partner))
@@ -445,22 +447,266 @@ class SDUDS:
         ### call process_hashes_from_partner
         self.context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
 
+#    def submit_address(self, webfinger_address):
+#        return self.context.process_submission(webfinger_address)
+#
+#    def terminate(self, erase=False):
+#        for job in self.jobs: job.terminate()
+#
+#        self.webserver.terminate()
+#
+#        self.context.queue.put_high((None, None))
+#
+#        if self.synchronization_server:
+#            self.synchronization_server.terminate()
+#            self.synchronization_server = None
+#
+#        self.worker.join()
+#        self.context.close(erase=erase)
+
+def synchronize_as_server():
+    # wait for clean
+def synchronize_as_client():
+    # wait for clean
+
+class Application:
+    def __init__(self, context):
+        self.context = context
+
+        # set default values
+        self.web_server = None
+        self.synchronization_server = None
+        self.published_synchronization_address = {}
+        self.jobs = []
+        self.submission_workers = []
+        self.validation_workers = []
+        self.assimilation_worker = None
+
+    def configure_web_server(self, interface="", port=20000):
+        self.web_server = WebServer(self.context, interface, port, self.published_synchronization_address)
+
+    def configure_synchronization_server(self, fqdn, interface="", port=20001):
+        self.synchronization_server = SynchronizationServer(self.context, fqdn, interface, port)
+
+    def configure_workers(self, submission_workers=5, validation_workers=5):
+        # submission workers
+        for i in xrange(submission_workers):
+            worker = threading.Thread(target=self.submission_worker)
+            self.submission_workers.append(worker)
+
+        # validation workers
+        for i in xrange(validation_workers):
+            worker = threading.Thread(target=self.validation_worker)
+            self.submission_workers.append(worker)
+
+        # assimilation worker
+        self.assimilation_worker = threading.Thread(target=self.assimilation_worker)
+
+    def start_web_server(self, *args, **kwargs):
+        # use arguments to configure web server
+        if args or kwargs:
+            self.configure_web_server(*args, **kwargs)
+
+        # start web server
+        self.web_server.start()
+
+    def terminate_web_server(self):
+        if not self.web_server: return
+
+        self.web_server.terminate()
+        self.web_server = None
+
+    def start_synchronization_server(self, *args, **kwargs):
+        # use arguments to configure synchronization server
+        if args or kwargs:
+            self.configure_synchronization_server(*args, **kwargs)
+
+        # publish address so that partners can synchronize with us
+        self.published_synchronization_address = {
+            "fqdn": self.synchronization_server.fqdn,
+            "port": self.synchronization_server.port
+        }
+
+        # set up the server thread
+        self.synchronization_thread = threading.Thread(target=self.synchronization_server.serve_forever)
+
+        # run the server
+        self.synchronization_thread.start()
+
+    def terminate_synchronization_server(self):
+        if not self.synchronization_server: return
+
+        self.published_synchronization_address = {}
+
+        self.synchronization_server.terminate()
+        self.synchronization_thread.join()
+        self.synchronization_server = None
+
+    def start_workers(self, *args, **kwargs):
+        # use arguments to configure synchronization server
+        if args or kwargs:
+            self.configure_workers(*args, **kwargs)
+
+        # start submission workers
+        for worker in self.submission_workers:
+            worker.start()
+        
+        # start validation workers
+        for worker in self.validation_workers:
+            worker.start()
+
+        # start assimilation worker
+        self.assimilation_worker.start()
+
+    def terminate_workers(self):
+        # terminate submission workers
+        for worker in self.submission_workers:
+            self.context.submission_queue.put(None)
+
+        for worker in self.submission_workers:
+            worker.join()
+
+        self.submission_workers = []
+
+        # terminate validation workers
+        for worker in self.validation_workers:
+            self.context.validation_queue.put(None)
+
+        for worker in self.validation_workers:
+            worker.join() 
+
+        self.validation_workers = []
+
+        # terminate assimilation worker
+        if self.assimilation_worker:
+            self.context.assimilation_queue.put(None)
+            self.assimilation_worker.join()
+            self.assimilation_worker = None
+
+    def start_jobs(self):
+        # go through servers, add jobs
+        for server in self.context.partnerdb.get_servers():
+            minute,hour,dom,month,dow = server.connection_schedule.split()
+            pattern = lib.CronPattern(minute,hour,dom,month,dow)
+            job = lib.Job(pattern, self.synchronize_with_partner, (server.partner_name,), server.last_connection)
+            job.start()
+
+            self.jobs.append(job)
+
+        # add cleanup job
+        last_cleanup = self.context.statedb.get_variable("last_cleanup")
+        if not last_cleanup==None: last_cleanup = float(last_cleanup)
+
+        pattern = lib.IntervalPattern(CLEANUP_INTERVAL)
+        job = lib.Job(pattern, self.context.statedb.cleanup, (), last_cleanup)
+
+        if not job.overdue(): self.context.statedb.clean.set()
+        job.start()
+
+        self.jobs.append(job)
+
+    def terminate_jobs(self):
+        for job in self.jobs:
+            job.terminate()
+
+        self.jobs = []
+
+    def start(self, web_server=True, synchronization_server=True, jobs=True, workers=True):
+        if web_server:
+            self.start_web_server()
+
+        if synchronization_server:
+            self.start_synchronization_server()
+
+        if jobs:
+            self.start_jobs()
+
+        if workers:
+            sef.start_workers()
+
+    def terminate(self):
+        self.termiante_web_server()
+        self.terminate_synchronization_server()
+        self.terminate_jobs()
+        self.terminate_workers()
+
+    def submission_worker(self):
+        while True:
+            webfinger_address = self.context.submission_queue.get()
+            if webfinger_address==None: return
+
+            partner = partners.Me
+            state = State.retrieve(webfinger_address)
+
+            claim = Claim(webfinger_address, partner, state)
+
+            self.context.validation_queue.put(claim, True)
+        
+    def validation_worker(self):
+        while True:
+            claim = self.context.validation_queue.get()
+            if claim==None: return
+
+            validated_claim = claim.validate()
+            self.context.assimilation_queue.put(validated_claim, True)
+
+    def assimilation_worker(self):
+        while True:
+            validated_claim = self.context.assimilation_queue.get()
+            if validated_claim==None: return
+
+            address = validated_claim.address
+            state = validated_claim.state
+
+            self.context.statedb.save(address, state)
+
     def submit_address(self, webfinger_address):
-        return self.context.process_submission(webfinger_address)
+        try:
+            self.context.submission_queue.put(webfinger_address)
+            return True
+        except Queue.Full:
+            self.context.logger.warning("Submission queue full, rejected %s!" % webfinger_address)
+            return False
 
-    def terminate(self, erase=False):
-        for job in self.jobs: job.terminate()
+    def synchronize_with_partner(self, partner):
+        # register synchronization attempt
+        timestamp = self.context.partnerdb.register_connection(partner)
+        
+        # get the synchronization address
+        try:
+            host, synchronization_port = partner.get_synchronization_address()
+            address = (host, synchronization_port)
+        except Exception, e:
+            self.context.logger.warning("Unable to get synchronization address of %s: %s" % (str(partner), str(e)))
+            return timestamp
+        
+        # establish connection
+        try:
+            partnersocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            partnersocket.connect(address)
+        except Exception, e:
+            self.context.logger.warning("Unable to connect to partner %s for synchronization: %s" % (str(partner), str(e)))
+            return timestamp
 
-        self.webserver.terminate()
+        # authentication
+        try:
+            success = authenticate_socket_to_partner(partnersocket, partner)
+        except Exception, e:
+            self.context.logger.warning("Unable to authenticate to partner %s for synchronization: %s" % (str(partner), str(e)))
+            return timestamp
 
-        self.context.queue.put_high((None, None))
+        if not success:
+            self.context.logger.warning("Invalid credentials for partner %s!" % str(partner))
+            return timestamp
 
-        if self.synchronization_server:
-            self.synchronization_server.terminate()
-            self.synchronization_server = None
+        # conduct synchronization
+        try:
+            synchronize_as_server(partnersocket, context)
+        except Exception, e:
+            self.context.logger.warning("Unable to synchronize with partner %s: %s" % (str(partner), str(e)))
 
-        self.worker.join()
-        self.context.close(erase=erase)
+        # return synchronization time
+        return timestamp
 
 if __name__=="__main__":
     """
