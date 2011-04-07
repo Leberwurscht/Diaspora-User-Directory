@@ -149,7 +149,22 @@ Notes:
 
 import time, calendar, threading
 
-class CronPattern:
+class TimePattern:
+    def next_clearance(self, last_clearance):
+        """ Must calculate the time a callback must be executed next,
+            given that the last execution was at last_clearance.
+            last_clearance must be a unix time stamp, as well as
+            the return value.  """
+        raise NotImplementedError, "override this function"
+
+class IntervalPattern(TimePattern):
+    def __init__(self, interval):
+        self.interval = interval
+
+    def next_clearance(self, last_clearance):
+        return last_clearance + self.interval
+
+class CronPattern(TimePattern):
     def __init__(self, minute, hour, dom, month, dow):
         self.minute = CronPattern.parse_field(minute, 0, 59)
         self.hour = CronPattern.parse_field(hour, 0, 23)
