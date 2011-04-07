@@ -464,11 +464,6 @@ class SDUDS:
 #        self.worker.join()
 #        self.context.close(erase=erase)
 
-def synchronize_as_server():
-    # wait for clean
-def synchronize_as_client():
-    # wait for clean
-
 class Application:
     def __init__(self, context):
         self.context = context
@@ -697,7 +692,7 @@ class Application:
 
         # conduct synchronization
         try:
-            synchronize_as_server(partnersocket, context)
+            self.context.synchronize_as_client(partnersocket)
         except Exception, e:
             self.context.logger.warning("Unable to synchronize with partner %s: %s" % (str(partner), str(e)))
 
