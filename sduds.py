@@ -642,7 +642,9 @@ class Application:
     def submission_worker(self):
         while True:
             webfinger_address = self.context.submission_queue.get()
-            if webfinger_address==None: return
+            if webfinger_address==None:
+                self.context.submission_queue.task_done()
+                return
 
             partner = partners.Me
             state = State.retrieve(webfinger_address)
@@ -650,24 +652,31 @@ class Application:
             claim = Claim(webfinger_address, partner, state)
 
             self.context.validation_queue.put(claim, True)
+            self.context.submission_queue.task_done()
         
     def validation_worker(self):
         while True:
             claim = self.context.validation_queue.get()
-            if claim==None: return
+            if claim==None:
+                self.context.validation_queue.task_done()
+                return
 
             validated_claim = claim.validate()
             self.context.assimilation_queue.put(validated_claim, True)
+            self.context.validation_queue.task_done()
 
     def assimilation_worker(self):
         while True:
             validated_claim = self.context.assimilation_queue.get()
-            if validated_claim==None: return
+            if validated_claim==None:
+                self.context.assimilation_queue.task_done()
+                return
 
             address = validated_claim.address
             state = validated_claim.state
 
             self.context.statedb.save(address, state)
+            self.context.assimilation_queue.task_done()
 
     def submit_address(self, webfinger_address):
         try:
