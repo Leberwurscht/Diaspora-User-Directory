@@ -486,6 +486,9 @@ class Application:
     def __init__(self, context):
         self.context = context
 
+        # need this for waiting until expired states are deleted
+        self.ready_for_synchronization = threading.Event()
+
         # set default values
         self.web_server = None
         self.synchronization_server = None
@@ -609,7 +612,7 @@ class Application:
         pattern = lib.IntervalPattern(CLEANUP_INTERVAL)
         job = lib.Job(pattern, self.context.statedb.cleanup, (), last_cleanup)
 
-        if not job.overdue(): self.context.statedb.clean.set()
+        if not job.overdue(): self.ready_for_synchronization.set()
         job.start()
 
         self.jobs.append(job)
@@ -624,20 +627,25 @@ class Application:
         if web_server:
             self.start_web_server()
 
-        if synchronization_server:
-            self.start_synchronization_server()
-
         if jobs:
             self.start_jobs()
 
         if workers:
             sef.start_workers()
 
-    def terminate(self):
+        if synchronization_server:
+            # do not synchronize as long as we might have expired states
+            self.ready_for_synchronization.wait()
+
+            self.start_synchronization_server()
+
+    def terminate(self, erase=False):
         self.termiante_web_server()
         self.terminate_synchronization_server()
         self.terminate_jobs()
         self.terminate_workers()
+
+        self.context.close(erase)
 
     def submission_worker(self):
         while True:
@@ -688,6 +696,9 @@ class Application:
             return False
 
     def synchronize_with_partner(self, partner):
+        # do not synchronize as long as we might have expired states
+        self.ready_for_synchronization.wait()
+
         # register synchronization attempt
         timestamp = self.context.partnerdb.register_connection(partner)
         
