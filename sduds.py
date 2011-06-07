@@ -44,7 +44,7 @@ def authenticate_socket_to_partner(partnersocket, partner):
         partnersocket.close()
         return False
 
-class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler):
+class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler): # use paramiko with certificates instead?
     """ Tries to authenticate a partner and calls the method handle_partner in the case of success. Expects the server
         to have a context attribute. """
 
@@ -77,65 +77,6 @@ class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler):
     def handle_partner(self, partner):
         raise NotImplementedError, "Override this function in subclasses!"
 
-###
-
-#class SynchronizationServer(lib.BaseServer):
-#    """ The server partners can connect to for synchronizing. The hashes that must be added
-#        and the hashes that must be deleted are computed and context.process_hashes_from_partner
-#        is called. The counterpart for this is SDUDS.synchronize_with_partner. """
-#
-#    def __init__(self, address, context):
-#        lib.BaseServer.__init__(self, address, SynchronizationRequestHandler)
-#        self.context = context
-
-class SynchronizationRequestHandler(AuthenticatingRequestHandler): # old version
-    def handle_partner(self, partner):
-        context = self.server.context
-
-        context.logger.info("%s connected from %s to %s" % (str(partner), str(self.client_address), str(self.server)))
-
-        ### get the set of hashes the partner has but we haven't (conduct actual synchronization)
-        context.logger.debug("conducting synchronization with %s" % str(partner))
-        add_hashes = context.hashtrie.synchronize_as_client(self.request)
-        context.logger.info("Got %d hashes from %s" % (len(add_hashes), str(partner)))
-
-        ### make file of socket
-        socketfile = self.request.makefile()
-
-        ### determine which hashes the partner must delete
-        deleted_hashes = {}
-
-        for binhash in add_hashes:
-            retrieval_timestamp = context.entrydb.entry_deleted(binhash)
-
-            if not retrieval_timestamp==None:
-                deleted_hashes[binhash] = retrieval_timestamp
-
-        add_hashes -= set(deleted_hashes)
-
-        ### send these hashes to the partner
-        for binhash,retrieval_timestamp in deleted_hashes.iteritems():
-            hexhash = binascii.hexlify(binhash)
-            socketfile.write(hexhash+" "+str(retrieval_timestamp)+"\n")
-        socketfile.write("\n")
-        socketfile.flush()
-
-        ### receive the hashes we should delete
-        delete_hashes = {}
-
-        while True:
-            try:
-                hexhash, retrieval_timestamp = socketfile.readline().split()
-            except ValueError:
-                # got just a newline, so transmission is finished
-                break
-
-            binhash = binascii.unhexlify(hexhash)
-            delete_hashes[binhash] = int(retrieval_timestamp)
-
-        ### call process_hashes_from_partner
-        context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
-
 class SynchronizationServer(lib.BaseServer):
     def __init__(self, context, fqdn, interface, port):
         # initialize server
@@ -149,338 +90,219 @@ class SynchronizationServer(lib.BaseServer):
         self.public_address = (fqdn, port)
 
 class SynchronizationRequestHandler(AuthenticatingRequestHandler):
-    def handle_partner(self, partner):
-        self.server.context.synchronize_as_server(self.request)
-        # TODO: This function will get the entries from the partner.
-        # So it needs to know which partner it talks to for the WrongEntriesViolation.
+    def handle_partner(self, partner_name):
+        context = self.server.context
+        partersocket = self.request
 
-###
+        context.synchronize_as_server(partnersocket, partner_name)
 
 class Context:
-    """ A context is a collection of all necessary databases. It does not contain any trie synchronization
-        code, that's the job of the SDUDS class. """
+    statedb = None
+    partnerdb = None
 
-    def __init__(self, suffix="", erase=False):
-        self.partnerdb = partners.Database(suffix, erase=erase)
-        self.entrydb = entries.Database(suffix, erase=erase)
-        self.hashtrie = HashTrie(suffix, erase=erase)
-        self.queue = lib.TwoPriorityQueue(500)
-        self.clean = threading.Event()  # signalizes if cleanup was called recently enough
+    submission_queue = None
+    validation_queue = None
+    assimilation_queue = None
 
-        self.logger = logging.getLogger("sduds"+suffix)
+    synchronization_address = None
+
+    logger = None
+
+    def __init__(self, statedb=None, partnerdb=None, submission_queue_size=500, validation_queue_size=500, assimilation_queue_size=500, **kwargs):
+        if statedb:
+            self.statedb = statedb
+        else:
+            if "erase_statedb" in kwargs:
+                erase = kwargs["erase_statedb"]
+            else:
+                erase = False
+
+            self.statedb = states.StateDatabase(kwargs["hashtrie_path"], kwargs["entrydb_path"], erase=erase)
+
+        if partnerdb:
+            self.partnerdb = partnerdb
+        else:
+            if "erase_partnerdb" in kwargs:
+                erase = kwargs["erase_partnerdb"]
+            else:
+                erase = False
+
+            self.partnerdb = partners.PartnerDatabase(kwargs["partnerdb_path"], erase=erase)
+
+        self.submission_queue = Queue.Queue(submission_queue_size)
+        self.validation_queue = Queue.PriorityQueue(validation_queue_size)
+        self.assimilation_queue = Queue.Queue(assimilation_queue_size)
+
+        logger_name = "context"
+        if "log" in kwargs:
+            logger_name += ".%s" % kwargs["log"]
+        self.logger = logging.getLogger(logger_name)
 
     def close(self, erase=False):
-        self.partnerdb.close(erase=erase)
-        self.entrydb.close(erase=erase)
-        self.hashtrie.close(erase=erase)
+        self.submission_queue.join()
+        self.validation_queue.join()
+        self.assimilation_queue.join()
 
-    def process(self):
+        self.statedb.close()
+        self.partnerdb.close()
+
+    def process_state(state, partner_name):
+        if state.retrieval_timestamp:
+            # if partner does take over responsibility, submit claim to validation queue
+            claim = Claim(state, partner_name)
+
+            try: self.validation_queue.put(claim)
+            except Queue.Full:
+                self.logger.warning("validation queue full while synchronizing with %s!" % partner_name)
+        else:
+            # if partner does not take over responsibility, simply submit the address for retrieval
+            submission = Submission(state.address)
+            try: self.submission_queue.put(submission)
+            except Queue.Full:
+                self.logger.warning("submission queue full while synchronizing with %s!" % partner_name)
+
+    def synchronize_as_server(partnersocket, partner_name):
+        # get the hashes the partner has but we haven't
+        missing_hashes = self.statedb.hashtrie.synchronize_as_server(partnersocket)
+
+        # Receive delete requests and construct preliminary invalid states from them. These states
+        # may be omitted later if there is a new valid state for the same webfinger address.
+        preliminary_invalid_states = {}
         while True:
-            webfinger_address, claim = self.queue.get()
-            if not webfinger_address: break
+            delete_request = DeleteRequest.receive(partnersocket)
+            if not delete_request: break
 
-            self.logger.debug("processing %s from queue" % webfinger_address)
+            invalid_state = self.statedb.get_invalid_state(delete_request.hash, delete_request.retrieval_timestamp)
+            preliminary_invalid_states[invalid_state.address] = invalid_state
 
-            if not claim:
-                self.logger.debug("%s is a simple submission" % webfinger_address)
-                retrieve_profile = True
-            else:
-                claimed_state, retrieval_timestamp, claiming_partner_name = claim
-                claiming_partner = partners.Partner.from_database(self.partnerdb, partner_name=claiming_partner_name)
+        # filter out ghost states the partner doesn't know yet from missing_hashes and tell him
+        deleted_hashes = set()
 
-                # reject kicked partners
-                if claiming_partner.kicked():
-                    self.logger.warning("%s is kicked, so don't process %s." % (claiming_partner, webfinger_address))
-                    self.queue.task_done()
-                    continue
+        for ghost in self.statedb.get_ghosts(missing_hashes)
+            deleted_hashes += ghost.hash
 
-                # check whether the profile should be retrieved
-                if retrieval_timestamp < time.time()-RESPONSIBILITY_TIME_SPAN:
-                    # TODO: notify administrator
-                    self.logger.warning("%s, gotten from %s was retrieved a too long time ago" % (webfinger_address, claiming_partner))
-                    retrieve_profile = True
-                    responsibility = False
-                elif random.random() < claiming_partner.control_probability:
-                    self.logger.debug("decided to take a control sample for %s, gotten from %s" % (webfinger_address, claiming_partner))
-                    retrieve_profile = True
-                    responsibility = True
-                    claiming_partner.register_control_sample()
-                else:
-                    self.logger.debug("decided not to take a control sample for %s, gotten from %s" % (webfinger_address, claiming_partner))
-                    retrieve_profile = False
+            if not ghost.retrieval_timestamp==None:
+                delete_request = DeleteRequest(ghost)
+                delete_request.transmit(partnersocket)
 
-            if retrieve_profile:
-                self.logger.debug("retrieving the profile for %s" % webfinger_address)
+        terminator.transmit(partnersocket)
 
-                try:
-                    state = entries.Entry.from_webfinger_address(webfinger_address)
-                    retrieval_timestamp = state.retrieval_timestamp
-                except Exception, error:
-                    state = None
-                    retrieval_timestamp = int(time.time())
+        request_hashes = missing_hashes - deleted_hashes
 
-                # check whether claim was right
-                if not claim: pass
-                elif state==None and claimed_state==None: pass
-                elif state and claimed_state and state.hash==claimed_state.hash: pass
-                else:
-                    self.logger.warning("state of %s is not as %s claimed" % (webfinger_address, claiming_partner))
-                    offense = partners.NonConcurrenceOffense(state, claimed_state, guilty=responsibility)
-                    claiming_partner.add_offense(offense)
-            else:
-                state = claimed_state
-
-                # verify that entry was retrieved after it was submitted
-                if claim and state and state.retrieval_timestamp<state.submission_timestamp:
-                    self.logger.warning("%s transmitted state with invalid timestamps" % claiming_partner)
-                    violation = partners.InvalidTimestampsViolation(state)
-                    claiming_partner.add_violation(violation)
-                    self.queue.task_done()
-                    continue
-
-            # check if entry is expired
-            if state and state.expired():
-                self.logger.warning("got expired entry for %s" % state.webfinger_address)
-
-                if not claim: pass # partner not responsible, address was submitted directly
-                elif retrieve_profile: pass # partner not responsible, retrieved profile ourselves
-                elif time.time()-state.submission_timestamp < entries.ENTRY_LIFETIME+EXPIRY_GRACE_PERIOD: pass # grace period
-                else:
-                    violation = partners.ExpiredEntryViolation(claimed_state)
-                    claiming_partner.add_violation(violation)
-
-                self.queue.task_done()
-                continue
-
-            # check captcha signature
-            if state and not state.captcha_signature_valid():
-                if claim and not retrieve_profile:
-                    self.logger.warning("invalid captcha for %s from %s" % (webfinger_address, claiming_partner))
-                    violation = partners.InvalidCaptchaViolation(state)
-                    claiming_partner.add_violation(violation)
-                else:
-                    self.logger.warning("invalid captcha for %s" % webfinger_address)
-
-                self.queue.task_done()
-                continue
-
-            added_hashes,deleted_hashes,ignored_hashes = self.entrydb.save_state(webfinger_address, state, retrieval_timestamp)
-            self.hashtrie.add(added_hashes)
-            self.hashtrie.delete(deleted_hashes)
-            self.logger.info("added %d, deleted %d hashes" % (len(added_hashes), len(deleted_hashes)))
-
-            self.queue.task_done()
-
-    def process_hashes_from_partner(self, partner, add_hashes, delete_hashes):
-        self.logger.debug("process_hashes_from_partner: add %d/delete %d from %s" % (len(add_hashes), len(delete_hashes), partner))
-
-        claimed_states = {}
-
-        # process delete_hashes first as new entries overwrite old entries
-        for binhash,retrieval_timestamp in delete_hashes.iteritems():
-            entry = entries.Entry.from_database(self.entrydb, hash=binhash)
-            address = entry.webfinger_address
-
-            claimed_states[address] = (None, retrieval_timestamp)
-
-        # process add_hashes
-        try:
-            self.logger.info("Requesting %d hashes from %s" % (len(add_hashes), partner))
-            entrylist = entries.EntryList.from_server(add_hashes, partner.address)
-        except IOError, error:
-            self.logger.warning("IOError with %s" % partner)
-            offense = partners.ConnectionFailedOffense(error)
-            partner.add_offense(offense)
-            return
-        except entries.InvalidHashError, error:
-            self.logger.warning("invalid hash from %s" % partner)
-            violation = partners.InvalidHashViolation(error)
-            partner.add_violation(violation)
-            return
-        except entries.InvalidListError, error:
-            self.logger.warning("invalid list from %s" % partner)
-            violation = partners.InvalidListViolation(error)
-            partner.add_violation(violation)
-            return
-        except entries.WrongEntriesError, error:
-            self.logger.warning("wrong entries from %s" % partner)
-            violation = partners.WrongEntriesViolation(error)
-            partner.add_violation(violation)
-            return
-
-        for entry in entrylist:
-            claimed_states[entry.webfinger_address] = (entry, entry.retrieval_timestamp)
-
-        # create jobs
-        for address, claimed_state in claimed_states.iteritems():
-            self.queue.put_high((address, claimed_state + (partner.partner_name,)))
-
-    def process_submission(self, webfinger_address):
-        try:
-            self.queue.put_low((webfinger_address, None))
-            return True
-        except lib.Full:
-            self.logger.error("Submission queue full, rejected %s!" % webfinger_address)
-            return False
-
-    def cleanup(self):
-        now, delete_hashes = self.entrydb.cleanup()
-        self.hashtrie.delete(delete_hashes)
-
-        self.entrydb.set_variable("last_cleanup", str(now))
-        self.clean.set()
-
-        self.logger.debug("cleanup executed, deleted %d entries." % len(delete_hashes))
-
-        return now
-
-class SDUDS:
-#    def __init__(self, webserver_address, suffix="", erase=False):
-#        self.context = Context(suffix, erase=erase)
-#
-#        interface, port = webserver_address
-#        self.webserver = WebServer(self.context, interface, port)
-#        self.webserver.start()
-#
-#        self.synchronization_server = None
-#
-#        self.worker = threading.Thread(target=self.context.process)
-#        self.worker.start()
-#
-#        self.jobs = []
-#
-#        # go through servers, add jobs
-#        servers = partners.Server.list_from_database(self.context.partnerdb)
-#
-#        for server in servers:
-#            minute,hour,dom,month,dow = server.connection_schedule.split()
-#            pattern = lib.CronPattern(minute,hour,dom,month,dow)
-#            job = lib.Job(pattern, self.try_synchronization_with_server, (server.partner_name,), server.last_connection)
-#            job.start()
-#
-#            self.jobs.append(job)
-#
-#        # add cleanup job
-#        cleanup_schedule = self.context.entrydb.get_variable("cleanup_schedule")
-#        minute,hour,dom,month,dow = cleanup_schedule.split()
-#
-#        last_cleanup = self.context.entrydb.get_variable("last_cleanup")
-#        if not last_cleanup==None: last_cleanup = float(last_cleanup)
-#
-#        pattern = lib.CronPattern(minute,hour,dom,month,dow)
-#        job = lib.Job(pattern, self.context.cleanup, (), last_cleanup)
-#        if not job.overdue(): self.context.clean.set()
-#        job.start()
-#
-#        self.jobs.append(job)
-#
-#    def run_synchronization_server(self, domain, interface="", synchronization_port=20001):
-#        self.context.clean.wait()
-#
-#        # set up server
-#        self.synchronization_server = SynchronizationServer((interface, synchronization_port), self.context)
-#
-#        # publish address so that partners can synchronize with us
-#        self.webserver.set_synchronization_address(domain, synchronization_port)
-#
-#        # set up the server thread
-#        self.synchronization_thread = threading.Thread(target=self.synchronization_server.serve_forever)
-#
-#        # run the server
-#        self.synchronization_thread.start()
-
-#    def try_synchronization_with_server(self, server_name):
-#        # load partner
-#        server = partners.Server.from_database(self.context.partnerdb, partner_name=server_name)
-#
-#        try:
-#            self.synchronize_with_partner(server)
-#        except Exception,error:
-#            self.context.logger.warning("Error synchronizing with %s" % server)
-#            offense = partners.ConnectionFailedOffense(error)
-#            server.add_offense(offense)
-#
-#        # save synchronization attempt, returning timestamp
-#        return server.register_connection()
-
-    def synchronize_with_partner(self, partner):
-        """ the client side for SynchronizationServer """
-
-        self.context.clean.wait()
-
-#        # get the synchronization address
-#        host, synchronization_port = partner.synchronization_address()
-#        address = (host, synchronization_port)
-#
-#        # connect
-#        self.context.logger.info("Connecting to %s for synchronization with %s" % (str(address), str(partner)))
-#        partnersocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#        partnersocket.connect(address)
-#
-#        # authenticate
-#        self.context.logger.debug("Authenticating synchronization socket %s to partner %s" % (str(address), str(partner)))
-#        success = authenticate_socket_to_partner(partnersocket, partner)
-#        assert success
-
-        # get the set of hashes the partner has but we haven't
-        self.context.logger.debug("Getting hashes from %s" % str(partner))
-        add_hashes = self.context.hashtrie.synchronize_as_server(partnersocket)
-        self.context.logger.info("Got %d hashes from %s" % (len(add_hashes), str(partner)))
-
-        # make file of socket
-        partnerfile = partnersocket.makefile()
-
-        # get the hashes that we should delete
-        delete_hashes = {}
-
+        # receive requests for valid profiles
+        requests = []
         while True:
-            try:
-                hexhash, retrieval_timestamp = partnerfile.readline().split()
-                self.context.logger.debug("%s asks us to delete hash %s" % (str(partner), hexhash))
-            except ValueError:
-                # got just a newline, so transmission is finished
-                break
+            request = StateRequest.receive(partnersocket)
+            if not request: break
 
-            binhash = binascii.unhexlify(hexhash)
-            delete_hashes[binhash] = int(retrieval_timestamp)
+            requests.append(request)
 
-        # determine which hashes the partner must delete
-        deleted_hashes = {}
+        # answer requests
+        for request in requests:
+            state = self.statedb.get_valid_state(request.hash)
+            message = StateMessage(state)
+            message.transmit(partnersocket)
+        terminator.transmit(partnersocket)
 
-        for binhash in add_hashes:
-            retrieval_timestamp = self.context.entrydb.entry_deleted(binhash)
-            
-            if not retrieval_timestamp==None:
-                deleted_hashes[binhash] = retrieval_timestamp
+        # request valid states
+        for binhash in request_hashes:
+            request = lib.Request(binhash)
+            request.transmit(partnersocket)
+        terminator.transmit(partnersocket)
 
-        add_hashes -= set(deleted_hashes)
+        # receive valid states, removing the preliminarily constructed invalid
+        # states for the respective webfinger addresses
+        while True:
+            message = StateMessage.receive(partnersocket)
+            if not message: break
 
-        # send these hashes to the partner
-        for binhash,retrieval_timestamp in deleted_hashes.iteritems():
-            hexhash = binascii.hexlify(binhash)
-            partnerfile.write(hexhash+" "+str(retrieval_timestamp)+"\n")
-        partnerfile.write("\n")
-        partnerfile.flush()
+            state = message.state
 
-        ### call process_hashes_from_partner
-        self.context.process_hashes_from_partner(partner, add_hashes, delete_hashes)
+            # remove preliminarily constructed invalid state
+            # for this webfinger address
+            if state.address in preliminary_invalid_states:
+                del preliminary_invalid_states[state.address]
 
-#    def submit_address(self, webfinger_address):
-#        return self.context.process_submission(webfinger_address)
-#
-#    def terminate(self, erase=False):
-#        for job in self.jobs: job.terminate()
-#
-#        self.webserver.terminate()
-#
-#        self.context.queue.put_high((None, None))
-#
-#        if self.synchronization_server:
-#            self.synchronization_server.terminate()
-#            self.synchronization_server = None
-#
-#        self.worker.join()
-#        self.context.close(erase=erase)
+            self.process_state(state, partner_name)
+
+        # the remaining invalid states are kept
+        invalid_states = preliminary_invalid_states
+
+        # put invalid states into queues
+        for invalid_state in invalid_states.itervalues():
+            self.process_state(invalid_state, partner_name)
+
+    def synchronize_as_client(partnersocket, partner_name):
+        # get the hashes the partner has but we haven't
+        missing_hashes = self.statedb.hashtrie.synchronize_as_client(partnersocket)
+
+        # filter out ghost states the partner doesn't know yet and tell him
+        deleted_hashes = set()
+
+        for ghost in self.statedb.get_ghosts(missing_hashes)
+            deleted_hashes += ghost.hash
+
+            if not ghost.retrieval_timestamp==None:
+                delete_request = DeleteRequest(ghost)
+                delete_request.transmit(partnersocket)
+
+        terminator.transmit(partnersocket)
+
+        request_hashes = missing_hashes - deleted_hashes
+
+        # Receive delete requests and construct preliminary invalid states from them. These states
+        # may be omitted later if there is a new valid state for the same webfinger address.
+        preliminary_invalid_states = {}
+        while True:
+            delete_request = DeleteRequest.receive(partnersocket)
+            if not delete_request: break
+
+            invalid_state = self.statedb.get_invalid_state(delete_request.hash, delete_request.retrieval_timestamp)
+            preliminary_invalid_states[invalid_state.address] = invalid_state
+
+        # request valid states
+        for binhash in request_hashes:
+            request = StateRequest(binhash)
+            request.transmit(partnersocket)
+        terminator.transmit(partnersocket)
+
+        # receive valid states, removing the preliminarily constructed invalid
+        # states for the respective webfinger addresses
+        while True:
+            message = StateMessage.receive(partnersocket)
+            if not message: break
+
+            state = message.state
+
+            # remove preliminarily constructed invalid state
+            # for this webfinger address
+            if state.address in preliminary_invalid_states:
+                del preliminary_invalid_states[state.address]
+
+            self.process_state(state, partner_name)
+
+        # the remaining invalid states are kept
+        invalid_states = preliminary_invalid_states
+
+        # put invalid states into queues
+        for invalid_state in invalid_states.itervalues():
+            self.process_state(invalid_state, partner_name)
+
+        # receive requests for valid profiles
+        requests = []
+        while True:
+            request = StateRequest.receive(partnersocket)
+            if not request: break
+
+            requests.append(request)
+
+        # answer requests
+        for request in requests:
+            state = self.statedb.get_valid_state(request.hash)
+            message = StateMessage(state)
+            message.transmit(partnersocket)
+
+        terminator.transmit(partnersocket)
 
 class Application:
     def __init__(self, context):
