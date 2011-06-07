@@ -641,15 +641,15 @@ class Application:
 
     def submission_worker(self):
         while True:
-            webfinger_address = self.context.submission_queue.get()
-            if webfinger_address==None:
+            submission = self.context.submission_queue.get()
+            if submission==None:
                 self.context.submission_queue.task_done()
                 return
 
             partner = partners.Me
-            state = State.retrieve(webfinger_address)
+            state = State.retrieve(submission.webfinger_address)
 
-            claim = Claim(webfinger_address, partner, state)
+            claim = Claim(partner, state)
 
             self.context.validation_queue.put(claim, True)
             self.context.submission_queue.task_done()
@@ -680,7 +680,8 @@ class Application:
 
     def submit_address(self, webfinger_address):
         try:
-            self.context.submission_queue.put(webfinger_address)
+            submission = Submission(webfinger_address)
+            self.context.submission_queue.put(submission)
             return True
         except Queue.Full:
             self.context.logger.warning("Submission queue full, rejected %s!" % webfinger_address)
