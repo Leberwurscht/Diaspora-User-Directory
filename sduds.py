@@ -167,30 +167,38 @@ class Context:
 
         synchronization = Synchronization(missing_hashes)
 
-        synchronization.receive_deletion_requests(partnersocket, self.context.statedb)
-        synchronization.send_deletion_requests(partnersocket, self.context.statedb)
+        f = partnersocket.makefile()
 
-        synchronization.receive_state_requests(partnersocket)
-        synchronization.send_states(partnersocket, self.context.statedb)
+        synchronization.receive_deletion_requests(f, self.context.statedb)
+        synchronization.send_deletion_requests(f, self.context.statedb)
 
-        synchronization.send_state_requests(partnersocket)
-        for state in synchronization.receive_states(partersocket):
+        synchronization.receive_state_requests(f)
+        synchronization.send_states(f, self.context.statedb)
+
+        synchronization.send_state_requests(f)
+        for state in synchronization.receive_states(f):
             self.process_state(state, partner_name)
+
+        f.close()
 
     def synchronize_as_client(partnersocket, partner_name):
         missing_hashes = self.statedb.hashtrie.get_missing_hashes(partnersocket)
 
         synchronization = Synchronization(missing_hashes)
 
-        synchronization.send_deletion_requests(partnersocket, self.statedb)
-        synchronization.receive_deletion_requests(partnersocket, self.statedb)
+        f = partnersocket.makefile()
 
-        synchronization.send_state_requests(partnersocket)
-        for state in synchronization.receive_states(partersocket):
+        synchronization.send_deletion_requests(f, self.statedb)
+        synchronization.receive_deletion_requests(f, self.statedb)
+
+        synchronization.send_state_requests(f)
+        for state in synchronization.receive_states(f):
             self.process_state(state, partner_name)
 
-        synchronization.receive_state_requests(partnersocket)
-        synchronization.send_states(partnersocket, self.context.statedb)
+        synchronization.receive_state_requests(f)
+        synchronization.send_states(f, self.context.statedb)
+
+        f.close()
 
 class Application:
     def __init__(self, context):
