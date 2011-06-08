@@ -1,5 +1,113 @@
 #!/usr/bin/env python
 
+import struct, time
+
+class Message:
+    message_type = None
+
+    def transmit(self, socket):
+        raise NotImplementedError, "override this function in subclasses!"
+
+    @classmethod
+    def receive(cls, socket):
+        raise NotImplementedError, "override this function in subclasses!"
+
+class Terminator(Message):
+    message_type = 't'
+
+    def transmit(self, socket):
+        socket.sendall(self.message_type)
+
+    @classmethod
+    def receive(cls, socket):
+        # read message type
+        message_type = socket.recv(1)
+        if not message_type==cls.message_type: return None
+
+        return cls()
+
+terminator = Terminator()
+
+class DeletionRequest(Message):
+    message_type = 'd'
+
+    binhash = None
+    retrieval_timestamp = None  # if None, partner does not take responsibility
+
+    def __init__(self, ghost=None):
+        if ghost:
+            assert not ghost.retrieval_timestamp==None
+
+            now = time.time()
+            if now-ghost.retrieval_timestamp < RESPONSIBILITY_TIMESPAN:
+                self.retrieval_timestamp = ghost.retrieval_timestamp
+
+            self.binhash = ghost.binhash
+
+    def transmit(self, socket):
+        # send message type
+        socket.sendall(self.message_type)
+
+        # send binhash
+        length = len(self.binhash)
+        socket.sendall(chr(length))
+        socket.sendall(self.binhash)
+
+        # send retrieval_timestamp
+        socket.sendall(struct.pack("!d", self.retrieval_timestamp))
+
+    @classmethod
+    def receive(cls, socket):
+        # read message type
+        message_type = socket.recv(1)
+        if not message_type==cls.message_type: return None
+
+        # read binhash
+        length = ord(socket.recv(1))
+        binhash = socket.recv(length)
+
+        # read retrieval_timestamp
+        packed_timestamp = socket.recv(8)
+        retrieval_timestamp = struct.unpack("!d", packed_timestamp)
+
+        # return the delete request
+        deletion_request = cls()
+        deletion_request.binhash = binhash
+        deletion_request.retrieval_timestamp = retrieval_timestamp
+
+        return deletion_request
+
+class StateRequest(Message):
+    message_type = 'r'
+
+    binhash = None
+
+    def __init__(self, binhash):
+        self.binhash = binhash
+
+    def transmit(self, socket):
+        # send message type
+        socket.sendall(self.message_type)
+
+        # send binhash
+        length = len(self.binhash)
+        socket.sendall(chr(length))
+        socket.sendall(self.binhash)
+
+    @classmethod
+    def receive(cls, socket):
+        # read message type
+        message_type = socket.recv(1)
+        if not message_type==cls.message_type: return None
+
+        # read binhash
+        length = ord(socket.recv(1))
+        binhash = socket.recv(length)
+
+        # return the state request
+        state_request = cls(binhash)
+        return state_request
+
 class Synchronization:
     missing_hashes = None
     preliminary_invalid_states = None
@@ -71,7 +179,7 @@ class Synchronization:
         # the remaining invalid states are kept
         invalid_states = self.preliminary_invalid_states
         self.preliminary_invalid_states = None
-        
+ 
         # yield remaining invalid states
         for invalid_state in invalid_states.itervalues():
             yield invalid_state
