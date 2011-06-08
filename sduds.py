@@ -19,6 +19,7 @@ from webserver import WebServer
 import SocketServer
 import lib
 
+from synchronization import Synchronization
 ###
 
 RESPONSIBILITY_TIME_SPAN = 3600*24*3
@@ -162,147 +163,34 @@ class Context:
                 self.logger.warning("submission queue full while synchronizing with %s!" % partner_name)
 
     def synchronize_as_server(partnersocket, partner_name):
-        # get the hashes the partner has but we haven't
-        missing_hashes = self.statedb.hashtrie.synchronize_as_server(partnersocket)
+        missing_hashes = self.statedb.hashtrie.get_missing_hashes(partnersocket)
 
-        # Receive delete requests and construct preliminary invalid states from them. These states
-        # may be omitted later if there is a new valid state for the same webfinger address.
-        preliminary_invalid_states = {}
-        while True:
-            delete_request = DeleteRequest.receive(partnersocket)
-            if not delete_request: break
+        synchronization = Synchronization(missing_hashes)
 
-            invalid_state = self.statedb.get_invalid_state(delete_request.hash, delete_request.retrieval_timestamp)
-            preliminary_invalid_states[invalid_state.address] = invalid_state
+        synchronization.receive_deletion_requests(partnersocket, self.context.statedb)
+        synchronization.send_deletion_requests(partnersocket, self.context.statedb)
 
-        # filter out ghost states the partner doesn't know yet from missing_hashes and tell him
-        deleted_hashes = set()
+        synchronization.receive_state_requests(partnersocket)
+        synchronization.send_states(partnersocket, self.context.statedb)
 
-        for ghost in self.statedb.get_ghosts(missing_hashes)
-            deleted_hashes += ghost.hash
-
-            if not ghost.retrieval_timestamp==None:
-                delete_request = DeleteRequest(ghost)
-                delete_request.transmit(partnersocket)
-
-        terminator.transmit(partnersocket)
-
-        request_hashes = missing_hashes - deleted_hashes
-
-        # receive requests for valid profiles
-        requests = []
-        while True:
-            request = StateRequest.receive(partnersocket)
-            if not request: break
-
-            requests.append(request)
-
-        # answer requests
-        for request in requests:
-            state = self.statedb.get_valid_state(request.hash)
-            message = StateMessage(state)
-            message.transmit(partnersocket)
-        terminator.transmit(partnersocket)
-
-        # request valid states
-        for binhash in request_hashes:
-            request = lib.Request(binhash)
-            request.transmit(partnersocket)
-        terminator.transmit(partnersocket)
-
-        # receive valid states, removing the preliminarily constructed invalid
-        # states for the respective webfinger addresses
-        while True:
-            message = StateMessage.receive(partnersocket)
-            if not message: break
-
-            state = message.state
-
-            # remove preliminarily constructed invalid state
-            # for this webfinger address
-            if state.address in preliminary_invalid_states:
-                del preliminary_invalid_states[state.address]
-
+        synchronization.send_state_requests(partnersocket)
+        for state in synchronization.receive_states(partersocket):
             self.process_state(state, partner_name)
-
-        # the remaining invalid states are kept
-        invalid_states = preliminary_invalid_states
-
-        # put invalid states into queues
-        for invalid_state in invalid_states.itervalues():
-            self.process_state(invalid_state, partner_name)
 
     def synchronize_as_client(partnersocket, partner_name):
-        # get the hashes the partner has but we haven't
-        missing_hashes = self.statedb.hashtrie.synchronize_as_client(partnersocket)
+        missing_hashes = self.statedb.hashtrie.get_missing_hashes(partnersocket)
 
-        # filter out ghost states the partner doesn't know yet and tell him
-        deleted_hashes = set()
+        synchronization = Synchronization(missing_hashes)
 
-        for ghost in self.statedb.get_ghosts(missing_hashes)
-            deleted_hashes += ghost.hash
+        synchronization.send_deletion_requests(partnersocket, self.statedb)
+        synchronization.receive_deletion_requests(partnersocket, self.statedb)
 
-            if not ghost.retrieval_timestamp==None:
-                delete_request = DeleteRequest(ghost)
-                delete_request.transmit(partnersocket)
-
-        terminator.transmit(partnersocket)
-
-        request_hashes = missing_hashes - deleted_hashes
-
-        # Receive delete requests and construct preliminary invalid states from them. These states
-        # may be omitted later if there is a new valid state for the same webfinger address.
-        preliminary_invalid_states = {}
-        while True:
-            delete_request = DeleteRequest.receive(partnersocket)
-            if not delete_request: break
-
-            invalid_state = self.statedb.get_invalid_state(delete_request.hash, delete_request.retrieval_timestamp)
-            preliminary_invalid_states[invalid_state.address] = invalid_state
-
-        # request valid states
-        for binhash in request_hashes:
-            request = StateRequest(binhash)
-            request.transmit(partnersocket)
-        terminator.transmit(partnersocket)
-
-        # receive valid states, removing the preliminarily constructed invalid
-        # states for the respective webfinger addresses
-        while True:
-            message = StateMessage.receive(partnersocket)
-            if not message: break
-
-            state = message.state
-
-            # remove preliminarily constructed invalid state
-            # for this webfinger address
-            if state.address in preliminary_invalid_states:
-                del preliminary_invalid_states[state.address]
-
+        synchronization.send_state_requests(partnersocket)
+        for state in synchronization.receive_states(partersocket):
             self.process_state(state, partner_name)
 
-        # the remaining invalid states are kept
-        invalid_states = preliminary_invalid_states
-
-        # put invalid states into queues
-        for invalid_state in invalid_states.itervalues():
-            self.process_state(invalid_state, partner_name)
-
-        # receive requests for valid profiles
-        requests = []
-        while True:
-            request = StateRequest.receive(partnersocket)
-            if not request: break
-
-            requests.append(request)
-
-        # answer requests
-        for request in requests:
-            state = self.statedb.get_valid_state(request.hash)
-            message = StateMessage(state)
-            message.transmit(partnersocket)
-
-        terminator.transmit(partnersocket)
+        synchronization.receive_state_requests(partnersocket)
+        synchronization.send_states(partnersocket, self.context.statedb)
 
 class Application:
     def __init__(self, context):
