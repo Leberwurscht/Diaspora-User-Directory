@@ -63,16 +63,30 @@ def _read_unicode(f):
 ###################
 
 class Message:
+    """ Interface for message objects, which are objects that can be sent or
+        received over the network. """
+
     message_type = None
 
     def write(self, f):
+        """ The write method sends an serialized version of the object to the
+            file-like object f. """
+
         raise NotImplementedError, "override this function in subclasses!"
 
     @classmethod
     def read(cls, f):
+        """ The read classmethod gets a serialized version of the message from
+            the file-like object f and returns the corresponding python object.
+            If the transmitted message type does not match, None is returned.
+        """
+
         raise NotImplementedError, "override this function in subclasses!"
 
 class Terminator(Message):
+    """ The terminator message is used to signalize the end of a stream of
+        messages. """
+
     message_type = 't'
 
     def write(self, f):
@@ -89,6 +103,13 @@ class Terminator(Message):
 terminator = Terminator()
 
 class DeletionRequest(Message):
+    """ The DeletionRequest message is used to ask the partner to delete a
+        specific hash from his database. We must tell the partner when we got
+        the information that the corresponding state is invalid with the
+        retrieval_timestamp variable. If the retrieval_timestamp is set to
+        None, this means that the partner should not believe us but look at
+        the profile himself. """
+
     message_type = 'd'
 
     binhash = None
@@ -134,6 +155,9 @@ class DeletionRequest(Message):
         return deletion_request
 
 class StateRequest(Message):
+    """ The StateRequest message asks the partner to send the state
+        corresponding to a certain hash to us. """
+
     message_type = 'r'
 
     binhash = None
@@ -162,6 +186,9 @@ class StateRequest(Message):
         return state_request
 
 class Synchronization:
+    """ This is a helper class to avoid duplicated code blocks in the
+        synchronization functions. """
+
     missing_hashes = None
     preliminary_invalid_states = None
     request_hashes = None
@@ -171,7 +198,8 @@ class Synchronization:
         self.missing_hashes = missing_hashes
 
     def send_deletion_requests(self, f, statedb):
-        """ filter out ghost states the partner doesn't know yet and tell him """
+        """ filter out ghost states the partner doesn't know yet and tell him
+        """
 
         deleted_hashes = set()
 
@@ -189,8 +217,9 @@ class Synchronization:
         self.missing_hashes = None
 
     def receive_deletion_requests(self, f, statedb):
-        """ Receive delete requests and construct preliminary invalid states from them. These states
-            may be omitted later if there is a new valid state for the same webfinger address. """
+        """ Receive delete requests and construct preliminary invalid states
+            from them. These states may be omitted later if there is a new valid
+            state for the same webfinger address. """
 
         self.preliminary_invalid_states = {}
 
@@ -198,8 +227,11 @@ class Synchronization:
             deletion_request = DeletionRequest.receive(f)
             if not deletion_request: break
 
-            invalid_state = statedb.get_invalid_state(delete_request.hash, delete_request.retrieval_timestamp)
-            self.preliminary_invalid_states[invalid_state.address] = invalid_state
+            binhash = deletion_request.binhash
+            timestamp = deletion_request.retrieval_timestamp
+
+            state = statedb.get_invalid_state(binhash, timestamp)
+            self.preliminary_invalid_states[invalid_state.address] = state
 
     def send_state_requests(self, f):
         """ request valid states """
@@ -215,8 +247,8 @@ class Synchronization:
 
     def receive_states(self, f):
         """ Receive valid states, removing the preliminarily constructed invalid
-            states for the respective webfinger addresses. Will yield the received
-            states and the remaining invalid states. """
+            states for the respective webfinger addresses. Will yield the
+            received states and the remaining invalid states. """
 
         while True:
             message = StateMessage.receive(f)
