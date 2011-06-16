@@ -185,6 +185,72 @@ class StateRequest(Message):
         state_request = cls(binhash)
         return state_request
 
+class StateMessage(Message):
+    """ The StateMessage is used to transmit either a complete valid state, with
+        both retrieval_timestamp and profile set, or just to ask the partner to
+        look at the online profile by himself (retrieval_timestamp and profile
+        both None). """
+
+    message_type = 's'
+
+    state = None
+
+    def __init__(self, state):
+        self.state = state
+
+    def write(self, f):
+        # send message type
+        f.write(self.message_type)
+
+        # send webfinger address
+        _write_str(f, self.state.webfinger_address)
+
+        # send retrieval timestamp
+        if self.state.retrieval_timestamp==None:
+            f.write('\0')
+        else:
+            f.write('T')
+            _write_integer(f, self.state.retrieval_timestamp)
+
+        # send profile
+        _write_unicode(f, self.state.profile.full_name)
+        _write_unicode(f, self.state.profile.hometown)
+        _write_str(f, self.state.profile.country_code)
+        _write_str(f, self.state.profile.services)
+        _write_integer(f, self.state.profile.submission_timestamp)
+        _write_str(f, self.state.profile.captcha_signature)
+
+    @classmethod
+    def read(cls, f):
+        # read message type
+        message_type = f.read(1)
+        if not message_type==cls.message_type: return None
+
+        # read webfinger address
+        webfinger_address = _read_str(f)
+
+        # read retrieval timestamp
+        announcement = f.read(1)
+        if announcement=='\0':
+            retrieval_timestamp = None
+        else:
+            retrieval_timestamp = _read_integer(f)
+
+        # receive profile
+        full_name = _read_unicode(f)
+        hometown = _read_unicode(f)
+        country_code = _read_str(f)
+        services = _read_str(f)
+        submission_timestamp = _read_integer(f)
+        captcha_signature = _read_str(f)
+
+        profile = Profile(full_name, hometown, country_code, services,
+                          submission_timestamp, captcha_signature)
+
+        state = State(webfinger_address, retrieval_timestamp, profile)
+
+        return cls(state)
+
 class Synchronization:
     """ This is a helper class to avoid duplicated code blocks in the
         synchronization functions. """
