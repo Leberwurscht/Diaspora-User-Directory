@@ -391,21 +391,20 @@ class Application:
                 self.context.validation_queue.task_done()
                 return
 
-            validated_claim = claim.validate()
-            self.context.assimilation_queue.put(validated_claim, True)
+            validated_state = claim.validate(self.context.partnerdb)
+            if validated_state:
+                self.context.assimilation_queue.put(validated_state, True)
+
             self.context.validation_queue.task_done()
 
     def assimilation_worker(self):
         while True:
-            validated_claim = self.context.assimilation_queue.get()
-            if validated_claim==None:
+            state = self.context.assimilation_queue.get()
+            if state==None:
                 self.context.assimilation_queue.task_done()
                 return
 
-            address = validated_claim.address
-            state = validated_claim.state
-
-            self.context.statedb.save(address, state)
+            self.context.statedb.save(state)
             self.context.assimilation_queue.task_done()
 
     def submit_address(self, webfinger_address):
