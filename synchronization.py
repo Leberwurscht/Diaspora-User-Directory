@@ -35,7 +35,9 @@ def _write_short_str(f, string):
 
 def _read_short_str(f):
     length = _read_char(f)
-    webfinger_address = f.read(length)
+    string = f.read(length)
+
+    return string
 
 # for sending strings that are at most 255**4 bytes long
 def _write_str(f, string):
@@ -203,7 +205,7 @@ class StateMessage(Message):
         f.write(self.message_type)
 
         # send webfinger address
-        _write_str(f, self.state.webfinger_address)
+        _write_str(f, self.state.address)
 
         # send retrieval timestamp
         if self.state.retrieval_timestamp==None:
@@ -227,7 +229,7 @@ class StateMessage(Message):
         if not message_type==cls.message_type: return None
 
         # read webfinger address
-        webfinger_address = _read_str(f)
+        address = _read_str(f)
 
         # read retrieval timestamp
         announcement = f.read(1)
@@ -247,7 +249,7 @@ class StateMessage(Message):
         profile = Profile(full_name, hometown, country_code, services,
                           submission_timestamp, captcha_signature)
 
-        state = State(webfinger_address, retrieval_timestamp, profile)
+        state = State(address, retrieval_timestamp, profile)
 
         return cls(state)
 
