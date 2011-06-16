@@ -97,6 +97,65 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
 
         context.synchronize_as_server(partnersocket, partner_name)
 
+class Claim:
+    """ partner_name==None means that the claim is not by another server but
+        'self-made'. """
+
+    timestamp = None
+    state = None
+    partner_name = None
+
+    def __init__(self, state, partner_name=None, timestamp=None):
+        if timestamp==None:
+            self.timestamp = time.time()
+        else:
+            self.timestamp = timestamp
+
+        self.state = state
+        self.partner_name = partner_name
+
+    def __cmp__(self, other):
+        """ Provides ordering of claims in the validation queue by their
+            priority. """
+
+        # Note: __cmp__() should return whether self>other. PriorityQueue takes
+        #       the lowest value first, so the return value is negated.
+
+        # entries retrieved by ourselves have higher priority
+        if self.partner_name==None: return not True
+        if other.partner_name==None: return not False
+
+        # earlier claims have higher priority
+        return not self.timestamp<other.timestamp
+
+    def validate(self, partnerdb):
+        partner = self.partnerdb.get_partner(self.partner_name)
+
+        if partner:
+            if partner.kicked(): return None
+
+            if partner.control_sample():
+                partner.register_control_sample()
+
+                retrieved_state = State.retrieve(self.state.address)
+
+                if not self.state==retrieved_state:
+                    partner.register_offense(self.state, retrieved_state)
+
+                    trusted_state = retrieved_state
+                    partner_name = None
+            else:
+                trusted_state = self.state
+
+        try:
+            trusted_state.validate()
+        except Violation, violation:
+            if partner:
+                partner.register_violation(violation)
+            return None
+        else:
+            return trusted_state
+
 class Context:
     statedb = None
     partnerdb = None
