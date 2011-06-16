@@ -372,10 +372,14 @@ class Application:
                 self.context.submission_queue.task_done()
                 return
 
-            partner = partners.Me
-            state = State.retrieve(submission.webfinger_address)
+            try:
+                state = State.retrieve(submission.webfinger_address)
+            except ...:
+                # TODO: logging
+                self.context.submission_queue.task_done()
+                continue
 
-            claim = Claim(partner, state)
+            claim = Claim(state)
 
             self.context.validation_queue.put(claim, True)
             self.context.submission_queue.task_done()
