@@ -97,6 +97,91 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
 
         context.synchronize_as_server(partnersocket, partner_name)
 
+class State:
+    address = None
+    retrieval_timestamp = None
+    profile = None
+
+    def __init__(self, address, retrieval_timestamp, profile):
+        self.address = address
+        self.retrieval_timestamp = retrieval_timestamp
+        self.profile = profile
+
+    def __eq__(self, other):
+        assert not self.retrieval_timestamp==None
+        assert not other.retrieval_timestamp==None
+
+        assert self.address==other.address
+
+        if self.profile and other.profile:
+            return self.hash==other.hash
+        elif not self.profile and not other.profile:
+            return True
+        else:
+            return False
+
+    def validate(reference_timestamp=None):
+        """ checks if a state was valid at a given time """
+
+        assert not self.retrieval_timestamp==None
+
+        if reference_timestamp==None:
+            reference_timestamp = time.time()
+
+        # TODO
+        if not self.retrieval_timestamp <= reference_timestamp:
+            raise RetrievedInFutureException(retrieval_timestamp,\
+                                             reference_timestamp)
+
+        if not self.retrieval_timestamp >= reference_timestamp - MAX_AGE:
+            raise NotUpToDateException(retrieval_timestamp, reference_timestamp)
+
+        if self.profile:
+            if not self.retrieval_timestamp>=self.profile.submission_timestamp\
+            or not self.profile.submission_timestamp <= reference_timestamp:
+                raise InvalidSubmissionTimestampException(retrieval_timestamp,\
+                         self.profile.submission_timestamp, reference_timestamp)
+
+            expiry_date = self.profile.submission_timestamp + STATE_LIFETIME
+
+            if reference_timestamp>expiry_date:
+                if reference_timestamp > expiry_date + EXPIRY_GRACE_PERIOD:
+                    raise ExpiredException(reference_timestamp, self.profile.submission_timestamp)
+                else:
+                    raise RecentlyExpiredException(reference_timestamp, self.profile.submission_timestamp) # does not inherit from violation
+
+            if not signature_valid(self.profile.captcha_signature, self.address, public_key):
+                raise InvalidCaptchaSignature(self.profile.captcha_signature, self.address, public_key)
+
+        return True
+
+    @classmethod
+    def retrieve(cls, address):
+        profile = Profile.retrieve(address)
+        retrieval_timestamp = int(time.time())
+
+        state = cls(address, retrieval_timestamp, profile)
+
+        return state
+
+    def calculate_hash(self):
+        combinedhash = hashlib.sha1()
+
+        relevant_data = [self.address, self.profile.full_name,
+            self.profile.hometown, self.profile.country_code,
+            self.profile.services, self.profile.submission_timestamp]
+
+        for data in relevant_data:
+            # TODO: take better hash function?
+            subhash = hashlib.sha1(str(data)).digest()
+            combinedhash.update(subhash)
+
+        # TODO: is it unsecure to take only 16 bytes of the hash?
+        binhash = combinedhash.digest()[:16]
+        return binhash
+
+    binhash = property(calculate_hash)
+
 class Claim:
     """ partner_name==None means that the claim is not by another server but
         'self-made'. """
@@ -148,10 +233,13 @@ class Claim:
                 trusted_state = self.state
 
         try:
-            trusted_state.validate()
+            trusted_state.validate(self.timestamp)
         except Violation, violation:
             if partner:
                 partner.register_violation(violation)
+            return None
+        except RecentlyExpiredException, e:
+            # TODO: log
             return None
         else:
             return trusted_state
