@@ -310,17 +310,17 @@ class Context:
                 self.logger.warning("submission queue full while synchronizing with %s!" % partner_name)
 
     def synchronize_as_server(partnersocket, partner_name):
-        missing_hashes = self.statedb.hashtrie.get_missing_hashes(partnersocket)
+        missing_hashes = self.statedb.hashtrie.get_missing_hashes_as_server(partnersocket)
 
         synchronization = Synchronization(missing_hashes)
 
         f = partnersocket.makefile()
 
-        synchronization.receive_deletion_requests(f, self.context.statedb)
-        synchronization.send_deletion_requests(f, self.context.statedb)
+        synchronization.receive_deletion_requests(f, self.statedb)
+        synchronization.send_deletion_requests(f, self.statedb)
 
         synchronization.receive_state_requests(f)
-        synchronization.send_states(f, self.context.statedb)
+        synchronization.send_states(f, self.statedb)
 
         synchronization.send_state_requests(f)
         for state in synchronization.receive_states(f):
@@ -329,7 +329,7 @@ class Context:
         f.close()
 
     def synchronize_as_client(partnersocket, partner_name):
-        missing_hashes = self.statedb.hashtrie.get_missing_hashes(partnersocket)
+        missing_hashes = self.statedb.hashtrie.get_missing_hashes_as_client(partnersocket)
 
         synchronization = Synchronization(missing_hashes)
 

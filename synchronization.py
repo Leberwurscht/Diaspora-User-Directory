@@ -5,18 +5,18 @@ import struct, time
 """ functions to send and receive some basic types over the network,
     using the file descriptor obtained from socket.makefile() """
 
-# for writing a one byte unsigned integer
+# for sending a one byte unsigned integer
 def _write_char(f, integer):
     packed_integer = struct.pack("!B", integer)
     f.write(packed_integer)
 
 def _read_char(f)
-    packed_integer = f.read(4)
+    packed_integer = f.read(1)
     integer = struct.unpack("!B", packed_integer)
 
     return integer
 
-# for writing a 4 byte unsigned integer
+# for sending a 4 byte unsigned integer
 def _write_integer(f, integer):
     packed_integer = struct.pack("!I", integer)
     f.write(packed_integer)
