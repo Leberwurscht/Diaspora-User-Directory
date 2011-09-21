@@ -425,16 +425,16 @@ class Application:
     def configure_workers(self, submission_workers=5, validation_workers=5):
         # submission workers
         for i in xrange(submission_workers):
-            worker = threading.Thread(target=self.submission_worker)
+            worker = threading.Thread(target=self.submission_worker_function)
             self.submission_workers.append(worker)
 
         # validation workers
         for i in xrange(validation_workers):
-            worker = threading.Thread(target=self.validation_worker)
+            worker = threading.Thread(target=self.validation_worker_function)
             self.submission_workers.append(worker)
 
         # assimilation worker
-        self.assimilation_worker = threading.Thread(target=self.assimilation_worker)
+        self.assimilation_worker = threading.Thread(target=self.assimilation_worker_function)
 
     def start_web_server(self, *args, **kwargs):
         # use arguments to configure web server
@@ -566,7 +566,7 @@ class Application:
 
         self.context.close(erase)
 
-    def submission_worker(self):
+    def submission_worker_function(self):
         while True:
             submission = self.context.submission_queue.get()
             if submission==None:
@@ -585,7 +585,7 @@ class Application:
             self.context.validation_queue.put(claim, True)
             self.context.submission_queue.task_done()
         
-    def validation_worker(self):
+    def validation_worker_function(self):
         while True:
             claim = self.context.validation_queue.get()
             if claim==None:
@@ -598,7 +598,7 @@ class Application:
 
             self.context.validation_queue.task_done()
 
-    def assimilation_worker(self):
+    def assimilation_worker_function(self):
         while True:
             state = self.context.assimilation_queue.get()
             if state==None:
