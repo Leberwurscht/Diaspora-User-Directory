@@ -97,6 +97,53 @@ class SynchronizationRequestHandler(AuthenticatingRequestHandler):
 
         context.synchronize_as_server(partnersocket, partner_name)
 
+class Profile:
+    full_name = None # unicode
+    hometown = None # unicode
+    country_code = None # str
+    services = None # str
+    captcha_signature = None # str
+    submission_timestamp = None # int
+
+    def __init__(self, full_name, hometown, country_code, services, captcha_signature, submission_timestamp):
+        self.full_name = full_name
+        self.hometown = hometown
+        self.country_code = country_code
+        self.services = services
+        self.captcha_signature = captcha_signature
+        self.submission_timestamp = submission_timestamp
+
+    @classmethod
+    def retrieve(cls, address):
+        wf = pywebfinger.finger(webfinger_address)
+
+        sduds_uri = wf.find_link("http://hoegners.de/sduds/spec", attr="href")
+
+        f = urllib.urlopen(sduds_uri)
+        json_string = f.read()
+        f.close()
+
+        json_dict = json.loads(json_string)
+
+        full_name = json_dict["full_name"]
+        hometown = json_dict["hometown"]
+        country_code = json_dict["country_code"].encode("utf8")
+        services = json_dict["services"].encode("utf8")
+        captcha_signature = binascii.unhexlify(json_dict["captcha_signature"])
+
+        submission_timestamp = int(json_dict["submission_timestamp"])
+
+        profile = cls(
+            full_name,
+            hometown,
+            country_code,
+            services,
+            captcha_signature,
+            submission_timestamp
+        )
+
+        return profile
+
 class State:
     address = None
     retrieval_timestamp = None
