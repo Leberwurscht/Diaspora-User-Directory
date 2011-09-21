@@ -167,8 +167,9 @@ class State:
         else:
             return False
 
-    def validate(reference_timestamp=None):
-        """ checks if a state was valid at a given time """
+    def assert_validity(reference_timestamp=None):
+        """ Checks if a state was valid at a given time. Returns True if it was, raises
+            an exception otherwise. """
 
         assert not self.retrieval_timestamp==None
 
@@ -280,7 +281,7 @@ class Claim:
                 trusted_state = self.state
 
         try:
-            trusted_state.validate(self.timestamp)
+            trusted_state.assert_validity(self.timestamp)
         except Violation, violation:
             if partner:
                 partner.register_violation(violation)
