@@ -10,7 +10,7 @@ def _write_char(f, integer):
     packed_integer = struct.pack("!B", integer)
     f.write(packed_integer)
 
-def _read_char(f)
+def _read_char(f):
     packed_integer = f.read(1)
     integer = struct.unpack("!B", packed_integer)
 
@@ -21,7 +21,7 @@ def _write_integer(f, integer):
     packed_integer = struct.pack("!I", integer)
     f.write(packed_integer)
 
-def _read_integer(f)
+def _read_integer(f):
     packed_integer = f.read(4)
     integer = struct.unpack("!I", packed_integer)
 
@@ -262,7 +262,7 @@ class Synchronization:
     request_hashes = None
     requests = None
 
-    def __init__(self, missing_hashes)
+    def __init__(self, missing_hashes):
         self.missing_hashes = missing_hashes
 
     def send_deletion_requests(self, f, statedb):
@@ -271,7 +271,7 @@ class Synchronization:
 
         deleted_hashes = set()
 
-        for ghost in statedb.get_ghosts(self.missing_hashes)
+        for ghost in statedb.get_ghosts(self.missing_hashes):
             deleted_hashes += ghost.hash
 
             if not ghost.retrieval_timestamp==None:

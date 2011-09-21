@@ -201,6 +201,8 @@ class State:
             if not signature_valid(self.profile.captcha_signature, self.address, public_key):
                 raise InvalidCaptchaSignature(self.profile.captcha_signature, self.address, public_key)
 
+            # TODO: check length of profile fields
+
         return True
 
     @classmethod
@@ -575,7 +577,7 @@ class Application:
 
             try:
                 state = State.retrieve(submission.webfinger_address)
-            except ...:
+            except Exception, e:
                 # TODO: logging
                 self.context.submission_queue.task_done()
                 continue
