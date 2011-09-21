@@ -220,8 +220,14 @@ class State:
             self.profile.services, self.profile.submission_timestamp]
 
         for data in relevant_data:
-            # TODO: take better hash function?
-            subhash = hashlib.sha1(str(data)).digest()
+            # convert data to string
+            if type(data)==unicode:
+                data_str = data.encode("utf8")
+            else:
+                data_str = str(data)
+
+            # TODO: take better hash function? (also for combinedhash)
+            subhash = hashlib.sha1(data_str).digest()
             combinedhash.update(subhash)
 
         # TODO: is it unsecure to take only 16 bytes of the hash?
