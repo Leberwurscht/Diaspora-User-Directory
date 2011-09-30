@@ -113,6 +113,41 @@ class Profile:
         self.captcha_signature = captcha_signature
         self.submission_timestamp = submission_timestamp
 
+    def assert_validity(self, webfinger_address, reference_timestamp=None):
+        """ Validates the profile against a certain webfinger address. Checks CAPTCHA signature,
+            submission_timestamp, and field lengths. """
+
+        if reference_timestamp==None:
+            reference_timestamp = time.time()
+
+        # validate CAPTCHA signature for given webfinger address
+        if not signature_valid(self.captcha_signature, webfinger_address, CAPTCHA_PUBLIC_KEY):
+            raise InvalidCaptchaSignature(self.captcha_signature, webfinger_address)
+
+        # assert that submission_timestamp is not in future
+        if not self.submission_timestamp <= reference_timestamp:
+            raise SubmittedInFutureException(self.submission_timestamp,\
+                                             reference_timestamp)
+
+        # check lengths of profile fields
+        if len(self.full_name.encode("utf8"))>1024:
+            raise InvalidFullNameException(self.full_name)
+
+        if len(self.hometown.encode("utf8"))>1024:
+            raise InvalidHometownException(self.hometown)
+
+        if len(self.country_code)>2:
+            raise InvalidCountryCodeException(self.country_code)
+
+        if len(self.services)>1024:
+            raise InvalidServicesException(self.services)
+
+        for service in services.split(","):
+            if len(service)>16:
+                raise InvalidServicesException(self.services)
+
+        return True
+
     @classmethod
     def retrieve(cls, address):
         wf = pywebfinger.finger(webfinger_address)
@@ -176,7 +211,6 @@ class State:
         if reference_timestamp==None:
             reference_timestamp = time.time()
 
-        # TODO
         if not self.retrieval_timestamp <= reference_timestamp:
             raise RetrievedInFutureException(retrieval_timestamp,\
                                              reference_timestamp)
@@ -185,10 +219,11 @@ class State:
             raise NotUpToDateException(retrieval_timestamp, reference_timestamp)
 
         if self.profile:
-            if not self.retrieval_timestamp>=self.profile.submission_timestamp\
-            or not self.profile.submission_timestamp <= reference_timestamp:
-                raise InvalidSubmissionTimestampException(retrieval_timestamp,\
-                         self.profile.submission_timestamp, reference_timestamp)
+            self.profile.assert_validity(self.address, self.reference_timestamp)
+
+            if not self.retrieval_timestamp>=self.profile.submission_timestamp:
+                raise InvalidRetrievalTimestampException(retrieval_timestamp,\
+                        self.profile.submission_timestamp)
 
             expiry_date = self.profile.submission_timestamp + STATE_LIFETIME
 
@@ -197,11 +232,6 @@ class State:
                     raise ExpiredException(reference_timestamp, self.profile.submission_timestamp)
                 else:
                     raise RecentlyExpiredException(reference_timestamp, self.profile.submission_timestamp) # does not inherit from violation
-
-            if not signature_valid(self.profile.captcha_signature, self.address, public_key):
-                raise InvalidCaptchaSignature(self.profile.captcha_signature, self.address, public_key)
-
-            # TODO: check length of profile fields
 
         return True
 
