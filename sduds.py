@@ -122,7 +122,8 @@ class Profile:
 
     def assert_validity(self, webfinger_address, reference_timestamp=None):
         """ Validates the profile against a certain webfinger address. Checks CAPTCHA signature,
-            submission_timestamp, and field lengths. """
+            submission_timestamp, and field lengths. Also checks whether webfinger address is
+            too long. """
 
         if reference_timestamp==None:
             reference_timestamp = time.time()
@@ -135,6 +136,10 @@ class Profile:
         if not self.submission_timestamp <= reference_timestamp:
             raise SubmittedInFutureException(self.submission_timestamp,\
                                              reference_timestamp)
+
+        # check lengths of webfinger address 
+        if len(webfinger_address)>MAX_ADDRESS_LENGTH:
+            raise InvalidAddressException(webfinger_address)
 
         # check lengths of profile fields
         if len(self.full_name.encode("utf8"))>MAX_NAME_LENGTH:
