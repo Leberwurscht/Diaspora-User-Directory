@@ -41,6 +41,23 @@ class Text(sqlalchemy.types.TypeDecorator):
     def copy(self):
         return Text(self.impl.length)
 
+class CalculatedPropertyExtension(sqlalchemy.orm.MapperExtension):
+    """ helper class to get sqlalchemy mappings of calculated properties
+        (see http://stackoverflow.com/questions/3020394/sqlalchemy-how-to-map-against-a-read-only-or-calculated-property) """
+    def __init__(self, properties):
+        self.properties = properties
+
+    def _update_properties(self, instance):
+        for prop, synonym in self.properties.iteritems():
+            value = getattr(instance, prop)
+            setattr(instance, synonym, value)
+
+    def before_insert(self, mapper, connection, instance):
+        self._update_properties(instance)
+
+    def before_update(self, mapper, connection, instance):
+        self._update_properties(instance)
+
 import SocketServer
 
 class BaseServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):

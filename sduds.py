@@ -120,6 +120,9 @@ class Profile:
         self.captcha_signature = captcha_signature
         self.submission_timestamp = submission_timestamp
 
+    def __composite_values__(self):
+        return self.full_name, self.hometown, self.country_code, self.services, self.captcha_signature, self.submission_timestamp
+
     def assert_validity(self, webfinger_address, reference_timestamp=None):
         """ Validates the profile against a certain webfinger address. Checks CAPTCHA signature,
             submission_timestamp, and field lengths. Also checks whether webfinger address is
@@ -191,7 +194,7 @@ class Profile:
 
         return profile
 
-class State:
+class State(object):
     address = None
     retrieval_timestamp = None
     profile = None
@@ -256,7 +259,8 @@ class State:
 
         return state
 
-    def calculate_hash(self):
+    @property
+    def hash(self):
         combinedhash = hashlib.sha1()
 
         relevant_data = [self.address, self.profile.full_name,
@@ -278,7 +282,31 @@ class State:
         binhash = combinedhash.digest()[:16]
         return binhash
 
-    binhash = property(calculate_hash)
+# sqlalchemy mapping for State class
+metadata = sqlalchemy.MetaData()
+
+state_table = sqlalchemy.Table('states', metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
+    sqlalchemy.Column("hash", lib.Binary, index=True, unique=True),
+    sqlalchemy.Column("webfinger_address", lib.Text(MAX_ADDRESS_LENGTH), index=True, unique=True),
+    sqlalchemy.Column("full_name", sqlalchemy.UnicodeText),
+    sqlalchemy.Column("hometown", sqlalchemy.UnicodeText),
+    sqlalchemy.Column("country_code", lib.Text(MAX_COUNTRY_CODE_LENGTH)),
+    sqlalchemy.Column("services", lib.Text(MAX_SERVICES_LENGTH)),
+    sqlalchemy.Column("captcha_signature", lib.Binary),
+    sqlalchemy.Column("submission_timestamp", sqlalchemy.Integer),
+    sqlalchemy.Column("retrieval_timestamp", sqlalchemy.Integer)
+)
+
+sqlalchemy.orm.mapper(State, state_table, extension=lib.CalculatedPropertyExtension({"hash":"_hash"}),
+    properties={
+        "id": state_table.c.id,
+        "hash": sqlalchemy.orm.synonym('_hash', map_column=True),
+        "address": state_table.c.webfinger_address,
+        "retrieval_timestamp": state_table.c.retrieval_timestamp,
+        "profile": sqlalchemy.orm.composite(Profile, state_table.c.full_name, state_table.c.hometown, state_table.c.country_code, state_table.c.services, state_table.c.captcha_signature, state_table.c.submission_timestamp)
+    }
+)
 
 class Claim:
     """ partner_name==None means that the claim is not by another server but
