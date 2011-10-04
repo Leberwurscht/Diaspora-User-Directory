@@ -27,6 +27,13 @@ RESPONSIBILITY_TIME_SPAN = 3600*24*3
 CLEANUP_INTERVAL = 3600*24
 EXPIRY_GRACE_PERIOD = 3600*24*3
 
+MAX_ADDRESS_LENGTH = 1024
+MAX_NAME_LENGTH = 1024
+MAX_HOMETOWN_LENTGTH = 1024
+MAX_COUNTRY_CODE_LENGTH = 2
+MAX_SERVICES_LENGTH = 1024
+MAX_SERVICE_LENGTH = 16
+
 ###
 # Authentication functionality
 
@@ -130,20 +137,20 @@ class Profile:
                                              reference_timestamp)
 
         # check lengths of profile fields
-        if len(self.full_name.encode("utf8"))>1024:
+        if len(self.full_name.encode("utf8"))>MAX_NAME_LENGTH:
             raise InvalidFullNameException(self.full_name)
 
-        if len(self.hometown.encode("utf8"))>1024:
+        if len(self.hometown.encode("utf8"))>MAX_HOMETOWN_LENTGTH:
             raise InvalidHometownException(self.hometown)
 
-        if len(self.country_code)>2:
+        if len(self.country_code)>MAX_COUNTRY_CODE_LENGTH:
             raise InvalidCountryCodeException(self.country_code)
 
-        if len(self.services)>1024:
+        if len(self.services)>MAX_SERVICES_LENGTH:
             raise InvalidServicesException(self.services)
 
         for service in services.split(","):
-            if len(service)>16:
+            if len(service)>MAX_SERVICE_LENGTH:
                 raise InvalidServicesException(self.services)
 
         return True
