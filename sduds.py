@@ -286,7 +286,15 @@ class State(object):
         binhash = combinedhash.digest()[:16]
         return binhash
 
-# sqlalchemy mapping for State class
+class Ghost(object):
+    hash = None
+    retrieval_timestamp = None
+
+    def __init__(self, binhash, retrieval_timestamp):
+        self.hash = binhash
+        self.retrieval_timestamp = retrieval_timestamp
+
+# sqlalchemy mapping for State and Ghost classes
 metadata = sqlalchemy.MetaData()
 
 state_table = sqlalchemy.Table('states', metadata,
@@ -302,6 +310,12 @@ state_table = sqlalchemy.Table('states', metadata,
     sqlalchemy.Column("retrieval_timestamp", sqlalchemy.Integer)
 )
 
+ghost_table = sqlalchemy.Table('ghosts', metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
+    sqlalchemy.Column("hash", lib.Binary, index=True, unique=True),
+    sqlalchemy.Column("retrieval_timestamp", sqlalchemy.Integer)
+)
+
 sqlalchemy.orm.mapper(State, state_table, extension=lib.CalculatedPropertyExtension({"hash":"_hash"}),
     properties={
         "id": state_table.c.id,
@@ -309,6 +323,14 @@ sqlalchemy.orm.mapper(State, state_table, extension=lib.CalculatedPropertyExtens
         "address": state_table.c.webfinger_address,
         "retrieval_timestamp": state_table.c.retrieval_timestamp,
         "profile": sqlalchemy.orm.composite(Profile, state_table.c.full_name, state_table.c.hometown, state_table.c.country_code, state_table.c.services, state_table.c.captcha_signature, state_table.c.submission_timestamp)
+    }
+)
+
+sqlalchemy.orm.mapper(Ghost, ghost_table,
+    properties={
+        "id": ghost_table.c.id,
+        "hash": ghost_table.c.hash,
+        "retrieval_timestamp": ghost_table.c.retrieval_timestamp,
     }
 )
 
