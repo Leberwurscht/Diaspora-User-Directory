@@ -22,10 +22,17 @@ import lib
 from synchronization import Synchronization
 ###
 
-RESPONSIBILITY_TIME_SPAN = 3600*24*3
+MAX_AGE = 3600*24*3 # specifies how long ago a state transmitted by a partner
+                    # may have been retrieved so that we still don't have to
+                    # retrieve it ourselves
 
 CLEANUP_INTERVAL = 3600*24
-EXPIRY_GRACE_PERIOD = 3600*24*3
+EXPIRY_GRACE_PERIOD = 3600*24*3 # if states transmitted by a partner are
+                                # expired, only reduce trust in him if grace
+                                # period is over.
+
+MIN_RESUBMISSION_INTERVAL = 3600*24*3
+STATE_LIFETIME = 3600*24*365
 
 MAX_ADDRESS_LENGTH = 1024
 MAX_NAME_LENGTH = 1024
