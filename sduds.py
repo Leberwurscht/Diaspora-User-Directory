@@ -334,6 +334,184 @@ sqlalchemy.orm.mapper(Ghost, ghost_table,
     }
 )
 
+class StateDatabase:
+    database_path = None # for erasing when closing
+    hashtrie = None
+    Session = None
+    lock = None
+
+    def __init__(hashtrie_path, statedb_path, erase=False):
+        self.database_path = statedb_path
+        self.hashtrie = HashTrie(hashtrie_path, erase=erase)
+        self.lock = threading.Lock()
+
+        if erase and os.path.exists(statedb_path):
+            os.remove(self.statedb_path)
+
+        engine = sqlalchemy.create_engine("sqlite:///"+statedb_path)
+        metadata.create_all(engine)
+
+        self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
+
+    def cleanup(self):
+        with self.lock:
+            session = self.Session()
+
+            now = time.time()
+            age = now - state_table.c.submission_timestamp
+            query = session.query(State).filter(age > STATE_LIFETIME)
+
+            delete_hashes = []
+            for state in query:
+                binhash = state.hash
+                session.delete(entry)
+                delete_hashes.add(binhash)
+
+            session.commit()
+            session.close()
+
+            self.hashtrie.delete(delete_hashes)
+
+        return now
+
+    def search(self, words=[], services=[], limit=50):
+        """ Searches the database for certain words, and yields only profiles
+            of users who use certain services.
+            'words' must be a list of unicode objects and 'services' must be
+            a list of str objects.
+            Warning: Probably very slow! """
+
+        with self.lock:
+            session = self.Session()
+
+            query = session.query(State)
+
+            for word in words:
+                like_str = "%" + word.encode("utf8") + "%"
+                like_unicode = u"%" + word + u"%"
+
+                condition = state_table.c.webfinger_address.like(like_str)
+                condition |= state_table.c.full_name.like(like_unicode)
+                condition |= state_table.c.hometown.like(like_unicode)
+                condition |= state_table.c.country_code.like(like_str)
+
+                query = query.filter(condition)
+
+            for service in services:
+                query = query.filter(
+                      state_table.c.services.like(service)
+                    | state_table.c.services.like(service+",%")
+                    | state_table.c.services.like("%,"+service+",%")
+                    | state_table.c.services.like("%,"+service)
+                )
+
+            if not limit==None:
+                query = query.limit(limit)
+
+            for state in query:
+                session.expunge(state)
+                yield state
+
+            session.close()
+
+    def save(self, state):
+        """ returns False if state is discarded, True otherwise """
+        with self.lock:
+            session = self.Session()
+
+            query = session.query(State).filter(State.address==state.address)
+            existing_state = query.scalar()
+
+            if existing_state:
+                # discard states we have more recent information about
+                if state.retrieval_timestamp<existing_state.retrieval_timestamp:
+                    # TODO: logging
+                    session.close()
+                    return False
+
+            if state.profile and existing_state:
+                # make sure that RESUBMISSION_INTERVAL is respected
+                current_submission = state.profile.submission_timestamp
+                last_submission = existing_state.profile.submission_timestamp
+                interval = current_submission - last_submission
+
+                if interval<MIN_RESUBMISSION_INTERVAL:
+                    # TODO: logging
+                    session.close()
+                    return False
+
+            if existing_state:
+                # delete existing state
+                binhash = existing_state.hash
+                retrieval_timestamp = existing_state.retrieval_timestamp
+
+                session.delete(existing_state)
+
+                self.hashtrie.delete(binhash)
+                ghost = Ghost(binhash, retrieval_timestamp)
+                session.add(ghost)
+
+            if state.profile:
+                # add new state
+                session.add(state)
+                self.hashtrie.add(state.hash)
+
+            session.commit()
+            session.close()
+            return True
+
+    def get_ghosts(self, binhashes):
+        with self.lock:
+            session = self.Session()
+
+            for binhash in binhashes:
+                query = session.query(Ghost).filter(Ghost.hash==binhash)
+                ghost = query.scalar()
+
+                if ghost:
+                    session.expunge(ghost)
+                    yield ghost
+
+            session.close()
+
+    def get_invalid_state(self, binhash, timestamp):
+        with self.lock:
+            session = self.Session()
+            query = session.query(State.address).filter(State.hash==binhash)
+            address, = query.one()
+            session.close()
+
+        invalid_state = State(address, timestamp, None)
+        return invalid_state
+
+    def get_valid_state(binhash):
+        with self.lock:
+            session = self.Session()
+            query = session.query(State).filter(State.hash==binhash)
+            state = query.one()
+            session.close()
+
+        now = time.time()
+        age = now - state.retrieval_timestamp
+
+        if age > MAX_AGE:
+            state.profile = None
+            state.retrieval_timestamp = None
+            return state
+        else:
+            return state
+
+    def close(erase=False):
+        with self.lock:
+            if hasattr(self, "Session"):
+                self.Session.close_all()
+                del self.Session
+
+            if erase and os.path.exists(self.database_path):
+                os.remove(self.database_path)
+
+            self.hashtrie.close(erase=erase)
+
 class Claim:
     """ partner_name==None means that the claim is not by another server but
         'self-made'. """
@@ -417,7 +595,7 @@ class Context:
             else:
                 erase = False
 
-            self.statedb = states.StateDatabase(kwargs["hashtrie_path"], kwargs["entrydb_path"], erase=erase)
+            self.statedb = StateDatabase(kwargs["hashtrie_path"], kwargs["entrydb_path"], erase=erase)
 
         if partnerdb:
             self.partnerdb = partnerdb
@@ -443,8 +621,8 @@ class Context:
         self.validation_queue.join()
         self.assimilation_queue.join()
 
-        self.statedb.close()
-        self.partnerdb.close()
+        self.statedb.close(erase=erase)
+        self.partnerdb.close(erase=erase)
 
     def process_state(state, partner_name):
         if state.retrieval_timestamp:
