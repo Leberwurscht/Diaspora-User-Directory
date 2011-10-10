@@ -624,10 +624,10 @@ class Context:
         self.statedb.close(erase=erase)
         self.partnerdb.close(erase=erase)
 
-    def process_state(state, partner_name):
+    def process_state(state, partner_name, reference_timestamp):
         if state.retrieval_timestamp:
             # if partner does take over responsibility, submit claim to validation queue
-            claim = Claim(state, partner_name)
+            claim = Claim(state, partner_name, reference_timestamp)
 
             try: self.validation_queue.put(claim)
             except Queue.Full:
@@ -652,9 +652,10 @@ class Context:
         synchronization.receive_state_requests(f)
         synchronization.send_states(f, self.statedb)
 
+        reference_timestamp = time.time()
         synchronization.send_state_requests(f)
         for state in synchronization.receive_states(f):
-            self.process_state(state, partner_name)
+            self.process_state(state, partner_name, reference_timestamp)
 
         f.close()
 
@@ -668,9 +669,10 @@ class Context:
         synchronization.send_deletion_requests(f, self.statedb)
         synchronization.receive_deletion_requests(f, self.statedb)
 
+        reference_timestamp = time.time()
         synchronization.send_state_requests(f)
         for state in synchronization.receive_states(f):
-            self.process_state(state, partner_name)
+            self.process_state(state, partner_name, reference_timestamp)
 
         synchronization.receive_state_requests(f)
         synchronization.send_states(f, self.context.statedb)
