@@ -252,7 +252,11 @@ class State(object):
 
     @classmethod
     def retrieve(cls, address):
-        profile = Profile.retrieve(address)
+        try:
+            profile = Profile.retrieve(address)
+        except: # TODO: which exceptions?
+            profile = None
+
         retrieval_timestamp = int(time.time())
 
         state = cls(address, retrieval_timestamp, profile)
