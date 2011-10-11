@@ -347,7 +347,7 @@ class StateDatabase:
     Session = None
     lock = None
 
-    def __init__(hashtrie_path, statedb_path, erase=False):
+    def __init__(self, hashtrie_path, statedb_path, erase=False):
         self.database_path = statedb_path
         self.hashtrie = HashTrie(hashtrie_path, erase=erase)
         self.lock = threading.Lock()
@@ -491,7 +491,7 @@ class StateDatabase:
         invalid_state = State(address, timestamp, None)
         return invalid_state
 
-    def get_valid_state(binhash):
+    def get_valid_state(self, binhash):
         with self.lock:
             session = self.Session()
             query = session.query(State).filter(State.hash==binhash)
@@ -508,11 +508,11 @@ class StateDatabase:
         else:
             return state
 
-    def close(erase=False):
+    def close(self, erase=False):
         with self.lock:
-            if hasattr(self, "Session"):
+            if not self.Session==None:
                 self.Session.close_all()
-                del self.Session
+                self.Session = None
 
             if erase and os.path.exists(self.database_path):
                 os.remove(self.database_path)
@@ -631,7 +631,7 @@ class Context:
         self.statedb.close(erase=erase)
         self.partnerdb.close(erase=erase)
 
-    def process_state(state, partner_name, reference_timestamp):
+    def process_state(self, state, partner_name, reference_timestamp):
         if state.retrieval_timestamp:
             # if partner does take over responsibility, submit claim to validation queue
             claim = Claim(state, partner_name, reference_timestamp)
@@ -646,7 +646,7 @@ class Context:
             except Queue.Full:
                 self.logger.warning("submission queue full while synchronizing with %s!" % partner_name)
 
-    def synchronize_as_server(partnersocket, partner_name):
+    def synchronize_as_server(self, partnersocket, partner_name):
         missing_hashes = self.statedb.hashtrie.get_missing_hashes_as_server(partnersocket)
 
         synchronization = Synchronization(missing_hashes)
@@ -666,7 +666,7 @@ class Context:
 
         f.close()
 
-    def synchronize_as_client(partnersocket, partner_name):
+    def synchronize_as_client(self, partnersocket, partner_name):
         missing_hashes = self.statedb.hashtrie.get_missing_hashes_as_client(partnersocket)
 
         synchronization = Synchronization(missing_hashes)
