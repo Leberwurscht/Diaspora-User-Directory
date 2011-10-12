@@ -687,6 +687,17 @@ class Context:
         f.close()
 
 class Application:
+    self.context = None
+
+    self.ready_for_synchronization = None
+
+    self.web_server = None
+    self.synchronization_server = None
+    self.jobs = None
+    self.submission_workers = None
+    self.validation_workers = None
+    self.assimilation_worker = None
+
     def __init__(self, context):
         self.context = context
 
@@ -694,12 +705,9 @@ class Application:
         self.ready_for_synchronization = threading.Event()
 
         # set default values
-        self.web_server = None
-        self.synchronization_server = None
         self.jobs = []
         self.submission_workers = []
         self.validation_workers = []
-        self.assimilation_worker = None
 
     def configure_web_server(self, interface="", port=20000):
         self.web_server = WebServer(self.context, interface, port, self.published_synchronization_address)
