@@ -44,55 +44,119 @@ MAX_SERVICE_LENGTH = 16
 ###
 # Authentication functionality
 
-def authenticate_socket_to_partner(partnersocket, partner):
-    # authenticate
-    partnersocket.sendall(partner.identity+"\n")
-    partnersocket.sendall(partner.password+"\n")
+def authenticate_socket(sock, username, password):
+    """ Authenticates a socket using the HMAC-SHA512 algorithm. This is the
+        counterpart of AuthenticatingRequestHandler. """
+    f = sock.makefile()
 
-    f = partnersocket.makefile()
+    # make sure method is HMAC with SHA512
+    method = f.readline().strip()
+    if not method=="HMAC-SHA512":
+        # TODO: logging
+        f.close()
+        sock.close()
+        return False
+
+    # send username
+    f.write(username+"\n")
+    f.flush()
+
+    # receive challenge
+    challenge = f.readline().strip()
+
+    # send response
+    response = hmac.new(password, challenge, hashlib.sha512).hexdigest()
+    f.write(response+"\n")
+    f.flush()
+
+    # check answer
     answer = f.readline().strip()
     f.close()
 
-    if answer=="OK":
+    if answer=="ACCEPTED":
         return True
     else:
-        partnersocket.close()
+        sock.close()
         return False
 
-class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler): # use paramiko with certificates instead?
-    """ Tries to authenticate a partner and calls the method handle_partner in the case of success. Expects the server
-        to have a context attribute. """
+class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler):
+    """ RequestHandler which checks the credentials transmitted by the other side
+        using the HMAC-SHA512 algorithm.
+        The get_password method must be overridden and return the password for a
+        certain user. If the other side is authenticated, handle_user is called
+        with the username as argument. """
 
     def handle(self):
-        context = self.server.context
-
         f = self.request.makefile()
-        partner_name = f.readline().strip()
-        password = f.readline().strip()
+
+        # send expected authentication method
+        method = "HMAC-SHA512"
+        f.write(method+"\n")
+        f.flush()
+
+        # receive username
+        username = f.readline().strip()
+
+        # send challenge
+        challenge = uuid.uuid4().hex
+        f.write(challenge+"\n")
+        f.flush()
+
+        # receive response
+        response = f.readline().strip()
+
+        # compute response
+        password = self.get_password(username)
+        if password==None:
+            f.write("DENIED\n")
+            f.close()
+            return
+
+        computed_response = hmac.new(password, challenge, hashlib.sha512).hexdigest()
+
+        # check response
+        if not response==computed_response:
+            f.write("INVALID PASSWORD\n")
+            f.close()
+            return
+
+        f.write("ACCEPTED\n")
         f.close()
 
-        partner = partners.Partner.from_database(context.partnerdb, partner_name=partner_name)
+        self.handle_partner(username)
 
-        if not partner:
-            context.logger.warning("Rejected synchronization attempt from %s (%s) - unknown partner." % (partner_name, str(self.client_address)))
-            return False
-
-        if partner.kicked():
-            context.logger.warning("Rejected synchronization attempt from kicked partner %s (%s)." % (partner_name, str(self.client_address)))
-            return False
-            
-        if not partner.password_valid(password):
-            context.logger.warning("Rejected synchronization attempt from %s (%s) - wrong password." % (partner_name, str(self.client_address)))
-            return False
-
-        self.request.sendall("OK\n")
-
-        self.handle_partner(partner)
-
-    def handle_partner(self, partner):
+    def get_password(self, username):
         raise NotImplementedError, "Override this function in subclasses!"
 
+    def handle_user(self, username):
+        raise NotImplementedError, "Override this function in subclasses!"
+
+class SynchronizationRequestHandler(AuthenticatingRequestHandler):
+    """ Authenticates partners and calls synchronize_as_server if successful. """
+
+    def get_password(self, partner_name):
+        context = self.server.context
+        partner = context.statedb.get_partner(partner_name)
+
+        if partner==None:
+            return None
+        elif partner.kicked:
+            return None
+        else:
+            return partner.password
+
+    def handle_user(self, partner_name):
+        context = self.server.context
+        partersocket = self.request
+
+        context.synchronize_as_server(partnersocket, partner_name)
+
 class SynchronizationServer(lib.BaseServer):
+    """ Waits for partners to synchronize. """
+
+    context = None
+    public_address = None
+
     def __init__(self, context, fqdn, interface, port):
         # initialize server
         address = (interface, port)
@@ -103,13 +167,6 @@ class SynchronizationServer(lib.BaseServer):
 
         # expose public address
         self.public_address = (fqdn, port)
-
-class SynchronizationRequestHandler(AuthenticatingRequestHandler):
-    def handle_partner(self, partner_name):
-        context = self.server.context
-        partersocket = self.request
-
-        context.synchronize_as_server(partnersocket, partner_name)
 
 class Profile:
     full_name = None # unicode
@@ -935,7 +992,7 @@ class Application:
 
         # authentication
         try:
-            success = authenticate_socket_to_partner(partnersocket, partner)
+            success = authenticate_socket(partnersocket, partner)
         except Exception, e:
             self.context.logger.warning("Unable to authenticate to partner %s for synchronization: %s" % (str(partner), str(e)))
             return timestamp
