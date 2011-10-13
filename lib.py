@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 ###
-# custom sqlalchemy types
+# sqlalchemy extensions
 
-import sqlalchemy.types
+import sqlalchemy, sqlalchemy.orm
 
 class Binary(sqlalchemy.types.TypeDecorator):
     """ This type allows saving str objects in Binary columns. It converts between
