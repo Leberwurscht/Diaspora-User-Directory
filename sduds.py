@@ -608,18 +608,18 @@ class Claim:
         return not self.timestamp<other.timestamp
 
     def validate(self, partnerdb):
-        partner = self.partnerdb.get_partner(self.partner_name)
+        if self.partner_name:
+            partner = partnerdb.get_partner(self.partner_name)
 
-        if partner:
-            if partner.kicked(): return None
+            if partner.kicked: return None
 
             if partner.control_sample():
-                partner.register_control_sample()
+                partnerdb.register_control_sample(partner_name)
 
                 retrieved_state = State.retrieve(self.state.address)
 
                 if not self.state==retrieved_state:
-                    partner.register_offense(self.state, retrieved_state)
+                    partnerdb.register_offense(partner_name, self.state, retrieved_state)
 
                     trusted_state = retrieved_state
                     partner_name = None
@@ -629,8 +629,8 @@ class Claim:
         try:
             trusted_state.assert_validity(self.timestamp)
         except Violation, violation:
-            if partner:
-                partner.register_violation(violation)
+            if partner_name:
+                partnerdb.register_violation(partner_name, violation)
             return None
         except RecentlyExpiredException, e:
             # TODO: log
@@ -967,19 +967,19 @@ class Application:
             self.context.logger.warning("Submission queue full, rejected %s!" % webfinger_address)
             return False
 
-    def synchronize_with_partner(self, partner):
+    def synchronize_with_partner(self, partner_name):
         # do not synchronize as long as we might have expired states
         self.ready_for_synchronization.wait()
 
         # register synchronization attempt
-        timestamp = self.context.partnerdb.register_connection(partner)
+        timestamp = self.context.partnerdb.register_connection(partner_name)
         
         # get the synchronization address
         try:
-            host, synchronization_port = partner.get_synchronization_address()
+            host, synchronization_port = partnerdb.get_synchronization_address(partner_name)
             address = (host, synchronization_port)
         except Exception, e:
-            self.context.logger.warning("Unable to get synchronization address of %s: %s" % (str(partner), str(e)))
+            self.context.logger.warning("Unable to get synchronization address of %s: %s" % (partner_name, str(e)))
             return timestamp
         
         # establish connection
@@ -987,25 +987,25 @@ class Application:
             partnersocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             partnersocket.connect(address)
         except Exception, e:
-            self.context.logger.warning("Unable to connect to partner %s for synchronization: %s" % (str(partner), str(e)))
+            self.context.logger.warning("Unable to connect to partner %s for synchronization: %s" % (partner_name, str(e)))
             return timestamp
 
         # authentication
         try:
             success = authenticate_socket(partnersocket, partner)
         except Exception, e:
-            self.context.logger.warning("Unable to authenticate to partner %s for synchronization: %s" % (str(partner), str(e)))
+            self.context.logger.warning("Unable to authenticate to partner %s for synchronization: %s" % (partner_name, str(e)))
             return timestamp
 
         if not success:
-            self.context.logger.warning("Invalid credentials for partner %s!" % str(partner))
+            self.context.logger.warning("Invalid credentials for partner %s!" % partner_name)
             return timestamp
 
         # conduct synchronization
         try:
             self.context.synchronize_as_client(partnersocket)
         except Exception, e:
-            self.context.logger.warning("Unable to synchronize with partner %s: %s" % (str(partner), str(e)))
+            self.context.logger.warning("Unable to synchronize with partner %s: %s" % (partner_name, str(e)))
 
         # return synchronization time
         return timestamp
