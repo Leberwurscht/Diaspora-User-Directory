@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+###
+# custom sqlalchemy types
+
 import sqlalchemy.types
 
 class Binary(sqlalchemy.types.TypeDecorator):
@@ -20,7 +23,6 @@ class Binary(sqlalchemy.types.TypeDecorator):
 
     def copy(self):
         return Binary(self.impl.length)
-
 
 class Text(sqlalchemy.types.TypeDecorator):
     """ This type is a workaround for the fact that sqlite returns only unicode but not
@@ -60,7 +62,12 @@ class CalculatedPropertyExtension(sqlalchemy.orm.MapperExtension):
 
 import SocketServer
 
+###
+# BaseServer
+
 class BaseServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
+    """ a threading TCPServer with allow_reuse_address """
+
     allow_reuse_address = True
 
     def __init__(self, address, handler_class):
@@ -69,6 +76,9 @@ class BaseServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     def terminate(self):
         self.shutdown()
         self.socket.close()
+
+###
+# TwoPriorityQueue
 
 from Queue import PriorityQueue, Full
 import threading
@@ -143,6 +153,9 @@ class TwoPriorityQueue:
 
     def join(self):
         self.queue.join()
+
+###
+# Implementation of a cron-like scheduler
 
 """
 A cron-like job scheduler
