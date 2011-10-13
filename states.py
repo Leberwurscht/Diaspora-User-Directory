@@ -1,0 +1,418 @@
+#!/usr/bin/env python
+
+import urllib, json, pywebfinger, binascii
+import threading, time
+import sqlalchemy, sqlalchemy.orm
+
+from constants import *
+
+import lib
+from hashtrie import HashTrie
+
+class Profile:
+    full_name = None # unicode
+    hometown = None # unicode
+    country_code = None # str
+    services = None # str
+    captcha_signature = None # str
+    submission_timestamp = None # int
+
+    def __init__(self, full_name, hometown, country_code, services, captcha_signature, submission_timestamp):
+        self.full_name = full_name
+        self.hometown = hometown
+        self.country_code = country_code
+        self.services = services
+        self.captcha_signature = captcha_signature
+        self.submission_timestamp = submission_timestamp
+
+    def __composite_values__(self):
+        return self.full_name, self.hometown, self.country_code, self.services, self.captcha_signature, self.submission_timestamp
+
+    def assert_validity(self, webfinger_address, reference_timestamp=None):
+        """ Validates the profile against a certain webfinger address. Checks CAPTCHA signature,
+            submission_timestamp, and field lengths. Also checks whether webfinger address is
+            too long. """
+
+        if reference_timestamp==None:
+            reference_timestamp = time.time()
+
+        # validate CAPTCHA signature for given webfinger address
+        if not lib.signature_valid(self.captcha_signature, webfinger_address, CAPTCHA_PUBLIC_KEY):
+            raise InvalidCaptchaSignature(self.captcha_signature, webfinger_address)
+
+        # assert that submission_timestamp is not in future
+        if not self.submission_timestamp <= reference_timestamp:
+            raise SubmittedInFutureException(self.submission_timestamp,\
+                                             reference_timestamp)
+
+        # check lengths of webfinger address 
+        if len(webfinger_address)>MAX_ADDRESS_LENGTH:
+            raise InvalidAddressException(webfinger_address)
+
+        # check lengths of profile fields
+        if len(self.full_name.encode("utf8"))>MAX_NAME_LENGTH:
+            raise InvalidFullNameException(self.full_name)
+
+        if len(self.hometown.encode("utf8"))>MAX_HOMETOWN_LENTGTH:
+            raise InvalidHometownException(self.hometown)
+
+        if len(self.country_code)>MAX_COUNTRY_CODE_LENGTH:
+            raise InvalidCountryCodeException(self.country_code)
+
+        if len(self.services)>MAX_SERVICES_LENGTH:
+            raise InvalidServicesException(self.services)
+
+        for service in services.split(","):
+            if len(service)>MAX_SERVICE_LENGTH:
+                raise InvalidServicesException(self.services)
+
+        return True
+
+    @classmethod
+    def retrieve(cls, address):
+        wf = pywebfinger.finger(webfinger_address)
+
+        sduds_uri = wf.find_link("http://hoegners.de/sduds/spec", attr="href")
+
+        f = urllib.urlopen(sduds_uri)
+        json_string = f.read()
+        f.close()
+
+        json_dict = json.loads(json_string)
+
+        full_name = json_dict["full_name"]
+        hometown = json_dict["hometown"]
+        country_code = json_dict["country_code"].encode("utf8")
+        services = json_dict["services"].encode("utf8")
+        captcha_signature = binascii.unhexlify(json_dict["captcha_signature"])
+
+        submission_timestamp = int(json_dict["submission_timestamp"])
+
+        profile = cls(
+            full_name,
+            hometown,
+            country_code,
+            services,
+            captcha_signature,
+            submission_timestamp
+        )
+
+        return profile
+
+class State(object):
+    address = None
+    retrieval_timestamp = None
+    profile = None
+
+    def __init__(self, address, retrieval_timestamp, profile):
+        self.address = address
+        self.retrieval_timestamp = retrieval_timestamp
+        self.profile = profile
+
+    def __eq__(self, other):
+        assert not self.retrieval_timestamp==None
+        assert not other.retrieval_timestamp==None
+
+        assert self.address==other.address
+
+        if self.profile and other.profile:
+            return self.hash==other.hash
+        elif not self.profile and not other.profile:
+            return True
+        else:
+            return False
+
+    def assert_validity(reference_timestamp=None):
+        """ Checks if a state was valid at a given time. Returns True if it was, raises
+            an exception otherwise. """
+
+        assert not self.retrieval_timestamp==None
+
+        if reference_timestamp==None:
+            reference_timestamp = time.time()
+
+        if not self.retrieval_timestamp <= reference_timestamp:
+            raise RetrievedInFutureException(retrieval_timestamp,\
+                                             reference_timestamp)
+
+        if not self.retrieval_timestamp >= reference_timestamp - MAX_AGE:
+            raise NotUpToDateException(retrieval_timestamp, reference_timestamp)
+
+        if self.profile:
+            self.profile.assert_validity(self.address, self.reference_timestamp)
+
+            if not self.retrieval_timestamp>=self.profile.submission_timestamp:
+                raise InvalidRetrievalTimestampException(retrieval_timestamp,\
+                        self.profile.submission_timestamp)
+
+            expiry_date = self.profile.submission_timestamp + STATE_LIFETIME
+
+            if reference_timestamp>expiry_date:
+                if reference_timestamp > expiry_date + EXPIRY_GRACE_PERIOD:
+                    raise ExpiredException(reference_timestamp, self.profile.submission_timestamp)
+                else:
+                    raise RecentlyExpiredException(reference_timestamp, self.profile.submission_timestamp) # does not inherit from violation
+
+        return True
+
+    @classmethod
+    def retrieve(cls, address):
+        try:
+            profile = Profile.retrieve(address)
+        except: # TODO: which exceptions?
+            profile = None
+
+        retrieval_timestamp = int(time.time())
+
+        state = cls(address, retrieval_timestamp, profile)
+
+        return state
+
+    @property
+    def hash(self):
+        combinedhash = hashlib.sha1()
+
+        relevant_data = [self.address, self.profile.full_name,
+            self.profile.hometown, self.profile.country_code,
+            self.profile.services, self.profile.submission_timestamp]
+
+        for data in relevant_data:
+            # convert data to string
+            if type(data)==unicode:
+                data_str = data.encode("utf8")
+            else:
+                data_str = str(data)
+
+            # TODO: take better hash function? (also for combinedhash)
+            subhash = hashlib.sha1(data_str).digest()
+            combinedhash.update(subhash)
+
+        # TODO: is it unsecure to take only 16 bytes of the hash?
+        binhash = combinedhash.digest()[:16]
+        return binhash
+
+class Ghost(object):
+    hash = None
+    retrieval_timestamp = None
+
+    def __init__(self, binhash, retrieval_timestamp):
+        self.hash = binhash
+        self.retrieval_timestamp = retrieval_timestamp
+
+# sqlalchemy mapping for State and Ghost classes
+metadata = sqlalchemy.MetaData()
+
+state_table = sqlalchemy.Table('states', metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
+    sqlalchemy.Column("hash", lib.Binary, index=True, unique=True),
+    sqlalchemy.Column("webfinger_address", lib.Text(MAX_ADDRESS_LENGTH), index=True, unique=True),
+    sqlalchemy.Column("full_name", sqlalchemy.UnicodeText),
+    sqlalchemy.Column("hometown", sqlalchemy.UnicodeText),
+    sqlalchemy.Column("country_code", lib.Text(MAX_COUNTRY_CODE_LENGTH)),
+    sqlalchemy.Column("services", lib.Text(MAX_SERVICES_LENGTH)),
+    sqlalchemy.Column("captcha_signature", lib.Binary),
+    sqlalchemy.Column("submission_timestamp", sqlalchemy.Integer),
+    sqlalchemy.Column("retrieval_timestamp", sqlalchemy.Integer)
+)
+
+ghost_table = sqlalchemy.Table('ghosts', metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
+    sqlalchemy.Column("hash", lib.Binary, index=True, unique=True),
+    sqlalchemy.Column("retrieval_timestamp", sqlalchemy.Integer)
+)
+
+sqlalchemy.orm.mapper(State, state_table, extension=lib.CalculatedPropertyExtension({"hash":"_hash"}),
+    properties={
+        "id": state_table.c.id,
+        "hash": sqlalchemy.orm.synonym('_hash', map_column=True),
+        "address": state_table.c.webfinger_address,
+        "retrieval_timestamp": state_table.c.retrieval_timestamp,
+        "profile": sqlalchemy.orm.composite(Profile, state_table.c.full_name, state_table.c.hometown, state_table.c.country_code, state_table.c.services, state_table.c.captcha_signature, state_table.c.submission_timestamp)
+    }
+)
+
+sqlalchemy.orm.mapper(Ghost, ghost_table,
+    properties={
+        "id": ghost_table.c.id,
+        "hash": ghost_table.c.hash,
+        "retrieval_timestamp": ghost_table.c.retrieval_timestamp,
+    }
+)
+
+class StateDatabase:
+    database_path = None # for erasing when closing
+    hashtrie = None
+    Session = None
+    lock = None
+
+    def __init__(self, hashtrie_path, statedb_path, erase=False):
+        self.database_path = statedb_path
+        self.hashtrie = HashTrie(hashtrie_path, erase=erase)
+        self.lock = threading.Lock()
+
+        if erase and os.path.exists(statedb_path):
+            os.remove(self.statedb_path)
+
+        engine = sqlalchemy.create_engine("sqlite:///"+statedb_path)
+        metadata.create_all(engine)
+
+        self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
+
+    def cleanup(self):
+        with self.lock:
+            session = self.Session()
+
+            now = time.time()
+            age = now - state_table.c.submission_timestamp
+            query = session.query(State).filter(age > STATE_LIFETIME)
+
+            delete_hashes = []
+            for state in query:
+                binhash = state.hash
+                session.delete(entry)
+                delete_hashes.add(binhash)
+
+            session.commit()
+            session.close()
+
+            self.hashtrie.delete(delete_hashes)
+
+        return now
+
+    def search(self, words=[], services=[], limit=50):
+        """ Searches the database for certain words, and yields only profiles
+            of users who use certain services.
+            'words' must be a list of unicode objects and 'services' must be
+            a list of str objects.
+            Warning: Probably very slow! """
+
+        with self.lock:
+            session = self.Session()
+
+            query = session.query(State)
+
+            for word in words:
+                like_str = "%" + word.encode("utf8") + "%"
+                like_unicode = u"%" + word + u"%"
+
+                condition = state_table.c.webfinger_address.like(like_str)
+                condition |= state_table.c.full_name.like(like_unicode)
+                condition |= state_table.c.hometown.like(like_unicode)
+                condition |= state_table.c.country_code.like(like_str)
+
+                query = query.filter(condition)
+
+            for service in services:
+                query = query.filter(
+                      state_table.c.services.like(service)
+                    | state_table.c.services.like(service+",%")
+                    | state_table.c.services.like("%,"+service+",%")
+                    | state_table.c.services.like("%,"+service)
+                )
+
+            if not limit==None:
+                query = query.limit(limit)
+
+            for state in query:
+                session.expunge(state)
+                yield state
+
+            session.close()
+
+    def save(self, state):
+        """ returns False if state is discarded, True otherwise """
+        with self.lock:
+            session = self.Session()
+
+            query = session.query(State).filter(State.address==state.address)
+            existing_state = query.scalar()
+
+            if existing_state:
+                # discard states we have more recent information about
+                if state.retrieval_timestamp<existing_state.retrieval_timestamp:
+                    # TODO: logging
+                    session.close()
+                    return False
+
+            if state.profile and existing_state:
+                # make sure that RESUBMISSION_INTERVAL is respected
+                current_submission = state.profile.submission_timestamp
+                last_submission = existing_state.profile.submission_timestamp
+                interval = current_submission - last_submission
+
+                if interval<MIN_RESUBMISSION_INTERVAL:
+                    # TODO: logging
+                    session.close()
+                    return False
+
+            if existing_state:
+                # delete existing state
+                binhash = existing_state.hash
+                retrieval_timestamp = existing_state.retrieval_timestamp
+
+                session.delete(existing_state)
+
+                self.hashtrie.delete(binhash)
+                ghost = Ghost(binhash, retrieval_timestamp)
+                session.add(ghost)
+
+            if state.profile:
+                # add new state
+                session.add(state)
+                self.hashtrie.add(state.hash)
+
+            session.commit()
+            session.close()
+            return True
+
+    def get_ghosts(self, binhashes):
+        with self.lock:
+            session = self.Session()
+
+            for binhash in binhashes:
+                query = session.query(Ghost).filter(Ghost.hash==binhash)
+                ghost = query.scalar()
+
+                if ghost:
+                    session.expunge(ghost)
+                    yield ghost
+
+            session.close()
+
+    def get_invalid_state(self, binhash, timestamp):
+        with self.lock:
+            session = self.Session()
+            query = session.query(State.address).filter(State.hash==binhash)
+            address, = query.one()
+            session.close()
+
+        invalid_state = State(address, timestamp, None)
+        return invalid_state
+
+    def get_valid_state(self, binhash):
+        with self.lock:
+            session = self.Session()
+            query = session.query(State).filter(State.hash==binhash)
+            state = query.one()
+            session.close()
+
+        now = time.time()
+        age = now - state.retrieval_timestamp
+
+        if age > MAX_AGE:
+            state.profile = None
+            state.retrieval_timestamp = None
+            return state
+        else:
+            return state
+
+    def close(self, erase=False):
+        with self.lock:
+            if not self.Session==None:
+                self.Session.close_all()
+                self.Session = None
+
+            if erase and os.path.exists(self.database_path):
+                os.remove(self.database_path)
+
+            self.hashtrie.close(erase=erase)
