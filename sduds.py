@@ -74,7 +74,7 @@ class Application:
         self.validation_workers = []
 
     def configure_web_server(self, interface="", port=20000):
-        self.web_server = WebServer(self.context, interface, port, self.published_synchronization_address)
+        self.web_server = WebServer(self.context, interface, port, self.context.synchronization_address)
 
     def configure_synchronization_server(self, fqdn, interface="", port=20001):
         self.synchronization_server = SynchronizationServer(self.context, fqdn, interface, port)
