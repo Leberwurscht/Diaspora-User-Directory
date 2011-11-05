@@ -25,7 +25,7 @@ class SynchronizationRequestHandler(lib.AuthenticatingRequestHandler):
         elif partner.kicked:
             return None
         else:
-            return partner.password
+            return partner.accept_password
 
     def handle_user(self, partner_name):
         context = self.server.context
@@ -173,10 +173,12 @@ class Application:
 
     def start_jobs(self):
         # go through servers, add jobs
-        for server in self.context.partnerdb.get_servers():
-            minute,hour,dom,month,dow = server.connection_schedule.split()
+        for partner in self.context.partnerdb.get_partners():
+            if not partner.connection_schedule: continue
+
+            minute,hour,dom,month,dow = partner.connection_schedule.split()
             pattern = lib.CronPattern(minute,hour,dom,month,dow)
-            job = lib.Job(pattern, self.synchronize_with_partner, (server.partner_name,), server.last_connection)
+            job = lib.Job(pattern, self.synchronize_with_partner, (partner.name,), partner.last_connection)
             job.start()
 
             self.jobs.append(job)
@@ -278,12 +280,15 @@ class Application:
         # do not synchronize as long as we might have expired states
         self.ready_for_synchronization.wait()
 
+        # get partner from name
+        partner = self.context.partnerdb.get_partner(partner_name)
+
         # register synchronization attempt
         timestamp = self.context.partnerdb.register_connection(partner_name)
         
         # get the synchronization address
         try:
-            host, synchronization_port = partnerdb.get_synchronization_address(partner_name)
+            host, synchronization_port = partner.get_synchronization_address()
             address = (host, synchronization_port)
         except Exception, e:
             self.context.logger.warning("Unable to get synchronization address of %s: %s" % (partner_name, str(e)))
@@ -299,7 +304,7 @@ class Application:
 
         # authentication
         try:
-            success = authenticate_socket(partnersocket, partner)
+            success = lib.authenticate_socket(partnersocket, partner.provide_username, partner.provide_password)
         except Exception, e:
             self.context.logger.warning("Unable to authenticate to partner %s for synchronization: %s" % (partner_name, str(e)))
             return timestamp

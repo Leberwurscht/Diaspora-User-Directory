@@ -43,15 +43,23 @@ class Claim:
             if partner.kicked: return None
 
             if partner.control_sample():
-                partnerdb.register_control_sample(partner_name)
-
                 retrieved_state = State.retrieve(self.state.address)
 
+                offense = None
                 if not self.state==retrieved_state:
-                    partnerdb.register_offense(partner_name, self.state, retrieved_state)
+                    offense = "Claimed state:\n"+
+                              "================\n"+
+                              str(self.state)+"\n"+
+                              "\n"+
+                              "Retrieved state:\n"+
+                              "================\n"+
+                              str(retrieved_state)
 
                     trusted_state = retrieved_state
                     partner_name = None
+
+                partnerdb.register_control_sample(partner_name, offense)
+
             else:
                 trusted_state = self.state
 
