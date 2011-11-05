@@ -2,7 +2,6 @@
 
 import urllib, json, pywebfinger, binascii, hashlib
 import threading, time
-import sqlalchemy, sqlalchemy.orm
 
 from constants import *
 
@@ -27,6 +26,16 @@ class Profile:
 
     def __composite_values__(self):
         return self.full_name, self.hometown, self.country_code, self.services, self.captcha_signature, self.submission_timestamp
+
+    def __str__(self):
+        s = "Full name: "+self.full_name.encode("utf8")+"\n"+
+            "Hometown: "+self.hometown.encode("utf8")+"\n"+
+            "Country code: "+self.country_code+"\n"+
+            "Services: "+self.services+"\n"+
+            "Captcha signature: "+binascii.hexlify(self.captcha_signature[:8])+"...\n"+
+            "Submission time: "+time.ctime(self.submission_timestamp)
+
+        return s
 
     def assert_validity(self, webfinger_address, reference_timestamp=None):
         """ Validates the profile against a certain webfinger address. Checks CAPTCHA signature,
@@ -122,6 +131,15 @@ class State(object):
         else:
             return False
 
+    def __str__(self):
+        s = "Webfinger address: "+self.address+"\n"+
+            "Hash: "+binascii.hexlify(self.hash)+"\n"
+            "Retrieval time: "+time.ctime(self.retrieval_timestamp)+"\n"
+            "PROFILE:\n"+
+            str(self.profile)
+
+        return s
+
     def assert_validity(reference_timestamp=None):
         """ Checks if a state was valid at a given time. Returns True if it was, raises
             an exception otherwise. """
@@ -200,6 +218,8 @@ class Ghost(object):
         self.retrieval_timestamp = retrieval_timestamp
 
 # sqlalchemy mapping for State and Ghost classes
+import sqlalchemy, sqlalchemy.orm
+
 metadata = sqlalchemy.MetaData()
 
 state_table = sqlalchemy.Table('states', metadata,
