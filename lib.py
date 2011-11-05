@@ -63,7 +63,7 @@ class CalculatedPropertyExtension(sqlalchemy.orm.MapperExtension):
 ###
 # Authentication functionality
 
-import SocketServer
+import SocketServer, uuid, hmac
 
 def authenticate_socket(sock, username, password):
     """ Authenticates a socket using the HMAC-SHA512 algorithm. This is the

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import urllib, json, pywebfinger, binascii
+import urllib, json, pywebfinger, binascii, hashlib
 import threading, time
 import sqlalchemy, sqlalchemy.orm
 
