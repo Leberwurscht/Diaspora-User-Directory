@@ -58,7 +58,7 @@ class Claim:
                     trusted_state = retrieved_state
                     partner_name = None
 
-                partnerdb.register_control_sample(partner_name, offense)
+                partnerdb.register_control_sample(partner_name, self.state.address, offense)
 
             else:
                 trusted_state = self.state
