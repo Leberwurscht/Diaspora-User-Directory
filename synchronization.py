@@ -210,17 +210,20 @@ class StateMessage(Message):
         # send retrieval timestamp
         if self.state.retrieval_timestamp==None:
             f.write('\0')
+            assert not self.state.profile
         else:
             f.write('T')
             _write_integer(f, self.state.retrieval_timestamp)
+            assert self.state.profile
 
         # send profile
-        _write_unicode(f, self.state.profile.full_name)
-        _write_unicode(f, self.state.profile.hometown)
-        _write_str(f, self.state.profile.country_code)
-        _write_str(f, self.state.profile.services)
-        _write_integer(f, self.state.profile.submission_timestamp)
-        _write_str(f, self.state.profile.captcha_signature)
+        if self.state.profile:
+            _write_unicode(f, self.state.profile.full_name)
+            _write_unicode(f, self.state.profile.hometown)
+            _write_str(f, self.state.profile.country_code)
+            _write_str(f, self.state.profile.services)
+            _write_integer(f, self.state.profile.submission_timestamp)
+            _write_str(f, self.state.profile.captcha_signature)
 
     @classmethod
     def read(cls, f):
@@ -231,23 +234,24 @@ class StateMessage(Message):
         # read webfinger address
         address = _read_str(f)
 
-        # read retrieval timestamp
         announcement = f.read(1)
         if announcement=='\0':
             retrieval_timestamp = None
+            profile = None
         else:
+            # read retrieval timestamp
             retrieval_timestamp = _read_integer(f)
 
-        # receive profile
-        full_name = _read_unicode(f)
-        hometown = _read_unicode(f)
-        country_code = _read_str(f)
-        services = _read_str(f)
-        submission_timestamp = _read_integer(f)
-        captcha_signature = _read_str(f)
+            # receive profile
+            full_name = _read_unicode(f)
+            hometown = _read_unicode(f)
+            country_code = _read_str(f)
+            services = _read_str(f)
+            submission_timestamp = _read_integer(f)
+            captcha_signature = _read_str(f)
 
-        profile = Profile(full_name, hometown, country_code, services,
-                          submission_timestamp, captcha_signature)
+            profile = Profile(full_name, hometown, country_code, services,
+                              submission_timestamp, captcha_signature)
 
         state = State(address, retrieval_timestamp, profile)
 
