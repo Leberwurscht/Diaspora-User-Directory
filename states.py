@@ -241,6 +241,10 @@ ghost_table = sqlalchemy.Table('ghosts', metadata,
     sqlalchemy.Column("retrieval_timestamp", sqlalchemy.Integer)
 )
 
+variables_table = sqlalchemy.Table('variables', metadata,
+    sqlalchemy.Column("cleanup_timestamp", sqlalchemy.Integer)
+)
+
 sqlalchemy.orm.mapper(State, state_table, extension=lib.CalculatedPropertyExtension({"hash":"_hash"}),
     properties={
         "id": state_table.c.id,
@@ -265,6 +269,8 @@ class StateDatabase:
     Session = None
     lock = None
 
+    cleanup_timestamp = None
+
     def __init__(self, hashtrie_path, statedb_path, erase=False):
         self.database_path = statedb_path
         self.hashtrie = HashTrie(hashtrie_path, erase=erase)
@@ -277,6 +283,21 @@ class StateDatabase:
         metadata.create_all(engine)
 
         self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
+
+        # initialize cleanup_timestamp so that the cleanup thread can
+        # be initialized
+        session = self.Session()
+
+        select = variables_table.select(variables_table.c.cleanup_timestamp)
+        result = session.execute(select)
+
+        try:
+            self.cleanup_timestamp, = result.fetchone()
+        except TypeError:
+            # insert one empty row; None is kept for self.cleanup_timestamp
+            session.execute(variables_table.insert().values())
+
+        session.close()
 
     def cleanup(self):
         with self.lock:
@@ -291,6 +312,10 @@ class StateDatabase:
                 binhash = state.hash
                 session.delete(entry)
                 delete_hashes.add(binhash)
+
+            # save cleanup timestamp to be able to start over next time in case
+            # application is closed
+            session.execute(variables_table.update().values(cleanup_timestamp=int(now)))
 
             session.commit()
             session.close()

@@ -183,9 +183,8 @@ class Application:
 
             self.jobs.append(job)
 
-        # add cleanup job
-        last_cleanup = self.context.statedb.get_variable("last_cleanup")
-        if not last_cleanup==None: last_cleanup = float(last_cleanup)
+        # add state database cleanup job
+        last_cleanup = self.context.statedb.cleanup_timestamp
 
         pattern = lib.IntervalPattern(CLEANUP_INTERVAL)
         job = lib.Job(pattern, self.context.statedb.cleanup, (), last_cleanup)
