@@ -186,7 +186,7 @@ class Application:
         # add state database cleanup job
         last_cleanup = self.context.statedb.cleanup_timestamp
 
-        pattern = lib.IntervalPattern(CLEANUP_INTERVAL)
+        pattern = lib.IntervalPattern(STATEDB_CLEANUP_INTERVAL)
         job = lib.Job(pattern, self.context.statedb.cleanup, (), last_cleanup)
 
         if not job.overdue(): self.ready_for_synchronization.set()

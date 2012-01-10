@@ -4,7 +4,7 @@ MAX_AGE = 3600*24*3 # specifies how long ago a state transmitted by a partner
                     # may have been retrieved so that we still don't have to
                     # retrieve it ourselves
 
-CLEANUP_INTERVAL = 3600*24
+STATEDB_CLEANUP_INTERVAL = 3600*24
 EXPIRY_GRACE_PERIOD = 3600*24*3 # if states transmitted by a partner are
                                 # expired, only reduce trust in him if grace
                                 # period is over.
