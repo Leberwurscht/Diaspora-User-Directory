@@ -194,6 +194,13 @@ class Application:
 
         self.jobs.append(job)
 
+        # add partner database cleanup job
+        pattern = lib.IntervalPattern(PARTNERDB_CLEANUP_INTERVAL)
+        job = lib.Job(pattern, self.context.partnerdb.cleanup)
+        job.start()
+
+        self.jobs.append(job)
+
     def terminate_jobs(self):
         for job in self.jobs:
             job.terminate()
