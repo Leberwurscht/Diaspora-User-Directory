@@ -358,15 +358,18 @@ class Job(threading.Thread):
 
         self.finish = threading.Event()
 
-    def overdue(self, now=time.time()):
+    def overdue(self, reference_timestamp=None):
         """ This can be called before start() is called to determine
             if calling the callback is overdue. """
+
+        if reference_timestamp==None:
+            reference_timestamp = time.time()
 
         if self.last_execution==None: return True
 
         clearance = self.pattern.next_clearance(self.last_execution)
 
-        return clearance <= now
+        return clearance <= reference_timestamp
 
     def run(self):
         if self.last_execution==None:
