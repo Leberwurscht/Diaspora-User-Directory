@@ -18,6 +18,15 @@ class Partner(object):
     provide_username = None # may not contain newline
     provide_password = None # may not contain newline
 
+    def __init__(self, name, accept_password, base_url, control_probability, connection_schedule=None, provide_username=None, provide_password=None):
+        self.name = partner_name
+        self.accept_password = accept_password
+        self.base_url = base_url
+        self.control_probability = control_probability
+        self.connection_schedule = connection_schedule
+        self.provide_username = provide_username
+        self.provide_password = provide_password
+
     def get_synchronization_address(self):
         assert self.base_url.endswith("/")
         address_url = self.base_url+"synchronization_address"
@@ -33,6 +42,22 @@ class Partner(object):
 
     def control_sample(self):
         return random.random()<self.control_probability
+
+    def __str__(self):
+        r = "Partner(name=%s, base_url=%s, control_probability=%f"
+        r %= (self.name, self.base_url, self.control_probability)
+
+        if self.connection_schedule:
+            a = ", schedule=%s, provide_username=%s"
+            a %= (self.connection_schedule, self.provide_username)
+            r += a
+
+        if self.kicked:
+            r += ", kicked)"
+        else:
+            r += ")"
+
+        return r
 
 # sqlalchemy mapping for Partner class
 import lib
