@@ -47,12 +47,12 @@ class Claim:
 
                 offense = None
                 if not self.state==retrieved_state:
-                    offense = "Claimed state:\n"+
-                              "================\n"+
-                              str(self.state)+"\n"+
-                              "\n"+
-                              "Retrieved state:\n"+
-                              "================\n"+
+                    offense = "Claimed state:\n"+\
+                              "================\n"+\
+                              str(self.state)+"\n"+\
+                              "\n"+\
+                              "Retrieved state:\n"+\
+                              "================\n"+\
                               str(retrieved_state)
 
                     trusted_state = retrieved_state

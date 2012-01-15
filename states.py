@@ -28,11 +28,11 @@ class Profile:
         return self.full_name, self.hometown, self.country_code, self.services, self.captcha_signature, self.submission_timestamp
 
     def __str__(self):
-        s = "Full name: "+self.full_name.encode("utf8")+"\n"+
-            "Hometown: "+self.hometown.encode("utf8")+"\n"+
-            "Country code: "+self.country_code+"\n"+
-            "Services: "+self.services+"\n"+
-            "Captcha signature: "+binascii.hexlify(self.captcha_signature[:8])+"...\n"+
+        s = "Full name: "+self.full_name.encode("utf8")+"\n"+\
+            "Hometown: "+self.hometown.encode("utf8")+"\n"+\
+            "Country code: "+self.country_code+"\n"+\
+            "Services: "+self.services+"\n"+\
+            "Captcha signature: "+binascii.hexlify(self.captcha_signature[:8])+"...\n"+\
             "Submission time: "+time.ctime(self.submission_timestamp)
 
         return s
@@ -132,10 +132,10 @@ class State(object):
             return False
 
     def __str__(self):
-        s = "Webfinger address: "+self.address+"\n"+
-            "Hash: "+binascii.hexlify(self.hash)+"\n"
-            "Retrieval time: "+time.ctime(self.retrieval_timestamp)+"\n"
-            "PROFILE:\n"+
+        s = "Webfinger address: "+self.address+"\n"+\
+            "Hash: "+binascii.hexlify(self.hash)+"\n"+\
+            "Retrieval time: "+time.ctime(self.retrieval_timestamp)+"\n"+\
+            "PROFILE:\n"+\
             str(self.profile)
 
         return s

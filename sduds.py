@@ -51,16 +51,16 @@ class SynchronizationServer(lib.BaseServer):
         self.public_address = (fqdn, port)
 
 class Application:
-    self.context = None
+    context = None
 
-    self.ready_for_synchronization = None
+    ready_for_synchronization = None
 
-    self.web_server = None
-    self.synchronization_server = None
-    self.jobs = None
-    self.submission_workers = None
-    self.validation_workers = None
-    self.assimilation_worker = None
+    web_server = None
+    synchronization_server = None
+    jobs = None
+    submission_workers = None
+    validation_workers = None
+    assimilation_worker = None
 
     def __init__(self, context):
         self.context = context
