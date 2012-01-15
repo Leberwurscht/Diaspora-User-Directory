@@ -172,6 +172,22 @@ class PartnerDatabase:
 
             return partner
 
+    def save_partner(self, partner):
+        with self.lock:
+            session = self.Session()
+            session.add(partner)
+            session.commit()
+            session.close()
+
+    def delete_partner(self, partner_name):
+        with self.lock:
+            session = self.Session()
+            partner = session.query(Partner).filter_by(name=partner_name)
+            partner.delete()
+            session.commit()
+            session.close()
+            # TODO: delete control samples and violations for this partner
+
     def register_control_sample(self, partner_name, webfinger_address=None, offense=None):
         with self.lock:
             session = self.Session()
