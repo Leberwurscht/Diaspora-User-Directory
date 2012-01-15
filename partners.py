@@ -1,361 +1,257 @@
 #!/usr/bin/env python
 
-## Reminder: Make clear in documentation that server/client is only about who
-## initiates the connection; the synchronization is always happening in both
-## directions.
+import random
+import urllib, json
 
-import logging
+class Partner(object):
+    name = None             # may not contain newline
+    accept_password = None  # may not contain newline
 
-import os, sys, time, urllib
-import hashlib, json
-import socket
+    base_url = None
+    control_probability = None
+    last_connection = None
+    kicked = None
 
-# initialize database
-import sqlalchemy, sqlalchemy.orm, lib, sqlalchemy.sql.functions
+    connection_schedule = None
+    provide_username = None # may not contain newline
+    provide_password = None # may not contain newline
 
-import sqlalchemy.ext.declarative
-DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
+    def get_synchronization_address(self):
+        assert self.base_url.endswith("/")
+        address_url = self.base_url+"synchronization_address"
 
-###
-
-OFFENSE_LIFETIME = 3600*24*30
-OFFENSES_THRESHOLD = 0.05
-
-###
-
-class Partner(DatabaseObject):
-    __tablename__ = 'partners'
-
-    partner_type = sqlalchemy.Column('partner_type', lib.Text)
-    __mapper_args__ = {'polymorphic_on': partner_type}
-
-    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    address = sqlalchemy.Column(lib.Text)
-    control_probability = sqlalchemy.Column(sqlalchemy.Float)
-    last_connection = sqlalchemy.Column(sqlalchemy.Integer)
-
-    # for authenticating to the partner
-    identity = sqlalchemy.Column(lib.Text)
-    password = sqlalchemy.Column(lib.Text)
-
-    # for authenticating the partner
-    partner_name = sqlalchemy.Column(lib.Text, unique=True)
-    passwordhash = sqlalchemy.Column(lib.Binary)
-
-    # to be able to determine offense percentage
-    control_samples_taken = sqlalchemy.Column(sqlalchemy.Integer, default=0)
-
-    @classmethod
-    def from_database(cls, database, **kwargs):
-        Session = database.Session
-
-        try:
-            partner = Session.query(cls).filter_by(**kwargs).one()
-            partner.database = database
-        except sqlalchemy.orm.exc.NoResultFound:
-            return None
-        else:
-            return partner
-
-    @classmethod
-    def list_from_database(cls, database, **kwargs):
-        Session = database.Session
-
-        if kwargs:
-            partners = Session.query(cls).filter_by(**kwargs).all()
-        else:
-            partners = Session.query(cls).all()
-
-        for partner in partners:
-            partner.database = database
-
-        return partners
-
-    def __init__(self, database, *args, **kwargs):
-        DatabaseObject.__init__(self, *args, **kwargs)
-        self.database = database
-
-    def kicked(self):
-        Session = self.database.Session
-
-        violations = Session.query(Violation).filter_by(partner=self, guilty=True).count()
-        return (violations>0)
-
-    def delete(self):
-        Session = self.database.Session
-
-        Session.delete(self)
-        Session.commit()
-
-    def add_offense(self, offense):
-        Session = self.database.Session
-
-        # save offense
-        offense.partner = self
-
-        Session.add(offense)
-        Session.commit()
-
-        # TODO:
-        # notify partner
-
-        # get current time
-        current_timestamp = int(time.time())
-        timestamp_limit = current_timestamp - OFFENSE_LIFETIME
-
-        # calculate per-address severity sum (only most severe offense per webfinger_address)
-        aggregator = sqlalchemy.sql.functions.max(Offense.severity)
-        query = Session.query(aggregator.label("max_severity"))
-        query = query.filter(Offense.partner == self)
-        query = query.filter(Offense.timestamp >= timestamp_limit)
-        query = query.filter(Offense.guilty == True)
-        query = query.filter(Offense.webfinger_address != None)
-        query = query.group_by(Offense.webfinger_address)
-        subquery = query.subquery()
-
-        aggregator = sqlalchemy.sql.functions.sum(subquery.c.max_severity)
-        query = Session.query(aggregator.label("per_address_severity_sum"))
-        per_address_severity_sum = query.one().per_address_severity_sum
-        if per_address_severity_sum==None: per_address_severity_sum=0
-
-        # calculate address-independent severity sum
-        aggregator = sqlalchemy.sql.functions.sum(Offense.severity)
-        query = Session.query(aggregator.label("address_independent_severity_sum"))
-        query = query.filter(Offense.partner == self)
-        query = query.filter(Offense.timestamp >= timestamp_limit)
-        query = query.filter(Offense.guilty == True)
-        query = query.filter(Offense.webfinger_address == None)
-        address_independent_severity_sum = query.one().address_independent_severity_sum
-        if address_independent_severity_sum==None: address_independent_severity_sum=0
-
-        # calculate total severity sum
-        severity_sum = per_address_severity_sum + address_independent_severity_sum
-
-        # if there are enough entries to make a reliable calculation and if there were to
-        # many offenses, add the violation.
-        if self.control_samples_taken>3/OFFENSES_THRESHOLD and severity_sum>OFFENSES_THRESHOLD*self.control_samples_taken:
-            # set guilty=False on offenses; guiltiness is absorbed into violation.
-            query = Session.query(Offense)
-            query = query.filter(Offense.partner == self)
-            query = query.filter(Offense.timestamp >= timestamp_limit)
-            query = query.filter(Offense.guilty == True)
-            query.update({Offense.guilty:False})
-            Session.commit()
-
-            # add a violation
-            violation = TooManyOffensesViolation(severity_sum, self.control_samples_taken)
-            self.add_violation(violation)
-        
-    def add_violation(self, violation):
-        Session = self.database.Session
-
-        # save violation
-        violation.partner = self
-        
-        Session.add(violation)
-        Session.commit()
-
-        # TODO:
-        # notify administrator and partner
-
-    def register_control_sample(self):
-        Session = self.database.Session
-
-        self.control_samples_taken += 1
-        Session.add(self)
-        Session.commit()
-
-    def register_connection(self):
-        Session = self.database.Session
-
-        self.last_connection = time.time()
-        Session.add(self)
-        Session.commit()
-
-        return self.last_connection
-
-    def synchronization_address(self):
-        data = urllib.urlopen(self.address+"synchronization_address").read()
+        data = urllib.urlopen(address_url).read()
         host, control_port = json.loads(data)
         host = host.encode("utf8")
 
+        assert type(host)==str
+        assert type(control_port)==int
+
         return (host, control_port)
-    
-    def password_valid(self, password):
-        comparehash = hashlib.sha1(password).digest()
-        
-        return comparehash==self.passwordhash
 
-    def __str__(self):
-        r = "%s %s (%s)" % (self.partner_type, self.partner_name, self.address)
+    def control_sample(self):
+        return random.random()<self.control_probability
 
-        if self.kicked():
-            r += " [K]"
+# sqlalchemy mapping for Partner class
+import sqlalchemy, sqlalchemy.orm, sqlalchemy.ext.declarative
 
-        return r
+metadata = sqlalchemy.MetaData()
 
-class Server(Partner):
-    __mapper_args__ = {'polymorphic_identity': 'server'}
+partner_table = sqlalchemy.Table('partners', metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
+    sqlalchemy.Column("name", lib.Text, unique=True),
+    sqlalchemy.Column("accept_password", lib.Text),
+    sqlalchemy.Column("base_url", lib.Text),
+    sqlalchemy.Column("control_probability", sqlalchemy.Float,
+    sqlalchemy.Column("last_connection", sqlalchemy.Integer),
+    sqlalchemy.Column("kicked", sqlalchemy.Boolean),
+    sqlalchemy.Column("connection_schedule", lib.Text),
+    sqlalchemy.Column("provide_username", lib.Text),
+    sqlalchemy.Column("provide_password", lib.Text)
+)
 
-    connection_schedule = sqlalchemy.Column(lib.Text)
+sqlalchemy.orm.mapper(Partner, partner_table,
+    properties={
+        "id": partner_table.c.id,
+        "name": partner_table.c.name,
+        "accept_password": partner_table.c.accept_password,
+        "base_url": partner_table.c.base_url,
+        "control_probability": partner_table.c.control_probability,
+        "last_connection": partner_table.c.last_connection,
+        "kicked": partner_table.c.kicked,
+        "connection_schedule": partner_table.c.connection_schedule,
+        "provide_username": partner_table.c.provide_username,
+        "provide_password": partner_table.c.provide_password
+    }
+)
 
-class Client(Partner):
-    __mapper_args__ = {'polymorphic_identity': 'client'}
+# ControlSample and Violation classes with mapping
+DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
 
-# Violations
+class ControlSample(DatabaseObject):
+    __tablename__ = "control_samples"
+
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey(partner_table.c.id))
+    timestamp = sqlalchemy.Column(sqlalchemy.Integer)
+    penalty = sqlalchemy.Column(sqlalchemy.Integer)
+    offense = sqlalchemy.Column(lib.Text)
+    webfinger_address = sqlalchemy.Column(lib.Text)
+    # TODO: index for better performance
 
 class Violation(DatabaseObject):
-    """ A partner is kicked if and only if a violation exists """
-    __tablename__ = 'violations'
-
-    violation_type = sqlalchemy.Column(lib.Text)
-    __mapper_args__ = {'polymorphic_on': violation_type}
+    __tablename__ = "violations"
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'))
-    partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
+    partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey(partner_table.c.id))
     description = sqlalchemy.Column(lib.Text)
-    timestamp = sqlalchemy.Column(sqlalchemy.Integer)
-    guilty = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
-        # The administrator must set this to false to unkick the partner
+    # TODO: index for better performance?
 
-    def __init__(self, description, **kwargs):
-        kwargs["description"] = str(description)
+import threading, os, time
 
-        if not "timestamp" in kwargs:
-            kwargs["timestamp"] = int(time.time())
+class PartnerDatabase:
+    database_path = None # for erasing when closing
+    Session = None
+    lock = None
 
-        DatabaseObject.__init__(self, **kwargs)
+    def __init__(self, database_path, erase=False):
+        self.database_path = database_path
+        self.lock = threading.Lock()
 
-# TODO: override constructors
-class InvalidHashViolation(Violation):
-    """ The transmitted entry contained a hash but it was wrong """
+        if erase and os.path.exists(database_path):
+            os.remove(database_path)
 
-    __mapper_args__ = {"polymorphic_identity": "InvalidHash"}
+        engine = sqlalchemy.create_engine("sqlite:///"+database_path)
 
-class InvalidListViolation(Violation):
-    """ The partner responded with an improper format being asked for a set of entries. """
+        # create partners table if it doesn't exist
+        metadata.create_all(engine)
 
-    __mapper_args__ = {"polymorphic_identity": "InvalidList"}
-
-class WrongEntriesViolation(Violation):
-    """ The partner did not send the requested set of entries but other ones. """
-
-    __mapper_args__ = {"polymorphic_identity": "WrongEntries"}
-
-class InvalidCaptchaViolation(Violation):
-    """ The partner sent an entry with an invalid Captcha signature """
-
-    __mapper_args__ = {"polymorphic_identity": "InvalidCaptcha"}
-
-class InvalidTimestampsViolation(Violation):
-    """ The partner sent an entry with retrieval_timestamp < submission_timestamp """
-
-    __mapper_args__ = {"polymorphic_identity": "InvalidTimestamps"}
-
-class TooManyOffensesViolation(Violation):
-    """ Too many offenses """
-
-    __mapper_args__ = {"polymorphic_identity": "TooManyOffenses"}
-
-    def __init__(self, severity_sum, received_sum, **kwargs):
-        description = "Too many offenses accumulated: A severity sum of %f was reached with a total of %d received entries." % (severity_sum, received_sum)
-
-        Violation.__init__(self, description, **kwargs)
-
-class ExpiredEntryViolation(Violation):
-    """ The partner sent a too-long-ago expired entry """
-
-    __mapper_args__ = {"polymorphic_identity": "ExpiredEntry"}
-
-# Offences
-
-class Offense(DatabaseObject):
-    """ An offense is added each time a partner makes a fault that will not
-        immediately get it kicked. If too many offenses exist, a violation
-        will be created. """
-    __tablename__ = 'offenses'
-
-    offense_type = sqlalchemy.Column(lib.Text)
-    __mapper_args__ = {'polymorphic_on': offense_type}
-
-    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    webfinger_address = sqlalchemy.Column(lib.Text)
-    partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey('partners.id'))
-    partner = sqlalchemy.orm.relation(Partner, primaryjoin=(partner_id==Partner.id))
-    description = sqlalchemy.Column(lib.Text)
-    severity = sqlalchemy.Column(sqlalchemy.Float)
-    timestamp = sqlalchemy.Column(sqlalchemy.Integer)
-    guilty = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
-        # if a violation is created, this will be set to False.
-
-    default_severity = 0
-
-    def __init__(self, description, **kwargs):
-        kwargs["description"] = str(description)
-
-        if not "severity" in kwargs:
-            kwargs["severity"] = self.default_severity
-
-        if not "timestamp" in kwargs:
-            kwargs["timestamp"] = int(time.time())
-
-        DatabaseObject.__init__(self, **kwargs)
-
-class ConnectionFailedOffense(Offense):
-    """ partner is down """
-
-    __mapper_args__ = {"polymorphic_identity": "ConnectionFailed"}
-
-    default_severity = 0
-
-class NonConcurrenceOffense(Offense):
-    """ the webfinger profile differs from the one the partner transmitted """
-
-    __mapper_args__ = {"polymorphic_identity": "NonConcurrence"}
-
-    default_severity = 1
-
-    def __init__(self, fetched_entry, transmitted_entry, **kwargs):
-        kwargs["webfinger_address"] = transmitted_entry.webfinger_address
-
-        description = "A control sample for an entry did not match the one on "+transmitted_entry.webfinger_address+"\n\n"
-        description += "Fetched entry:\n"
-        description += "==============\n"
-        description += str(fetched_entry)+"\n"
-        description += "Transmitted entry:\n"
-        description += "==================\n"
-        description += str(transmitted_entry)
-
-        Offense.__init__(self, description, **kwargs)
-
-####
-# database class
-
-class Database:
-    def __init__(self, suffix="", erase=False):
-        global DatabaseObject
-
-        self.logger = logging.getLogger("partnerdb"+suffix)
-
-        self.dbfile = "partners"+suffix+".sqlite"
-
-        if erase and os.path.exists(self.dbfile):
-            os.remove(self.dbfile)
-
-        engine = sqlalchemy.create_engine("sqlite:///"+self.dbfile)
-        self.Session = sqlalchemy.orm.scoped_session(sqlalchemy.orm.sessionmaker(bind=engine))
-
-        # create tables if they don't exist
+        # create tables for control samples and violations if they don't exist
         DatabaseObject.metadata.create_all(engine)
 
+        self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
+
+    def cleanup(self):
+        with self.lock:
+            session = self.Session()
+
+            reference_time = time.time()
+            age = reference_time - ControlSample.timestamp
+            outdated = session.query(ControlSample).filter(age > OFFENSE_LIFETIME)
+            outdated.delete()
+
+            session.commit()
+            session.close()
+
+        return reference_timestamp
+
+    def get_partners(self):
+        with self.lock:
+            session = self.Session()
+            query = session.query(Partner)
+            for partner in query:
+                session.expunge(partner)
+                yield partner
+
+            session.close()
+
+    def get_partner(self, partner_name):
+        with self.lock:
+            session = self.Session()
+            query = session.query(Partner).filter(Partner.name==partner_name)
+            partner = query.scalar()
+            session.close()
+
+            return partner
+
+    def register_control_sample(self, partner_name, webfinger_address=None, offense=None):
+        with self.lock:
+            session = self.Session()
+
+            query = session.query(Partner.id).filter(Partner.name==partner_name)
+            partner_id = query.scalar()
+
+            if partner_id==None:
+                # TODO: logging
+                return False
+
+            timestamp = time.time()
+
+            if offense==None:
+                penalty = 0
+
+                # do not save address to save space
+                webfinger_address = None
+            else:
+                penalty = 1
+
+            control_sample = ControlSample(partner_id=partner_id,
+                                           timestamp=timestamp,
+                                           penalty=penalty,
+                                           webfinger_address=webfinger_address,
+                                           offense=offense)
+
+            session.add(control_sample)
+            session.commit()
+
+            ## recalculate if partner must be kicked ##
+
+            # create subquery which takes only worst penalty per webfinger address
+            reference_timestamp = time.time()
+            age = reference_timestamp-ControlSample.timestamp
+
+            aggregator = sqlalchemy.sql.functions.max(ControlSample.penalty)
+            query = session.query(aggregator.label("worst_penalty"))
+            query = query.filter(not ControlSample.penalty==None)
+            query = query.filter(age < OFFENSE_LIFETIME)
+            query = query.group_by(ControlSample.webfinger_address)
+
+            # calculate average worst penalty
+            sum_aggregator = sqlalchemy.sql.functions.sum(subquery.c.worst_penalty)
+            count_aggregator = sqlalchemy.sql.functions.count(subquery.c.worst_penalty)
+
+            query = session.query(sum_aggregator, count_aggregator)
+            penalty_sum, sample_count = query.one()
+            offense_percentage = 100. * penalty_sum/sample_count
+
+            # kick partner if necessary
+            if sample_count>SIGNIFICANCE_THRESHOLD and offense_percentage>MAX_OFFENSE_PERCENTAGE:
+                query = session.query(Partner)
+                query = query.filter_by(partner_name=partner_name)
+                query.update({Partner.kicked: True})
+
+            session.close()
+            return True
+
+    def register_connection(self, partner_name):
+        with self.lock:
+            session = self.Session()
+
+            timestamp = int(time.time())
+
+            query = session.query(Partner).filter_by(name=partner_name)
+            query.update({Partner.last_connection: timestamp})
+
+            session.commit()
+            session.close()
+
+            return timestamp
+
+    def register_violation(self, partner_name, description):
+        with self.lock:
+            session = self.Session()
+
+            query = session.query(Partner).filter_by(name=partner_name)
+            partner = query.scalar()
+
+            if partner==None:
+                # TODO: logging
+                return False
+
+            timestamp = time.time()
+
+            violation = Violation(partner_id=partner.id, timestamp=timestamp,
+                                  description=description)
+            session.add(violation)
+
+            partner.kicked = True
+            session.add(partner)
+
+            session.commit()
+            session.close()
+
+            return True
+
     def close(self, erase=False):
-        if hasattr(self, "Session"): self.Session.close_all()
+        with self.lock:
+            if not self.Session==None:
+                self.Session.close_all()
+                self.Session = None
 
-        if erase and os.path.exists(self.dbfile):
-            os.remove(self.dbfile)
+            if erase and os.path.exists(self.database_path):
+                os.remove(self.database_path)
 
-### command line interface
+### command line interface (TODO)
 if __name__=="__main__":
     import optparse
     import getpass
