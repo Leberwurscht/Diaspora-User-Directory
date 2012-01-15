@@ -3,6 +3,8 @@
 import random
 import urllib, json
 
+from constants import *
+
 class Partner(object):
     name = None             # may not contain newline
     accept_password = None  # may not contain newline
@@ -33,6 +35,7 @@ class Partner(object):
         return random.random()<self.control_probability
 
 # sqlalchemy mapping for Partner class
+import lib
 import sqlalchemy, sqlalchemy.orm, sqlalchemy.ext.declarative
 
 metadata = sqlalchemy.MetaData()
@@ -42,7 +45,7 @@ partner_table = sqlalchemy.Table('partners', metadata,
     sqlalchemy.Column("name", lib.Text, unique=True),
     sqlalchemy.Column("accept_password", lib.Text),
     sqlalchemy.Column("base_url", lib.Text),
-    sqlalchemy.Column("control_probability", sqlalchemy.Float,
+    sqlalchemy.Column("control_probability", sqlalchemy.Float),
     sqlalchemy.Column("last_connection", sqlalchemy.Integer),
     sqlalchemy.Column("kicked", sqlalchemy.Boolean),
     sqlalchemy.Column("connection_schedule", lib.Text),
@@ -123,7 +126,7 @@ class PartnerDatabase:
             session.commit()
             session.close()
 
-        return reference_timestamp
+        return reference_time
 
     def get_partners(self):
         with self.lock:
