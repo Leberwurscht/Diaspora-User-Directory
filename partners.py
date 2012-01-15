@@ -295,14 +295,12 @@ class PartnerDatabase:
             if erase and os.path.exists(self.database_path):
                 os.remove(self.database_path)
 
-### command line interface (TODO)
+### command line interface
 if __name__=="__main__":
-    import optparse
+    import optparse, sys
     import getpass
 
     import lib, random
-
-    database = Database()
 
     def read_password():
         while True:
@@ -316,67 +314,73 @@ if __name__=="__main__":
                 print >>sys.stderr, "ERROR: Passwords do not match."
 
     parser = optparse.OptionParser(
-        usage = "%prog -a (-s|-c) ADDRESS PARTNER_NAME IDENTITY [CONTROL_PROBABILITY ['CRON_LINE']]\nOr: %prog -d PARTNER_NAME\nOr: %prog -l [-s|-c]",
+        usage = "%prog [-p PATH] -e PARTNER_NAME ...\nOr: %prog [-p PATH] -d PARTNER_NAME\nOr: %prog [-p PATH] -cl\nArguments for editing: BASE_URL CONTROL_PROBABILITY\nand optionally PROVIDE_USERNAME [CONNECTION_SCHEDULE]",
         description="manage the synchronization partners list"
     )
     
-    parser.add_option( "-s", "--server", action="store_true", dest="server", help="action deals with server")
-    parser.add_option( "-c", "--client", action="store_true", dest="client", help="action deals with client")
-    
+    parser.add_option( "-p", "--path", metavar="DATABASE_PATH", dest="path", help="the database path")
     parser.add_option( "-l", "--list", action="store_true", dest="list", help="list partners")
-    parser.add_option( "-a", "--add", action="store_true", dest="add", help="add or change a partner")
+    parser.add_option( "-c", "--cleanup", action="store_true", dest="cleanup", help="delete outdated control samples")
+    parser.add_option( "-e", "--edit", action="store_true", dest="edit", help="add or edit a partner")
     parser.add_option( "-d", "--delete", action="store_true", dest="delete", help="delete a partner")
 
     (options, args) = parser.parse_args()
 
-    if options.list:
-        # if neither -s nor -c given, display both servers and clients
-        if not options.server and not options.client:
-            options.server = True
-            options.client = True
+    try:
+        database_path = int(options.path)
+    except TypeError:
+        database_path = "partners.sqlite"
 
-        if options.server:
-            for server in Server.list_from_database(database):
-                print str(server)
+    database = PartnerDatabase(database_path)
 
-        if options.client:
-            for client in Client.list_from_database(database):
-                print str(client)
+    if options.cleanup:
+        database.cleanup()
 
-    elif options.add:
-        if not options.server and not options.client:
-            print >>sys.stderr, "ERROR: Need either -s or -c."
-            sys.exit(1)
+    elif options.list:
+        for partner in database.get_partners():
+            print str(partner)
 
+    elif options.edit:
         try:
-            address,partner_name,identity = args[:3]
+            partner_name,base_url,control_probability = args[:3]
         except ValueError:
-            print >>sys.stderr, "ERROR: Need address, partner name and identity"
+            print >>sys.stderr, "ERROR: Need partner name, base URL and control probability."
             sys.exit(1)
-
-        control_probability = 0.1
 
         if len(args)>5:
             print >>sys.stderr, "ERROR: Too many arguments."
             sys.exit(1)
+
+        # check base url
+        if not base_url.endswith("/"):
+            print >>sys.stderr, "ERROR: Base URL must end with '/'."
+            sys.exit(1)
  
         # control probability
-        if len(args)>=4:
-            try:
-                # might raise ValueError if string is invalid
-                control_probability = float(args[3])
+        try:
+            # might raise ValueError if string is invalid
+            control_probability = float(control_probability)
 
-                # if number is not in range, raise ValueError ourselves
-                if control_probability<0 or control_probability>1:
-                    raise ValueError
-            except ValueError:
-                print >>sys.stderr, "ERROR: Invalid probability."
+            # if number is not in range, raise ValueError ourselves
+            if control_probability<0 or control_probability>1:
+                raise ValueError
+        except ValueError:
+            print >>sys.stderr, "ERROR: Invalid probability."
+            sys.exit(1)
+
+        if not len(args)>3:
+            provide_username = None
+            provide_password = None
+            connection_schedule = None
+        else:
+            provide_username = args[3]
+            if "\n" in provide_username:
+                print >>sys.stderr, "ERROR: PROVIDE_USERNAME may not contain newline."
                 sys.exit(1)
 
-        # connection schedule
-        connection_schedule=None
+            # connection schedule
+            connection_schedule=None
 
-        if options.server:
             if len(args)==5:
                 try:
                     # check cron pattern format by trying to parse it
@@ -385,7 +389,7 @@ if __name__=="__main__":
                 except ValueError:
                     print >>sys.stderr, "ERROR: Invalid format of cron line."
                     print >>sys.stderr, "Use 'MINUTE HOUR DAY_OF_MONTH MONTH DAY_OF_WEEK'"
-                    print >>sys.stderr, "Valid fields are e.g. 5, */3, 5-10 or a comma-separated combination of these."
+                    print >>sys.stderr, "Valid fields are e.g. 5, */3, 5-10 or a comma-separated combination of them."
                     sys.exit(1)
 
                 connection_schedule = args[4]
@@ -393,45 +397,25 @@ if __name__=="__main__":
                 minute = random.randrange(0,60)
                 hour = random.randrange(0,24)
                 connection_schedule = "%d %d * * *" % (minute, hour)
-        elif len(args)==5:
-            print >>sys.stderr, "ERROR: Cron line is only suitable for servers."
-            sys.exit(1)
+
+            print "Type the password we use to authenticate to the partner (password for %s)" % provide_username
+            provide_password = read_password()
 
         print "Type the password the partner uses to authenticate to us (password for %s)" % partner_name
-        password = read_password()
-        passwordhash = hashlib.sha1(password).digest()
+        accept_password = read_password()
 
-        print "Type the password we use to authenticate to the partner (password for %s)" % identity
-        password = read_password()
+        partner = database.get_partner(partner_name)
+        if partner:
+            partner.accept_password = accept_password
+            partner.base_url = base_url
+            partner.control_probability = control_probability
+            partner.connection_schedule = connection_schedule
+            partner.provide_username = provide_username
+            partner.provide_password = provide_password
+        else:
+            partner = Partner(partner_name, accept_password, base_url, control_probability, connection_schedule, provide_username, provide_password)
 
-        old_partner = Partner.from_database(database, partner_name=partner_name)
-        if old_partner:
-            # TODO: this will invalidate all the violations and offenses
-            old_partner.delete()
-
-        kwargs = {
-            "address": address,
-            "control_probability": control_probability,
-            "identity": identity,
-            "password": password,
-            "partner_name": partner_name,
-            "passwordhash": passwordhash,
-        }
-
-        if connection_schedule:
-            kwargs["connection_schedule"] = connection_schedule
-
-        if options.server:
-            print "Adding server \"%s\"." % address
-
-            partner = Server(database, **kwargs)
-        elif options.client:
-            print "Adding client \"%s\"." % address
-
-            partner = Client(database, **kwargs)
-
-        database.Session.add(partner)
-        database.Session.commit()
+        database.save_partner(partner)
 
     elif options.delete:
         try:
@@ -440,15 +424,8 @@ if __name__=="__main__":
             print >>sys.stderr, "ERROR: Need partner name."
             sys.exit(1)
 
-        partner = Partner.from_database(database, partner_name=partner_name)
-
-        if not partner:
-            print >>sys.stderr, "ERROR: Partner \"%s\" does not exists." % partner_name
-            sys.exit(1)
-
         print "Deleting partner \"%s\"." % partner_name
-
-        partner.delete()
+        database.delete_partner(partner_name)
 
     else:
         parser.print_help()
