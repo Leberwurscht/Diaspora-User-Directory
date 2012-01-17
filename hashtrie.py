@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-import logging
-
 import threading, socket
 import os, binascii
 
@@ -42,49 +40,51 @@ def _forward_messages(partnersocket, cin, cout):
     socketfile.close()
 
 class HashTrie:
-    def __init__(self, suffix="", erase=False):
-        self.logger = logging.getLogger("HashTrie"+suffix)
+    database_path = None
+    lock = None
+    trieserver = None
 
-        self.dbdir = "PTree"+suffix
-        logfile = "trieserver"+suffix
+    def __init__(self, database_path, erase=False):
+        # TODO: logging
+        self.database_path = database_path
+
+        assert not database_path.endswith("/")
+        logfile = database_path+".log"
 
         # erase database if requested
-        if erase and os.path.exists(self.dbdir):
-            shutil.rmtree(self.dbdir)
+        if erase and os.path.exists(database_path):
+            shutil.rmtree(database_path)
 
         # run trieserver
-        self.trieserver = subprocess.Popen(["./trieserver", self.dbdir, logfile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.trieserver = subprocess.Popen(["./trieserver", database_path, logfile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
         self.lock = threading.Lock()
 
     def _synchronize_common(self, partnersocket, command):
-        self.lock.acquire()
+        with self.lock:
+            # conduct the synchronization
+            self.trieserver.stdin.write(command+"\n")
+            self.trieserver.stdin.flush()
 
-        # conduct the synchronization
-        self.trieserver.stdin.write(command+"\n")
-        self.trieserver.stdin.flush()
+            assert self.trieserver.stdout.readline()=="OK\n"
 
-        assert self.trieserver.stdout.readline()=="OK\n"
+            _forward_messages(partnersocket, self.trieserver.stdin, self.trieserver.stdout)
 
-        _forward_messages(partnersocket, self.trieserver.stdin, self.trieserver.stdout)
+            # get the result of the synchronization
+            assert self.trieserver.stdout.readline()=="NUMBERS\n"
+           
+            binhashes = set()
 
-        # get the result of the synchronization
-        assert self.trieserver.stdout.readline()=="NUMBERS\n"
-       
-        binhashes = set()
+            while True:
+                hexhash = self.trieserver.stdout.readline().strip()
+                if not hexhash: break
 
-        while True:
-            hexhash = self.trieserver.stdout.readline().strip()
-            if not hexhash: break
+                binhash = binascii.unhexlify(hexhash)
+                binhashes.add(binhash)
 
-            binhash = binascii.unhexlify(hexhash)
-            binhashes.add(binhash)
+            assert self.trieserver.stdout.readline()=="DONE\n"
 
-        assert self.trieserver.stdout.readline()=="DONE\n"
-
-        self.lock.release()
-
-        return binhashes
+            return binhashes
 
     def synchronize_as_server(self, partnersocket):
         return self._synchronize_common(partnersocket, "SYNCHRONIZE_AS_SERVER")
@@ -93,20 +93,17 @@ class HashTrie:
         return self._synchronize_common(partnersocket, "SYNCHRONIZE_AS_CLIENT")
 
     def _add_delete_common(self, binhashes, command):
-        self.lock.acquire()
+        with self.lock:
+            self.trieserver.stdin.write(command+"\n")
+            assert self.trieserver.stdout.readline()=="OK\n"
 
-        self.trieserver.stdin.write(command+"\n")
-        assert self.trieserver.stdout.readline()=="OK\n"
+            for binhash in binhashes:
+                hexhash = binascii.hexlify(binhash)
+                self.trieserver.stdin.write(hexhash+"\n")
+            self.trieserver.stdin.write("\n")
+            self.trieserver.stdin.flush()
 
-        for binhash in binhashes:
-            hexhash = binascii.hexlify(binhash)
-            self.trieserver.stdin.write(hexhash+"\n")
-        self.trieserver.stdin.write("\n")
-        self.trieserver.stdin.flush()
-
-        assert self.trieserver.stdout.readline()=="DONE\n"
-
-        self.lock.release()
+            assert self.trieserver.stdout.readline()=="DONE\n"
 
     def add(self, binhashes):
         self._add_delete_common(binhashes, "ADD")
@@ -117,15 +114,12 @@ class HashTrie:
     def close(self, erase=False):
         if not self.trieserver: return
 
-        self.lock.acquire()
+        with self.lock:
+            self.trieserver.stdin.write("EXIT\n")
+            self.trieserver.stdin.flush()
 
-        self.trieserver.stdin.write("EXIT\n")
-        self.trieserver.stdin.flush()
+            self.trieserver.wait()
+            self.trieserver = None
 
-        self.trieserver.wait()
-        self.trieserver = None
-
-        if erase and os.path.exists(self.dbdir):
-            shutil.rmtree(self.dbdir)
-
-        self.lock.release()
+            if erase and os.path.exists(self.database_path):
+                shutil.rmtree(self.database_path)
