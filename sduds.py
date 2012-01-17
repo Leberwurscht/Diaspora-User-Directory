@@ -18,7 +18,7 @@ class SynchronizationRequestHandler(lib.AuthenticatingRequestHandler):
 
     def get_password(self, partner_name):
         context = self.server.context
-        partner = context.statedb.get_partner(partner_name)
+        partner = context.partnerdb.get_partner(partner_name)
 
         if partner==None:
             return None
