@@ -3,6 +3,7 @@
 import logging, time, Queue
 
 from states import State, StateDatabase
+from partners import PartnerDatabase
 from synchronization import Synchronization
 
 class Claim:
@@ -112,7 +113,7 @@ class Context:
             else:
                 erase = False
 
-            self.partnerdb = partners.PartnerDatabase(kwargs["partnerdb_path"], erase=erase)
+            self.partnerdb = PartnerDatabase(kwargs["partnerdb_path"], erase=erase)
 
         self.submission_queue = Queue.Queue(submission_queue_size)
         self.validation_queue = Queue.PriorityQueue(validation_queue_size)
