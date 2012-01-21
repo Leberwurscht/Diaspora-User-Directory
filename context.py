@@ -125,6 +125,15 @@ class Context:
         self.statedb.close(erase=erase)
         self.partnerdb.close(erase=erase)
 
+    def submit_address(self, webfinger_address):
+        try:
+            submission = Submission(webfinger_address)
+            self.submission_queue.put(submission)
+            return True
+        except Queue.Full:
+            self.logger.warning("Submission queue full, rejected %s!" % webfinger_address)
+            return False
+
     def process_state(self, state, partner_name, reference_timestamp):
         if state.retrieval_timestamp:
             # if partner does take over responsibility, submit claim to validation queue

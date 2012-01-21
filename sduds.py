@@ -273,15 +273,6 @@ class Application:
             self.context.statedb.save(state)
             self.context.assimilation_queue.task_done()
 
-    def submit_address(self, webfinger_address):
-        try:
-            submission = Submission(webfinger_address)
-            self.context.submission_queue.put(submission)
-            return True
-        except Queue.Full:
-            self.context.logger.warning("Submission queue full, rejected %s!" % webfinger_address)
-            return False
-
     def synchronize_with_partner(self, partner_name):
         # do not synchronize as long as we might have expired states
         self.ready_for_synchronization.wait()
