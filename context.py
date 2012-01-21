@@ -75,6 +75,12 @@ class Claim:
         else:
             return trusted_state
 
+class Submission:
+    webfinger_address = None
+
+    def __init__(self, webfinger_address):
+        self.webfinger_address = webfinger_address
+
 class Context:
     statedb = None
     partnerdb = None
