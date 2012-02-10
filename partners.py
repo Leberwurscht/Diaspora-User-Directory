@@ -314,7 +314,7 @@ if __name__=="__main__":
                 print >>sys.stderr, "ERROR: Passwords do not match."
 
     parser = optparse.OptionParser(
-        usage = "%prog [-p PATH] -e PARTNER_NAME ...\nOr: %prog [-p PATH] -d PARTNER_NAME\nOr: %prog [-p PATH] -cl\nArguments for editing: BASE_URL CONTROL_PROBABILITY\nand optionally PROVIDE_USERNAME [CONNECTION_SCHEDULE]",
+        usage = "%prog [-p PATH] -e PARTNER_NAME ...\nOr: %prog [-p PATH] -d PARTNER_NAME\nOr: %prog [-p PATH] -l\nOr: %prog [-p PATH] -c\nArguments for editing: BASE_URL CONTROL_PROBABILITY\nand optionally PROVIDE_USERNAME [CONNECTION_SCHEDULE]",
         description="manage the synchronization partners list"
     )
     
@@ -344,7 +344,7 @@ if __name__=="__main__":
         try:
             partner_name,base_url,control_probability = args[:3]
         except ValueError:
-            print >>sys.stderr, "ERROR: Need partner name, base URL and control probability."
+            print >>sys.stderr, "ERROR: Need at least partner name, base URL and control probability."
             sys.exit(1)
 
         if len(args)>5:
