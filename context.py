@@ -103,7 +103,7 @@ class Context:
             else:
                 erase = False
 
-            self.statedb = StateDatabase(kwargs["hashtrie_path"], kwargs["entrydb_path"], erase=erase)
+            self.statedb = StateDatabase(kwargs["hashtrie_path"], kwargs["statedb_path"], erase=erase)
 
         if partnerdb:
             self.partnerdb = partnerdb
