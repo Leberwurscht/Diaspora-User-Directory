@@ -88,7 +88,7 @@ class Application:
         # validation workers
         for i in xrange(validation_workers):
             worker = threading.Thread(target=self.validation_worker_function)
-            self.submission_workers.append(worker)
+            self.validation_workers.append(worker)
 
         # assimilation worker
         self.assimilation_worker = threading.Thread(target=self.assimilation_worker_function)
