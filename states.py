@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import urllib, json, pywebfinger, binascii, hashlib
-import threading, time
+import os, threading, time
 
 from constants import *
 
@@ -277,7 +277,7 @@ class StateDatabase:
         self.lock = threading.Lock()
 
         if erase and os.path.exists(statedb_path):
-            os.remove(self.statedb_path)
+            os.remove(statedb_path)
 
         engine = sqlalchemy.create_engine("sqlite:///"+statedb_path)
         metadata.create_all(engine)
