@@ -195,13 +195,13 @@ class PartnerDatabase:
             query = session.query(Partner.id).filter(Partner.name==partner_name)
             partner_id = query.scalar()
 
-            if partner_id==None:
+            if partner_id is None:
                 # TODO: logging
                 return False
 
             timestamp = time.time()
 
-            if offense==None:
+            if offense is None:
                 penalty = 0
 
                 # do not save address to save space
@@ -268,7 +268,7 @@ class PartnerDatabase:
             query = session.query(Partner).filter_by(name=partner_name)
             partner = query.scalar()
 
-            if partner==None:
+            if partner is None:
                 # TODO: logging
                 return False
 
@@ -288,7 +288,7 @@ class PartnerDatabase:
 
     def close(self, erase=False):
         with self.lock:
-            if not self.Session==None:
+            if self.Session is not None:
                 self.Session.close_all()
                 self.Session = None
 

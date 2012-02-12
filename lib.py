@@ -12,12 +12,12 @@ class Binary(sqlalchemy.types.TypeDecorator):
     impl = sqlalchemy.types.Binary
 
     def process_bind_param(self, value, dialect):
-        if value==None: return None
+        if value is None: return None
 
         return buffer(value)
 
     def process_result_value(self, value, dialect):
-        if value==None: return None
+        if value is None: return None
 
         return str(value)
 
@@ -31,12 +31,12 @@ class Text(sqlalchemy.types.TypeDecorator):
     impl = sqlalchemy.types.UnicodeText
 
     def process_bind_param(self, value, dialect):
-        if value==None: return None
+        if value is None: return None
 
         return unicode(value, "latin-1")
 
     def process_result_value(self, value, dialect):
-        if value==None: return None
+        if value is None: return None
 
         return value.encode("latin-1")
 
@@ -128,7 +128,7 @@ class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler):
 
         # compute response
         password = self.get_password(username)
-        if password==None:
+        if password is None:
             f.write("DENIED\n")
             f.close()
             return
@@ -362,17 +362,17 @@ class Job(threading.Thread):
         """ This can be called before start() is called to determine
             if calling the callback is overdue. """
 
-        if reference_timestamp==None:
+        if reference_timestamp is None:
             reference_timestamp = time.time()
 
-        if self.last_execution==None: return True
+        if self.last_execution is None: return True
 
         clearance = self.pattern.next_clearance(self.last_execution)
 
         return clearance <= reference_timestamp
 
     def run(self):
-        if self.last_execution==None:
+        if self.last_execution is None:
             self.last_execution = self.callback(*self.args)
 
         while True:

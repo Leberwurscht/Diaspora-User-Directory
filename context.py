@@ -15,7 +15,7 @@ class Claim:
     partner_name = None
 
     def __init__(self, state, partner_name=None, timestamp=None):
-        if timestamp==None:
+        if timestamp is None:
             self.timestamp = time.time()
         else:
             self.timestamp = timestamp
@@ -31,8 +31,8 @@ class Claim:
         #       the lowest value first, so the return value is negated.
 
         # entries retrieved by ourselves have higher priority
-        if self.partner_name==None: return not True
-        if other.partner_name==None: return not False
+        if self.partner_name is None: return not True
+        if other.partner_name is None: return not False
 
         # earlier claims have higher priority
         return not self.timestamp<other.timestamp

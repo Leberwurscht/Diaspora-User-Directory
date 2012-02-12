@@ -20,7 +20,7 @@ class SynchronizationRequestHandler(lib.AuthenticatingRequestHandler):
         context = self.server.context
         partner = context.partnerdb.get_partner(partner_name)
 
-        if partner==None:
+        if partner is None:
             return None
         elif partner.kicked:
             return None
@@ -234,7 +234,7 @@ class Application:
     def submission_worker_function(self):
         while True:
             submission = self.context.submission_queue.get()
-            if submission==None:
+            if submission is None:
                 self.context.submission_queue.task_done()
                 return
 
@@ -253,7 +253,7 @@ class Application:
     def validation_worker_function(self):
         while True:
             claim = self.context.validation_queue.get()
-            if claim==None:
+            if claim is None:
                 self.context.validation_queue.task_done()
                 return
 
@@ -266,7 +266,7 @@ class Application:
     def assimilation_worker_function(self):
         while True:
             state = self.context.assimilation_queue.get()
-            if state==None:
+            if state is None:
                 self.context.assimilation_queue.task_done()
                 return
 

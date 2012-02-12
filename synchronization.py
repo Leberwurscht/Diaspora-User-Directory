@@ -119,7 +119,7 @@ class DeletionRequest(Message):
 
     def __init__(self, ghost=None):
         if ghost:
-            assert not ghost.retrieval_timestamp==None
+            assert ghost.retrieval_timestamp is not None
 
             now = time.time()
             if now-ghost.retrieval_timestamp < RESPONSIBILITY_TIMESPAN:
@@ -208,7 +208,7 @@ class StateMessage(Message):
         _write_str(f, self.state.address)
 
         # send retrieval timestamp
-        if self.state.retrieval_timestamp==None:
+        if self.state.retrieval_timestamp is None:
             f.write('\0')
             assert not self.state.profile
         else:
@@ -278,7 +278,7 @@ class Synchronization:
         for ghost in statedb.get_ghosts(self.missing_hashes):
             deleted_hashes += ghost.hash
 
-            if not ghost.retrieval_timestamp==None:
+            if ghost.retrieval_timestamp is not None:
                 deletion_request = DeletionRequest(ghost)
                 deletion_request.transmit(f)
 

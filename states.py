@@ -42,7 +42,7 @@ class Profile:
             submission_timestamp, and field lengths. Also checks whether webfinger address is
             too long. """
 
-        if reference_timestamp==None:
+        if reference_timestamp is None:
             reference_timestamp = time.time()
 
         # validate CAPTCHA signature for given webfinger address
@@ -119,8 +119,8 @@ class State(object):
         self.profile = profile
 
     def __eq__(self, other):
-        assert not self.retrieval_timestamp==None
-        assert not other.retrieval_timestamp==None
+        assert self.retrieval_timestamp is not None
+        assert other.retrieval_timestamp is not None
 
         assert self.address==other.address
 
@@ -144,9 +144,9 @@ class State(object):
         """ Checks if a state was valid at a given time. Returns True if it was, raises
             an exception otherwise. """
 
-        assert not self.retrieval_timestamp==None
+        assert self.retrieval_timestamp is not None
 
-        if reference_timestamp==None:
+        if reference_timestamp is None:
             reference_timestamp = time.time()
 
         if not self.retrieval_timestamp <= reference_timestamp:
@@ -355,7 +355,7 @@ class StateDatabase:
                     | state_table.c.services.like("%,"+service)
                 )
 
-            if not limit==None:
+            if limit is not None:
                 query = query.limit(limit)
 
             for state in query:
@@ -453,7 +453,7 @@ class StateDatabase:
 
     def close(self, erase=False):
         with self.lock:
-            if not self.Session==None:
+            if self.Session is not None:
                 self.Session.close_all()
                 self.Session = None
 
