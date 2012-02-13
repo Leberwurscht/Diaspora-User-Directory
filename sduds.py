@@ -31,7 +31,7 @@ class SynchronizationRequestHandler(lib.AuthenticatingRequestHandler):
 
     def handle_user(self, partner_name):
         context = self.server.context
-        partersocket = self.request
+        partnersocket = self.request
 
         context.synchronize_as_server(partnersocket, partner_name)
 
@@ -323,9 +323,10 @@ class Application:
                 self.context.logger.debug("Reached end of assimilation queue.")
                 return
 
+            address = state.address # only for logging [ORM expires state object during save()]
             self.context.statedb.save(state)
             self.context.assimilation_queue.task_done()
-            self.context.logger.debug("Saved state of %s to database." % state.address)
+            self.context.logger.debug("Saved state of %s to database." % address)
 
     def synchronize_with_partner(self, partner_name):
         # do not synchronize as long as we might have expired states
@@ -372,7 +373,7 @@ class Application:
 
         # conduct synchronization
         try:
-            self.context.synchronize_as_client(partnersocket)
+            self.context.synchronize_as_client(partnersocket, partner_name)
         except Exception, e:
             self.context.logger.warning("Unable to synchronize with partner %s: %s" % (partner_name, str(e)))
 

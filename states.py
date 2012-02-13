@@ -79,7 +79,7 @@ class Profile:
             reference_timestamp = time.time()
 
         # validate CAPTCHA signature for given webfinger address
-        assert lib.signature_valid(self.captcha_signature, webfinger_address, CAPTCHA_PUBLIC_KEY),\
+        assert lib.signature_valid(CAPTCHA_PUBLIC_KEY, self.captcha_signature, webfinger_address),\
             InvalidProfileException(str(self), "Invalid captcha signature")
 
         # assert that submission_timestamp is not in future
@@ -103,7 +103,7 @@ class Profile:
         assert len(self.services)<=MAX_SERVICES_LENGTH,\
             InvalidProfileException(str(self), "Services list too long")
 
-        for service in services.split(","):
+        for service in self.services.split(","):
             assert len(service)<=MAX_SERVICE_LENGTH,\
                 InvalidProfileException(str(self), "Service %s too long" % service)
 
@@ -164,11 +164,14 @@ class State(object):
             return False
 
     def __str__(self):
-        s = "Webfinger address: "+self.address+"\n"+\
-            "Hash: "+binascii.hexlify(self.hash)+"\n"+\
-            "Retrieval time: "+time.ctime(self.retrieval_timestamp)+"\n"+\
-            "PROFILE:\n"+\
-            str(self.profile)
+        s = "Webfinger address: "+self.address+"\n"
+        s += "Retrieval time: "+time.ctime(self.retrieval_timestamp)+"\n"
+
+        if self.profile is not None:
+            s += "Hash: "+binascii.hexlify(self.hash)+"\n"
+
+        s += "PROFILE:\n"
+        s += str(self.profile)
 
         return s
 
@@ -188,7 +191,7 @@ class State(object):
             InvalidStateException(str(self), "Not up to date (reference timestamp: %d)" % reference_timestamp)
 
         if self.profile:
-            self.profile.assert_validity(self.address, self.reference_timestamp)
+            self.profile.assert_validity(self.address, reference_timestamp)
 
             assert self.retrieval_timestamp>=self.profile.submission_timestamp,\
                 InvalidStateException(str(self), "Retrieval time lies before submission time")
@@ -222,7 +225,7 @@ class State(object):
 
         relevant_data = [self.address, self.profile.full_name,
             self.profile.hometown, self.profile.country_code,
-            self.profile.services, self.profile.submission_timestamp]
+            self.profile.services, int(self.profile.submission_timestamp)]
 
         for data in relevant_data:
             # convert data to string
@@ -427,14 +430,14 @@ class StateDatabase:
 
                 session.delete(existing_state)
 
-                self.hashtrie.delete(binhash)
+                self.hashtrie.delete([binhash])
                 ghost = Ghost(binhash, retrieval_timestamp)
                 session.add(ghost)
 
             if state.profile:
                 # add new state
                 session.add(state)
-                self.hashtrie.add(state.hash)
+                self.hashtrie.add([state.hash])
 
             session.commit()
             session.close()

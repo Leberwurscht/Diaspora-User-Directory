@@ -195,6 +195,6 @@ class Context:
             self.process_state(state, partner_name, reference_timestamp)
 
         synchronization.receive_state_requests(f)
-        synchronization.send_states(f, self.context.statedb)
+        synchronization.send_states(f, self.statedb)
 
         f.close()

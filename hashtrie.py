@@ -49,7 +49,7 @@ class HashTrie:
         self.database_path = database_path
 
         assert not database_path.endswith("/")
-        logfile = database_path+".log"
+        logfile = database_path # .log is appended automatically by trieserver
 
         # erase database if requested
         if erase and os.path.exists(database_path):
@@ -72,7 +72,7 @@ class HashTrie:
 
             # get the result of the synchronization
             assert self.trieserver.stdout.readline()=="NUMBERS\n"
-           
+
             binhashes = set()
 
             while True:
@@ -86,10 +86,10 @@ class HashTrie:
 
             return binhashes
 
-    def synchronize_as_server(self, partnersocket):
+    def get_missing_hashes_as_server(self, partnersocket):
         return self._synchronize_common(partnersocket, "SYNCHRONIZE_AS_SERVER")
 
-    def synchronize_as_client(self, partnersocket):
+    def get_missing_hashes_as_client(self, partnersocket):
         return self._synchronize_common(partnersocket, "SYNCHRONIZE_AS_CLIENT")
 
     def _add_delete_common(self, binhashes, command):

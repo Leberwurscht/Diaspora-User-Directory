@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import struct, time
+from states import Profile, State # to be able to construct these objects from messages
 
 """ functions to send and receive some basic types over the network,
     using the file descriptor obtained from socket.makefile() """
@@ -12,7 +13,7 @@ def _write_char(f, integer):
 
 def _read_char(f):
     packed_integer = f.read(1)
-    integer = struct.unpack("!B", packed_integer)
+    integer, = struct.unpack("!B", packed_integer)
 
     return integer
 
@@ -23,7 +24,7 @@ def _write_integer(f, integer):
 
 def _read_integer(f):
     packed_integer = f.read(4)
-    integer = struct.unpack("!I", packed_integer)
+    integer, = struct.unpack("!I", packed_integer)
 
     return integer
 
@@ -57,7 +58,7 @@ def _write_unicode(f, u):
     _write_str(f, string)
 
 def _read_unicode(f):
-    string = _read_string(f)
+    string = _read_str(f)
     u = unicode(string, "utf8")
 
     return u
@@ -132,7 +133,7 @@ class DeletionRequest(Message):
         f.write(self.message_type)
 
         # send binhash
-        _write_short_str(f, binhash)
+        _write_short_str(f, self.binhash)
 
         # send retrieval_timestamp
         _write_integer(f, self.retrieval_timestamp)
@@ -172,7 +173,7 @@ class StateRequest(Message):
         f.write(self.message_type)
 
         # send binhash
-        _write_short_str(f, binhash)
+        _write_short_str(f, self.binhash)
 
     @classmethod
     def read(cls, f):
@@ -251,7 +252,7 @@ class StateMessage(Message):
             captcha_signature = _read_str(f)
 
             profile = Profile(full_name, hometown, country_code, services,
-                              submission_timestamp, captcha_signature)
+                              captcha_signature, submission_timestamp)
 
         state = State(address, retrieval_timestamp, profile)
 
@@ -280,9 +281,9 @@ class Synchronization:
 
             if ghost.retrieval_timestamp is not None:
                 deletion_request = DeletionRequest(ghost)
-                deletion_request.transmit(f)
+                deletion_request.write(f)
 
-        terminator.transmit(f)
+        terminator.write(f)
         f.flush()
 
         self.request_hashes = self.missing_hashes - deleted_hashes
@@ -296,7 +297,7 @@ class Synchronization:
         self.preliminary_invalid_states = {}
 
         while True:
-            deletion_request = DeletionRequest.receive(f)
+            deletion_request = DeletionRequest.read(f)
             if not deletion_request: break
 
             binhash = deletion_request.binhash
@@ -310,9 +311,9 @@ class Synchronization:
 
         for binhash in self.request_hashes:
             request = StateRequest(binhash)
-            request.transmit(f)
+            request.write(f)
 
-        terminator.transmit(f)
+        terminator.write(f)
         f.flush()
 
         self.request_hashes = None
@@ -323,7 +324,7 @@ class Synchronization:
             received states and the remaining invalid states. """
 
         while True:
-            message = StateMessage.receive(f)
+            message = StateMessage.read(f)
             if not message: break
 
             state = message.state
@@ -349,7 +350,7 @@ class Synchronization:
         self.requests = []
 
         while True:
-            request = StateRequest.receive(f)
+            request = StateRequest.read(f)
             if not request: break
 
             self.requests.append(request)
@@ -358,9 +359,9 @@ class Synchronization:
         """ answer state requests """
 
         for request in self.requests:
-            state = statedb.get_valid_state(request.hash)
+            state = statedb.get_valid_state(request.binhash)
             message = StateMessage(state)
-            message.transmit(f)
+            message.write(f)
 
-        terminator.transmit(f)
+        terminator.write(f)
         f.flush()
