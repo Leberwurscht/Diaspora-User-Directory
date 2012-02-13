@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-import entries
-
 import SocketServer, wsgiref.simple_server, cgi
 import threading
 
@@ -14,13 +12,14 @@ class ThreadingWSGIServer(SocketServer.ThreadingMixIn, wsgiref.simple_server.WSG
         wsgiref.simple_server.WSGIServer.__init__(self, *args, **kwargs)
 
 class WebServer(threading.Thread):
+    context = None
+    httpd = None
+
     def __init__(self, context, interface="", port=20000):
         threading.Thread.__init__(self)
 
         self.context = context
         self.httpd = wsgiref.simple_server.make_server(interface, port, self.dispatch, ThreadingWSGIServer)
-
-        self._synchronization_host = None
 
     def run(self):
         self.httpd.serve_forever()
@@ -28,11 +27,6 @@ class WebServer(threading.Thread):
     def terminate(self):
         self.httpd.shutdown()
         self.httpd.socket.close()
-
-    # set synchronization port
-    def set_synchronization_address(self, host, control_port):
-        self._synchronization_host = host
-        self._control_port = control_port
 
     # WSGI applications
     def dispatch(self, environment, start_response):
@@ -42,8 +36,6 @@ class WebServer(threading.Thread):
             func = self.submit
         elif environment["PATH_INFO"]=="/search":
             func = self.search
-        elif environment["PATH_INFO"]=="/entrylist":
-            func = self.entrylist
         elif environment["PATH_INFO"]=="/synchronization_address":
             func = self.synchronization_address
         else:
@@ -73,7 +65,7 @@ class WebServer(threading.Thread):
 
         webfinger_address = fs.getvalue("address")
 
-        success = self.context.process_submission(webfinger_address)
+        success = self.context.submit_address(webfinger_address)
 
         if success:
             start_response("200 OK", [('Content-Type','text/plain')])
@@ -93,35 +85,17 @@ class WebServer(threading.Thread):
 
         start_response("200 OK", [('Content-Type','text/plain')])
 
-        for entry in self.context.entrydb.search(words):
-            yield str(entry)
+        for state in self.context.statedb.search(words):
+            yield str(state)
             yield "\n"
-
-    def entrylist(self, environment, start_response):
-        fs = cgi.FieldStorage(fp=environment['wsgi.input'],
-                          environ=environment,
-                          keep_blank_values=1)
-
-        start_response("200 OK", [('Content-Type','text/plain')])
-
-        binhashes = []
-        for hexhash in fs.getlist("hexhash"):
-            binhash = binascii.unhexlify(hexhash)
-            binhashes.append(binhash)
-
-        entrylist = entries.EntryList.from_database(self.context.entrydb, binhashes)
-
-        # serve requested hashes
-        json_string = entrylist.json()
-        yield json_string
         
     def synchronization_address(self, environment, start_response):
-        if self._synchronization_host==None:
+        if self.context.synchronization_address is None:
             start_response("404 Not Found", [("Content-type", "text/plain")])
             yield "Synchronization disabled."
         else:
             start_response("200 OK", [('Content-Type','text/plain')])
-            yield json.dumps((self._synchronization_host, self._control_port))
+            yield json.dumps(self.context.synchronization_address)
         
     def not_found(self, environment, start_response):
         start_response("404 Not Found", [("Content-type", "text/plain")])
