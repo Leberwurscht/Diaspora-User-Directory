@@ -21,8 +21,10 @@ class SynchronizationRequestHandler(lib.AuthenticatingRequestHandler):
         partner = context.partnerdb.get_partner(partner_name)
 
         if partner is None:
+            context.logger.warning("Reject authentication: %s unknown." % partner_name)
             return None
         elif partner.kicked:
+            context.logger.warning("Reject authentication: %s is kicked." % partner_name)
             return None
         else:
             return partner.accept_password
@@ -233,57 +235,83 @@ class Application:
 
     def start(self, web_server=True, synchronization_server=True, jobs=True, workers=True):
         if web_server:
+            self.context.logger.info("Starting web server...")
             self.start_web_server()
+            self.context.logger.info("Web server started.")
 
         if jobs:
+            self.context.logger.info("Starting jobs...")
             self.start_jobs()
+            self.context.logger.info("Jobs started.")
 
         if workers:
-            sef.start_workers()
+            self.context.logger.info("Starting workers...")
+            self.start_workers()
+            self.context.logger.info("Workers started.")
 
         if synchronization_server:
             # do not synchronize as long as we might have expired states
+            self.context.logger.info("Wait until statedb is clean...")
             self.ready_for_synchronization.wait()
-
+            self.context.logger.info("statedb is clean. Starting synchronization server...")
             self.start_synchronization_server()
+            self.context.logger.info("Synchronization server started.")
 
     def terminate(self, erase=False):
-        self.termiante_web_server()
+        self.context.logger.info("Terminating web server...")
+        self.terminate_web_server()
+        self.context.logger.info("Terminating synchronization server...")
         self.terminate_synchronization_server()
+        self.context.logger.info("Terminating jobs...")
         self.terminate_jobs()
+        self.context.logger.info("Terminating workers...")
         self.terminate_workers()
-
+        self.context.logger.info("Closing context...")
         self.context.close(erase)
+        self.context.logger.info("Context terminated.")
 
     def submission_worker_function(self):
         while True:
             submission = self.context.submission_queue.get()
             if submission is None:
                 self.context.submission_queue.task_done()
+                self.context.logger.debug("Reached end of submission queue.")
                 return
+
+            self.context.logger.debug("Got address %s from submission queue." % submission.webfinger_address)
 
             try:
                 state = State.retrieve(submission.webfinger_address)
             except Exception, e:
-                # TODO: logging
+                self.context.logger.warning("Retrieval of address %s failed: %s" % (submission.webfinger_address, str(e)))
                 self.context.submission_queue.task_done()
                 continue
+
+            self.context.logger.debug("Address %s successfully retrieved." % submission.webfinger_address)
 
             claim = Claim(state)
 
             self.context.validation_queue.put(claim, True)
             self.context.submission_queue.task_done()
+
+            self.context.logger.debug("Claim for %s submitted to validation queue." % submission.webfinger_address)
         
     def validation_worker_function(self):
         while True:
             claim = self.context.validation_queue.get()
             if claim is None:
                 self.context.validation_queue.task_done()
+                self.context.logger.debug("Reached end of validation queue.")
                 return
+
+            self.context.logger.debug("Got claim(%s, %s) from validation queue." % (claim.state.address, claim.partner_name))
 
             validated_state = claim.validate(self.context.partnerdb)
             if validated_state:
                 self.context.assimilation_queue.put(validated_state, True)
+                self.context.logger.debug("Validated claim(%s, %s) and submitted state to assimilation queue." % (claim.state.address, claim.partner_name))
+            else:
+                self.context.logger.warning("Validation of claim(%s, %s) failed." % (claim.state.address, claim.partner_name))
 
             self.context.validation_queue.task_done()
 
@@ -292,13 +320,16 @@ class Application:
             state = self.context.assimilation_queue.get()
             if state is None:
                 self.context.assimilation_queue.task_done()
+                self.context.logger.debug("Reached end of assimilation queue.")
                 return
 
             self.context.statedb.save(state)
             self.context.assimilation_queue.task_done()
+            self.context.logger.debug("Saved state for %s to database." % state.address)
 
     def synchronize_with_partner(self, partner_name):
         # do not synchronize as long as we might have expired states
+        self.context.logger.info("Wait until state database is clean before synchronizing with %s" % partner_name)
         self.ready_for_synchronization.wait()
 
         # get partner from name
@@ -307,6 +338,11 @@ class Application:
         # register synchronization attempt
         timestamp = self.context.partnerdb.register_connection(partner_name)
         
+        # no need to synchronize if partner is kicked: states will be rejected anyhow
+        if partner.kicked:
+            self.context.logger.warning("Will not synchronize with kicked partner %s" % partner_name)
+            return timestamp
+
         # get the synchronization address
         try:
             host, synchronization_port = partner.get_synchronization_address()
@@ -314,7 +350,7 @@ class Application:
         except Exception, e:
             self.context.logger.warning("Unable to get synchronization address of %s: %s" % (partner_name, str(e)))
             return timestamp
-        
+
         # establish connection
         try:
             partnersocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
