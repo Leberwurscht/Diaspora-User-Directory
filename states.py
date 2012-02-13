@@ -8,6 +8,39 @@ from constants import *
 import lib
 from hashtrie import HashTrie
 
+class ValidationFailed(AssertionError):
+    info = None
+
+    def __init__(self, info, message):
+        AssertionError.__init__(self, message)
+        self.info = info
+
+    def __str__(self):
+        r = self.message+"\n"
+        r += "\n"
+        r += "Info:\n"
+        r += self.info
+        return r
+
+class InvalidProfileException(ValidationFailed):
+    def __str__(self):
+        r = ValidationFailed.__str__(self)
+        r = "Profile invalid: "+r
+
+class InvalidStateException(ValidationFailed):
+    def __str__(self):
+        r = ValidationFailed.__str__(self)
+        r = "State invalid: "+r
+
+class RecentlyExpiredStateException(Exception):
+    info = None
+
+    def __init__(self, info, reference_timestamp):
+        message = "State recently expired (reference timestamp: %d" % reference_timestamp
+        Exception.__init__(self, message)
+
+        self.info = info
+
 class Profile:
     full_name = None # unicode
     hometown = None # unicode
