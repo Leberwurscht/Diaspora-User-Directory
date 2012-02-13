@@ -6,6 +6,8 @@ from states import State, StateDatabase
 from partners import PartnerDatabase
 from synchronization import Synchronization
 
+import states # for the exceptions
+
 class Claim:
     """ partner_name==None means that the claim is not by another server but
         'self-made'. """
@@ -66,11 +68,11 @@ class Claim:
 
         try:
             trusted_state.assert_validity(self.timestamp)
-        except Violation, violation:
+        except states.ValidationFailed, e:
             if partner_name:
-                partnerdb.register_violation(partner_name, violation)
+                partnerdb.register_violation(partner_name, str(e))
             return None
-        except RecentlyExpiredException, e:
+        except states.RecentlyExpiredStateException:
             # TODO: log
             return None
         else:

@@ -79,34 +79,33 @@ class Profile:
             reference_timestamp = time.time()
 
         # validate CAPTCHA signature for given webfinger address
-        if not lib.signature_valid(self.captcha_signature, webfinger_address, CAPTCHA_PUBLIC_KEY):
-            raise InvalidCaptchaSignature(self.captcha_signature, webfinger_address)
+        assert lib.signature_valid(self.captcha_signature, webfinger_address, CAPTCHA_PUBLIC_KEY),\
+            InvalidProfileException(str(self), "Invalid captcha signature")
 
         # assert that submission_timestamp is not in future
-        if not self.submission_timestamp <= reference_timestamp:
-            raise SubmittedInFutureException(self.submission_timestamp,\
-                                             reference_timestamp)
+        assert self.submission_timestamp <= reference_timestamp,\
+            InvalidProfileException(str(self), "Submitted in future (reference timestamp: %d)" % reference_timestamp)
 
-        # check lengths of webfinger address 
-        if len(webfinger_address)>MAX_ADDRESS_LENGTH:
-            raise InvalidAddressException(webfinger_address)
+        # check lengths of webfinger address
+        assert len(webfinger_address)<=MAX_ADDRESS_LENGTH,\
+            InvalidProfileException(str(self), "Address too long")
 
         # check lengths of profile fields
-        if len(self.full_name.encode("utf8"))>MAX_NAME_LENGTH:
-            raise InvalidFullNameException(self.full_name)
+        assert len(self.full_name.encode("utf8"))<=MAX_NAME_LENGTH,\
+            InvalidProfileException(str(self), "Full name too long")
 
-        if len(self.hometown.encode("utf8"))>MAX_HOMETOWN_LENTGTH:
-            raise InvalidHometownException(self.hometown)
+        assert len(self.hometown.encode("utf8"))<=MAX_HOMETOWN_LENTGTH,\
+            InvalidProfileException(str(self), "Hometown too long")
 
-        if len(self.country_code)>MAX_COUNTRY_CODE_LENGTH:
-            raise InvalidCountryCodeException(self.country_code)
+        assert len(self.country_code)<=MAX_COUNTRY_CODE_LENGTH,\
+            InvalidProfileException(str(self), "Country code too long")
 
-        if len(self.services)>MAX_SERVICES_LENGTH:
-            raise InvalidServicesException(self.services)
+        assert len(self.services)<=MAX_SERVICES_LENGTH,\
+            InvalidProfileException(str(self), "Services list too long")
 
         for service in services.split(","):
-            if len(service)>MAX_SERVICE_LENGTH:
-                raise InvalidServicesException(self.services)
+            assert len(service)<=MAX_SERVICE_LENGTH,\
+                InvalidProfileException(str(self), "Service %s too long" % service)
 
         return True
 
@@ -173,7 +172,7 @@ class State(object):
 
         return s
 
-    def assert_validity(reference_timestamp=None):
+    def assert_validity(self, reference_timestamp=None):
         """ Checks if a state was valid at a given time. Returns True if it was, raises
             an exception otherwise. """
 
@@ -182,27 +181,25 @@ class State(object):
         if reference_timestamp is None:
             reference_timestamp = time.time()
 
-        if not self.retrieval_timestamp <= reference_timestamp:
-            raise RetrievedInFutureException(retrieval_timestamp,\
-                                             reference_timestamp)
+        assert self.retrieval_timestamp <= reference_timestamp,\
+            InvalidStateException(str(self), "Retrieved in future (reference_timestamp: %d)" % reference_timestamp)
 
-        if not self.retrieval_timestamp >= reference_timestamp - MAX_AGE:
-            raise NotUpToDateException(retrieval_timestamp, reference_timestamp)
+        assert self.retrieval_timestamp >= reference_timestamp - MAX_AGE,\
+            InvalidStateException(str(self), "Not up to date (reference timestamp: %d)" % reference_timestamp)
 
         if self.profile:
             self.profile.assert_validity(self.address, self.reference_timestamp)
 
-            if not self.retrieval_timestamp>=self.profile.submission_timestamp:
-                raise InvalidRetrievalTimestampException(retrieval_timestamp,\
-                        self.profile.submission_timestamp)
+            assert self.retrieval_timestamp>=self.profile.submission_timestamp,\
+                InvalidStateException(str(self), "Retrieval time lies before submission time")
 
             expiry_date = self.profile.submission_timestamp + STATE_LIFETIME
 
             if reference_timestamp>expiry_date:
-                if reference_timestamp > expiry_date + EXPIRY_GRACE_PERIOD:
-                    raise ExpiredException(reference_timestamp, self.profile.submission_timestamp)
-                else:
-                    raise RecentlyExpiredException(reference_timestamp, self.profile.submission_timestamp) # does not inherit from violation
+                assert reference_timestamp < expiry_date + EXPIRY_GRACE_PERIOD,\
+                    InvalidStateException(str(self), "State expired (reference timestamp: %d" % reference_timestamp)
+
+                raise RecentlyExpiredStateException(str(self), reference_timestamp)
 
         return True
 
