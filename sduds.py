@@ -57,7 +57,11 @@ class Application:
 
     web_server = None
     synchronization_server = None
-    jobs = None
+
+    synchronization_jobs = None
+    statedb_cleanup_job = None
+    partnerdb_cleanup_job = None
+
     submission_workers = None
     validation_workers = None
     assimilation_worker = None
@@ -69,7 +73,7 @@ class Application:
         self.ready_for_synchronization = threading.Event()
 
         # set default values
-        self.jobs = []
+        self.synchronization_jobs = []
         self.submission_workers = []
         self.validation_workers = []
 
@@ -92,6 +96,35 @@ class Application:
 
         # assimilation worker
         self.assimilation_worker = threading.Thread(target=self.assimilation_worker_function)
+
+    def configure_jobs(self, synchronization=True, statedb_cleanup=True, partnerdb_cleanup=True):
+        # go through servers, add jobs
+        if synchronization:
+            for partner in self.context.partnerdb.get_partners():
+                if not partner.connection_schedule: continue
+
+                minute,hour,dom,month,dow = partner.connection_schedule.split()
+                pattern = lib.CronPattern(minute,hour,dom,month,dow)
+                job = lib.Job(pattern, self.synchronize_with_partner, (partner.name,), partner.last_connection)
+                self.synchronization_jobs.append(job)
+
+        # add state database cleanup job
+        if statedb_cleanup:
+            last_cleanup = self.context.statedb.cleanup_timestamp
+
+            pattern = lib.IntervalPattern(STATEDB_CLEANUP_INTERVAL)
+
+            def callback(self):
+                timestamp = self.context.statedb.cleanup()
+                self.ready_for_synchronization.set()
+                return timestamp
+
+            self.statedb_cleanup_job = lib.Job(pattern, callback, (self,), last_cleanup)
+
+        # add partner database cleanup job
+        if partnerdb_cleanup:
+            pattern = lib.IntervalPattern(PARTNERDB_CLEANUP_INTERVAL)
+            self.partnerdb_cleanup_job = lib.Job(pattern, self.context.partnerdb.cleanup)
 
     def start_web_server(self, *args, **kwargs):
         # use arguments to configure web server
@@ -171,41 +204,32 @@ class Application:
             self.assimilation_worker.join()
             self.assimilation_worker = None
 
-    def start_jobs(self):
+    def start_jobs(self, partner_jobs=True):
         # go through servers, add jobs
-        for partner in self.context.partnerdb.get_partners():
-            if not partner.connection_schedule: continue
-
-            minute,hour,dom,month,dow = partner.connection_schedule.split()
-            pattern = lib.CronPattern(minute,hour,dom,month,dow)
-            job = lib.Job(pattern, self.synchronize_with_partner, (partner.name,), partner.last_connection)
+        for job in self.synchronization_jobs:
             job.start()
 
-            self.jobs.append(job)
+        job = self.statedb_cleanup_job
+        if job:
+            if not job.overdue(): self.ready_for_synchronization.set()
+            job.start()
 
-        # add state database cleanup job
-        last_cleanup = self.context.statedb.cleanup_timestamp
-
-        pattern = lib.IntervalPattern(STATEDB_CLEANUP_INTERVAL)
-        job = lib.Job(pattern, self.context.statedb.cleanup, (), last_cleanup)
-
-        if not job.overdue(): self.ready_for_synchronization.set()
-        job.start()
-
-        self.jobs.append(job)
-
-        # add partner database cleanup job
-        pattern = lib.IntervalPattern(PARTNERDB_CLEANUP_INTERVAL)
-        job = lib.Job(pattern, self.context.partnerdb.cleanup)
-        job.start()
-
-        self.jobs.append(job)
+        job = self.partnerdb_cleanup_job
+        if job: job.start()
 
     def terminate_jobs(self):
-        for job in self.jobs:
+        for job in self.synchronization_jobs:
             job.terminate()
 
-        self.jobs = []
+        self.synchronization_jobs = []
+
+        if self.statedb_cleanup_job:
+            self.statedb_cleanup_job.terminate()
+        self.statedb_cleanup_job = None
+
+        if self.partnerdb_cleanup_job:
+            self.partnerdb_cleanup_job.terminate()
+        self.partnerdb_cleanup_job = None
 
     def start(self, web_server=True, synchronization_server=True, jobs=True, workers=True):
         if web_server:
