@@ -325,7 +325,7 @@ class Application:
 
             self.context.statedb.save(state)
             self.context.assimilation_queue.task_done()
-            self.context.logger.debug("Saved state for %s to database." % state.address)
+            self.context.logger.debug("Saved state of %s to database." % state.address)
 
     def synchronize_with_partner(self, partner_name):
         # do not synchronize as long as we might have expired states
