@@ -40,12 +40,16 @@ class Claim:
         return not self.timestamp<other.timestamp
 
     def validate(self, partnerdb):
-        if self.partner_name:
+        if self.partner_name is None:
+            trusted_state = self.state
+        else:
             partner = partnerdb.get_partner(self.partner_name)
 
             if partner.kicked: return None
 
-            if partner.control_sample():
+            if not partner.control_sample():
+                trusted_state = self.state
+            else:
                 retrieved_state = State.retrieve(self.state.address)
 
                 offense = None
@@ -62,9 +66,6 @@ class Claim:
                     partner_name = None
 
                 partnerdb.register_control_sample(partner_name, self.state.address, offense)
-
-            else:
-                trusted_state = self.state
 
         try:
             trusted_state.assert_validity(self.timestamp)
