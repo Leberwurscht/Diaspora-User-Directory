@@ -34,22 +34,43 @@ class SynchronizationRequestHandler(lib.AuthenticatingRequestHandler):
 
         context.synchronize_as_server(partnersocket, partner_name)
 
-class SynchronizationServer(lib.BaseServer):
+class SynchronizationServer(threading.Thread):
     """ Waits for partners to synchronize. """
 
-    context = None
+    server = None
     public_address = None
 
     def __init__(self, context, fqdn, interface, port):
+        threading.Thread.__init__(self)
+
         # initialize server
         address = (interface, port)
-        lib.BaseServer.__init__(self, address, SynchronizationRequestHandler)
+        self.server = lib.BaseServer(address, SynchronizationRequestHandler)
 
         # expose context so that the RequestHandler can access it
-        self.context = context
+        self.server.context = context
 
-        # expose public address
+        # save public address to be able to publish it when server starts
         self.public_address = (fqdn, port)
+
+    def run(self):
+        # publish address so that partners can synchronize with us
+        context = self.server.context
+        context.synchronization_address = self.public_address
+
+        # start server
+        self.server.serve_forever()
+
+    def terminate(self):
+        # depublish synchronization address
+        context = self.server.context
+        context.synchronization_address = None
+
+        # terminate server
+        self.server.terminate()
+
+        # wait until server has terminated
+        self.join()
 
 class Application:
     context = None
@@ -146,22 +167,12 @@ class Application:
         if args or kwargs:
             self.configure_synchronization_server(*args, **kwargs)
 
-        # publish address so that partners can synchronize with us
-        self.context.synchronization_address = self.synchronization_server.public_address
-
-        # set up the server thread
-        self.synchronization_thread = threading.Thread(target=self.synchronization_server.serve_forever)
-
-        # run the server
-        self.synchronization_thread.start()
+        self.synchronization_server.start()
 
     def terminate_synchronization_server(self):
         if not self.synchronization_server: return
 
-        self.context.synchronization_address = None
-
         self.synchronization_server.terminate()
-        self.synchronization_thread.join()
         self.synchronization_server = None
 
     def start_workers(self, *args, **kwargs):
