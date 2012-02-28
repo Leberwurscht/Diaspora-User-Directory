@@ -3,6 +3,8 @@
 import struct, time
 from states import Profile, State # to be able to construct these objects from messages
 
+from constants import *
+
 """ functions to send and receive some basic types over the network,
     using the file descriptor obtained from socket.makefile() """
 
@@ -123,7 +125,7 @@ class DeletionRequest(Message):
             assert ghost.retrieval_timestamp is not None
 
             now = time.time()
-            if now-ghost.retrieval_timestamp < RESPONSIBILITY_TIMESPAN:
+            if now < ghost.retrieval_timestamp + MAX_AGE:
                 self.retrieval_timestamp = ghost.retrieval_timestamp
 
             self.binhash = ghost.binhash
@@ -304,7 +306,7 @@ class Synchronization:
             timestamp = deletion_request.retrieval_timestamp
 
             state = statedb.get_invalid_state(binhash, timestamp)
-            self.preliminary_invalid_states[invalid_state.address] = state
+            self.preliminary_invalid_states[state.address] = state
 
     def send_state_requests(self, f):
         """ request valid states """

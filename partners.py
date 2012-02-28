@@ -225,10 +225,10 @@ class PartnerDatabase:
             age = reference_timestamp-ControlSample.timestamp
 
             aggregator = sqlalchemy.sql.functions.max(ControlSample.penalty)
-            query = session.query(aggregator.label("worst_penalty"))
-            query = query.filter(not ControlSample.penalty==None)
-            query = query.filter(age < OFFENSE_LIFETIME)
-            query = query.group_by(ControlSample.webfinger_address)
+            subquery = session.query(aggregator.label("worst_penalty"))
+            subquery = subquery.filter(not ControlSample.penalty==None)
+            subquery = subquery.filter(age < OFFENSE_LIFETIME)
+            subquery = subquery.group_by(ControlSample.webfinger_address)
 
             # calculate average worst penalty
             sum_aggregator = sqlalchemy.sql.functions.sum(subquery.c.worst_penalty)
@@ -300,7 +300,7 @@ if __name__=="__main__":
     import optparse, sys
     import getpass
 
-    import lib, random
+    import lib
 
     def read_password():
         while True:

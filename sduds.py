@@ -205,7 +205,7 @@ class Application:
             self.assimilation_worker.join()
             self.assimilation_worker = None
 
-    def start_jobs(self, partner_jobs=True):
+    def start_jobs(self):
         # go through servers, add jobs
         for job in self.synchronization_jobs:
             job.start()
@@ -397,19 +397,19 @@ if __name__=="__main__":
         sduds.start()
 
         # define exitfunc
-        def exit():
+        def exit_function():
             global sduds
             sduds.terminate()
             sys.exit(0)
 
-        sys.exitfunc = exit
+        sys.exitfunc = exit_function
 
         # call exitfunc also for signals
         import signal
 
         def signal_handler(sig, frame):
             print >>sys.stderr, "Terminated by signal %d." % sig
-            exit()
+            exit_function()
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)

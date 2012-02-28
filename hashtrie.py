@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import threading, socket
+import threading
 import os, binascii
 
 import subprocess

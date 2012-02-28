@@ -3,7 +3,7 @@
 import SocketServer, wsgiref.simple_server, cgi
 import threading
 
-import binascii, json
+import json
 
 class ThreadingWSGIServer(SocketServer.ThreadingMixIn, wsgiref.simple_server.WSGIServer):
     allow_reuse_address = True
@@ -96,8 +96,12 @@ class WebServer(threading.Thread):
             fqdn_worst = environment["SERVER_NAME"]
 
             fqdn = fqdn_best or fqdn_alternative or fqdn_worst
-            assert fqdn
-        except TypeError, AssertionError:
+            if not fqdn:
+                start_response("404 Not Found", [("Content-type", "text/plain")])
+                yield "Synchronization address cannot be determined."
+                return
+
+        except TypeError:
             start_response("404 Not Found", [("Content-type", "text/plain")])
             yield "Synchronization disabled."
         else:

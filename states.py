@@ -111,7 +111,7 @@ class Profile:
 
     @classmethod
     def retrieve(cls, address):
-        wf = pywebfinger.finger(webfinger_address)
+        wf = pywebfinger.finger(address)
 
         sduds_uri = wf.find_link("http://hoegners.de/sduds/spec", attr="href")
 
@@ -343,8 +343,8 @@ class StateDatabase:
             delete_hashes = []
             for state in query:
                 binhash = state.hash
-                session.delete(entry)
-                delete_hashes.add(binhash)
+                session.delete(state)
+                delete_hashes.append(binhash)
 
             # save cleanup timestamp to be able to start over next time in case
             # application is closed
@@ -357,12 +357,15 @@ class StateDatabase:
 
         return now
 
-    def search(self, words=[], services=[], limit=50):
+    def search(self, words=None, services=None, limit=50):
         """ Searches the database for certain words, and yields only profiles
             of users who use certain services.
             'words' must be a list of unicode objects and 'services' must be
             a list of str objects.
             Warning: Probably very slow! """
+
+        if words is None: words = []
+        if services is None: services = []
 
         with self.lock:
             session = self.Session()
