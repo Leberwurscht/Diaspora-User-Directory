@@ -214,3 +214,61 @@ class Context:
         synchronization.send_states(f, self.statedb)
 
         f.close()
+
+    def submission_worker(self):
+        while True:
+            submission = self.submission_queue.get()
+            if submission is None:
+                self.submission_queue.task_done()
+                self.logger.debug("Reached end of submission queue.")
+                return
+
+            self.logger.debug("Got address %s from submission queue." % submission.webfinger_address)
+
+            try:
+                state = State.retrieve(submission.webfinger_address)
+            except Exception, e:
+                self.logger.warning("Retrieval of address %s failed: %s" % (submission.webfinger_address, str(e)))
+                self.submission_queue.task_done()
+                continue
+
+            self.logger.debug("Address %s successfully retrieved." % submission.webfinger_address)
+
+            claim = Claim(state)
+
+            self.validation_queue.put(claim, True)
+            self.submission_queue.task_done()
+
+            self.logger.debug("Claim for %s submitted to validation queue." % submission.webfinger_address)
+
+    def validation_worker(self):
+        while True:
+            claim = self.validation_queue.get()
+            if claim is None:
+                self.validation_queue.task_done()
+                self.logger.debug("Reached end of validation queue.")
+                return
+
+            self.logger.debug("Got claim(%s, %s) from validation queue." % (claim.state.address, claim.partner_name))
+
+            validated_state = claim.validate(self.partnerdb)
+            if validated_state:
+                self.assimilation_queue.put(validated_state, True)
+                self.logger.debug("Validated claim(%s, %s) and submitted state to assimilation queue." % (claim.state.address, claim.partner_name))
+            else:
+                self.logger.warning("Validation of claim(%s, %s) failed." % (claim.state.address, claim.partner_name))
+
+            self.validation_queue.task_done()
+
+    def assimilation_worker(self):
+        while True:
+            state = self.assimilation_queue.get()
+            if state is None:
+                self.assimilation_queue.task_done()
+                self.logger.debug("Reached end of assimilation queue.")
+                return
+
+            address = state.address # only for logging [ORM expires state object during save()]
+            self.statedb.save(state)
+            self.assimilation_queue.task_done()
+            self.logger.debug("Saved state of %s to database." % address)

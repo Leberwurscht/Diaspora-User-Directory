@@ -10,8 +10,7 @@ from constants import *
 
 import lib
 from webserver import WebServer
-from context import Claim, Context
-from states import State
+from context import Context
 
 class SynchronizationRequestHandler(lib.AuthenticatingRequestHandler):
     """ Authenticates partners and calls synchronize_as_server if successful. """
@@ -88,16 +87,16 @@ class Application:
     def configure_workers(self, submission_workers=5, validation_workers=5):
         # submission workers
         for i in xrange(submission_workers):
-            worker = threading.Thread(target=self.submission_worker_function)
+            worker = threading.Thread(target=self.context.submission_worker)
             self.submission_workers.append(worker)
 
         # validation workers
         for i in xrange(validation_workers):
-            worker = threading.Thread(target=self.validation_worker_function)
+            worker = threading.Thread(target=self.context.validation_worker)
             self.validation_workers.append(worker)
 
         # assimilation worker
-        self.assimilation_worker = threading.Thread(target=self.assimilation_worker_function)
+        self.assimilation_worker = threading.Thread(target=self.context.assimilation_worker)
 
     def configure_jobs(self, synchronization=True, statedb_cleanup=True, partnerdb_cleanup=True):
         # go through servers, add jobs
@@ -269,64 +268,6 @@ class Application:
         self.context.logger.info("Closing context...")
         self.context.close(erase)
         self.context.logger.info("Context terminated.")
-
-    def submission_worker_function(self):
-        while True:
-            submission = self.context.submission_queue.get()
-            if submission is None:
-                self.context.submission_queue.task_done()
-                self.context.logger.debug("Reached end of submission queue.")
-                return
-
-            self.context.logger.debug("Got address %s from submission queue." % submission.webfinger_address)
-
-            try:
-                state = State.retrieve(submission.webfinger_address)
-            except Exception, e:
-                self.context.logger.warning("Retrieval of address %s failed: %s" % (submission.webfinger_address, str(e)))
-                self.context.submission_queue.task_done()
-                continue
-
-            self.context.logger.debug("Address %s successfully retrieved." % submission.webfinger_address)
-
-            claim = Claim(state)
-
-            self.context.validation_queue.put(claim, True)
-            self.context.submission_queue.task_done()
-
-            self.context.logger.debug("Claim for %s submitted to validation queue." % submission.webfinger_address)
-        
-    def validation_worker_function(self):
-        while True:
-            claim = self.context.validation_queue.get()
-            if claim is None:
-                self.context.validation_queue.task_done()
-                self.context.logger.debug("Reached end of validation queue.")
-                return
-
-            self.context.logger.debug("Got claim(%s, %s) from validation queue." % (claim.state.address, claim.partner_name))
-
-            validated_state = claim.validate(self.context.partnerdb)
-            if validated_state:
-                self.context.assimilation_queue.put(validated_state, True)
-                self.context.logger.debug("Validated claim(%s, %s) and submitted state to assimilation queue." % (claim.state.address, claim.partner_name))
-            else:
-                self.context.logger.warning("Validation of claim(%s, %s) failed." % (claim.state.address, claim.partner_name))
-
-            self.context.validation_queue.task_done()
-
-    def assimilation_worker_function(self):
-        while True:
-            state = self.context.assimilation_queue.get()
-            if state is None:
-                self.context.assimilation_queue.task_done()
-                self.context.logger.debug("Reached end of assimilation queue.")
-                return
-
-            address = state.address # only for logging [ORM expires state object during save()]
-            self.context.statedb.save(state)
-            self.context.assimilation_queue.task_done()
-            self.context.logger.debug("Saved state of %s to database." % address)
 
     def synchronize_with_partner(self, partner_name):
         # do not synchronize as long as we might have expired states
