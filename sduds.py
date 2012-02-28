@@ -336,8 +336,7 @@ if __name__=="__main__":
     
     parser.add_option( "-p", "--webserver-port", metavar="PORT", dest="webserver_port", help="the webserver port of the own server")
     parser.add_option( "-s", "--synchronization-port", metavar="PORT", dest="synchronization_port", help="the synchronization port of the own server")
-    parser.add_option( "-f", "--fqdn", metavar="FQDN", dest="fqdn", default="localhost", help="the fully qualified domain name of the system")
-    # TODO: If fqdn==None, guess automatically in WebServer
+    parser.add_option( "-f", "--fqdn", metavar="FQDN", dest="fqdn", help="the fully qualified domain name of the system")
 
     (options, args) = parser.parse_args()
 

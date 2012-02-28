@@ -90,12 +90,19 @@ class WebServer(threading.Thread):
             yield "\n"
         
     def synchronization_address(self, environment, start_response):
-        if self.context.synchronization_address is None:
+        try:
+            fqdn_best, port = self.context.synchronization_address
+            fqdn_alternative = environment["HTTP_HOST"].rsplit(":", 1)[0]
+            fqdn_worst = environment["SERVER_NAME"]
+
+            fqdn = fqdn_best or fqdn_alternative or fqdn_worst
+            assert fqdn
+        except TypeError, AssertionError:
             start_response("404 Not Found", [("Content-type", "text/plain")])
             yield "Synchronization disabled."
         else:
             start_response("200 OK", [('Content-Type','text/plain')])
-            yield json.dumps(self.context.synchronization_address)
+            yield json.dumps((fqdn, port))
         
     def not_found(self, environment, start_response):
         start_response("404 Not Found", [("Content-type", "text/plain")])
