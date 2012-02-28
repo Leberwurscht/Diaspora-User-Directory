@@ -332,6 +332,7 @@ class Application:
         # do not synchronize as long as we might have expired states
         self.context.logger.info("Wait until state database is clean before synchronizing with %s" % partner_name)
         self.ready_for_synchronization.wait()
+        self.context.logger.info("Synchronizing with %s." % partner_name)
 
         # get partner from name
         partner = self.context.partnerdb.get_partner(partner_name)

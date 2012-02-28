@@ -149,15 +149,19 @@ class Context:
             # if partner does take over responsibility, submit claim to validation queue
             claim = Claim(state, partner_name, reference_timestamp)
 
-            try: self.validation_queue.put(claim)
+            try:
+                self.validation_queue.put(claim)
+                self.logger.debug("State received from %s was put in validation queue" % partner_name)
             except Queue.Full:
-                self.logger.warning("validation queue full while synchronizing with %s!" % partner_name)
+                self.logger.warning("Validation queue full while synchronizing with %s!" % partner_name)
         else:
             # if partner does not take over responsibility, simply submit the address for retrieval
             submission = Submission(state.address)
-            try: self.submission_queue.put(submission)
+            try:
+                self.submission_queue.put(submission)
+                self.logger.debug("Address by %s was put in submission queue." % partner_name)
             except Queue.Full:
-                self.logger.warning("submission queue full while synchronizing with %s!" % partner_name)
+                self.logger.warning("Submission queue full while synchronizing with %s!" % partner_name)
 
     def synchronize_as_server(self, partnersocket, partner_name):
         missing_hashes = self.statedb.hashtrie.get_missing_hashes_as_server(partnersocket)
@@ -166,14 +170,20 @@ class Context:
 
         f = partnersocket.makefile()
 
+        self.logger.debug("receive deletion requests")
         synchronization.receive_deletion_requests(f, self.statedb)
+        self.logger.debug("send deletion requests")
         synchronization.send_deletion_requests(f, self.statedb)
 
+        self.logger.debug("receive state requests")
         synchronization.receive_state_requests(f)
+        self.logger.debug("send states")
         synchronization.send_states(f, self.statedb)
 
+        self.logger.debug("send state requests")
         reference_timestamp = time.time()
         synchronization.send_state_requests(f)
+        self.logger.debug("receive states")
         for state in synchronization.receive_states(f):
             self.process_state(state, partner_name, reference_timestamp)
 
@@ -186,15 +196,21 @@ class Context:
 
         f = partnersocket.makefile()
 
+        self.logger.debug("send deletion requests")
         synchronization.send_deletion_requests(f, self.statedb)
+        self.logger.debug("receive deletion requests")
         synchronization.receive_deletion_requests(f, self.statedb)
 
+        self.logger.debug("send state requests")
         reference_timestamp = time.time()
         synchronization.send_state_requests(f)
+        self.logger.debug("receive states")
         for state in synchronization.receive_states(f):
             self.process_state(state, partner_name, reference_timestamp)
 
+        self.logger.debug("receive state requests")
         synchronization.receive_state_requests(f)
+        self.logger.debug("send states")
         synchronization.send_states(f, self.statedb)
 
         f.close()
