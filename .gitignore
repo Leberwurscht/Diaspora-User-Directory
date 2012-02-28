@@ -1,6 +1,6 @@
-/Makefile.local
-/.depend
-/prepared
+/trieserver/Makefile.local
+/trieserver/.depend
+/trieserver/prepared
 
 # log files
 *.log
@@ -24,12 +24,12 @@ partners*.sqlite-journal
 *.bc
 
 # executables
-/bdb/ocextr
-/cryptokit-1.0/
-/lib/
-/trieserver
-/sks
-/sks_add_mail
+/trieserver/bdb/ocextr
+/trieserver/cryptokit-1.0/
+/trieserver/lib/
+/trieserver/trieserver
+/trieserver/sks
+/trieserver/sks_add_mail
 
 # python objects
 *.pyc

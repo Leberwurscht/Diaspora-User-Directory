@@ -56,7 +56,7 @@ class HashTrie:
             shutil.rmtree(database_path)
 
         # run trieserver
-        self.trieserver = subprocess.Popen(["./trieserver", database_path, logfile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.trieserver = subprocess.Popen(["./trieserver/trieserver", database_path, logfile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
         self.lock = threading.Lock()
 
