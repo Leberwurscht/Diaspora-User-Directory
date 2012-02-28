@@ -30,7 +30,7 @@ Executables:
 
 -- Requirements for Ubuntu -----------
 
-$ aptitude install ocaml libdb4.7-dev
+$ aptitude install ocaml libdb4.7-dev zlib1g-dev
 $ aptitude install python-paramiko python-sqlalchemy
 
 Go to https://github.com/jcarbaugh/python-webfinger and install it.
