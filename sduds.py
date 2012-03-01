@@ -8,11 +8,13 @@ import socket, time
 
 from constants import *
 
-import lib
+from lib import scheduler, authentication
+from lib.baseserver import BaseServer
+
 from webserver import WebServer
 from context import Context
 
-class SynchronizationRequestHandler(lib.AuthenticatingRequestHandler):
+class SynchronizationRequestHandler(authentication.AuthenticatingRequestHandler):
     """ Authenticates partners and calls synchronize_as_server if successful. """
 
     def get_password(self, partner_name):
@@ -45,7 +47,7 @@ class SynchronizationServer(threading.Thread):
 
         # initialize server
         address = (interface, port)
-        self.server = lib.BaseServer(address, SynchronizationRequestHandler)
+        self.server = BaseServer(address, SynchronizationRequestHandler)
 
         # expose context so that the RequestHandler can access it
         self.server.context = context
@@ -126,27 +128,27 @@ class Application:
                 if not partner.connection_schedule: continue
 
                 minute,hour,dom,month,dow = partner.connection_schedule.split()
-                pattern = lib.CronPattern(minute,hour,dom,month,dow)
-                job = lib.Job(pattern, self.synchronize_with_partner, (partner.name,), partner.last_connection)
+                pattern = scheduler.CronPattern(minute,hour,dom,month,dow)
+                job = scheduler.Job(pattern, self.synchronize_with_partner, (partner.name,), partner.last_connection)
                 self.synchronization_jobs.append(job)
 
         # add state database cleanup job
         if statedb_cleanup:
             last_cleanup = self.context.statedb.cleanup_timestamp
 
-            pattern = lib.IntervalPattern(STATEDB_CLEANUP_INTERVAL)
+            pattern = scheduler.IntervalPattern(STATEDB_CLEANUP_INTERVAL)
 
             def callback(self):
                 timestamp = self.context.statedb.cleanup()
                 self.ready_for_synchronization.set()
                 return timestamp
 
-            self.statedb_cleanup_job = lib.Job(pattern, callback, (self,), last_cleanup)
+            self.statedb_cleanup_job = scheduler.Job(pattern, callback, (self,), last_cleanup)
 
         # add partner database cleanup job
         if partnerdb_cleanup:
-            pattern = lib.IntervalPattern(PARTNERDB_CLEANUP_INTERVAL)
-            self.partnerdb_cleanup_job = lib.Job(pattern, self.context.partnerdb.cleanup)
+            pattern = scheduler.IntervalPattern(PARTNERDB_CLEANUP_INTERVAL)
+            self.partnerdb_cleanup_job = scheduler.Job(pattern, self.context.partnerdb.cleanup)
 
     def start_web_server(self, *args, **kwargs):
         # use arguments to configure web server
@@ -315,7 +317,7 @@ class Application:
 
         # authentication
         try:
-            success = lib.authenticate_socket(partnersocket, partner.provide_username, partner.provide_password)
+            success = authentication.authenticate_socket(partnersocket, partner.provide_username, partner.provide_password)
         except Exception, e:
             self.context.logger.warning("Unable to authenticate to partner %s for synchronization: %s" % (partner_name, str(e)))
             return timestamp

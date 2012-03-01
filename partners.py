@@ -60,22 +60,22 @@ class Partner(object):
         return r
 
 # sqlalchemy mapping for Partner class
-import lib
+import lib.sqlalchemyExtensions as sqlalchemyExt
 import sqlalchemy, sqlalchemy.orm, sqlalchemy.ext.declarative
 
 metadata = sqlalchemy.MetaData()
 
 partner_table = sqlalchemy.Table('partners', metadata,
     sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
-    sqlalchemy.Column("name", lib.Text, unique=True),
-    sqlalchemy.Column("accept_password", lib.Text),
-    sqlalchemy.Column("base_url", lib.Text),
+    sqlalchemy.Column("name", sqlalchemyExt.Text, unique=True),
+    sqlalchemy.Column("accept_password", sqlalchemyExt.Text),
+    sqlalchemy.Column("base_url", sqlalchemyExt.Text),
     sqlalchemy.Column("control_probability", sqlalchemy.Float),
     sqlalchemy.Column("last_connection", sqlalchemy.Integer),
     sqlalchemy.Column("kicked", sqlalchemy.Boolean),
-    sqlalchemy.Column("connection_schedule", lib.Text),
-    sqlalchemy.Column("provide_username", lib.Text),
-    sqlalchemy.Column("provide_password", lib.Text)
+    sqlalchemy.Column("connection_schedule", sqlalchemyExt.Text),
+    sqlalchemy.Column("provide_username", sqlalchemyExt.Text),
+    sqlalchemy.Column("provide_password", sqlalchemyExt.Text)
 )
 
 sqlalchemy.orm.mapper(Partner, partner_table,
@@ -103,8 +103,8 @@ class ControlSample(DatabaseObject):
     partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey(partner_table.c.id))
     timestamp = sqlalchemy.Column(sqlalchemy.Integer)
     penalty = sqlalchemy.Column(sqlalchemy.Integer)
-    offense = sqlalchemy.Column(lib.Text)
-    webfinger_address = sqlalchemy.Column(lib.Text)
+    offense = sqlalchemy.Column(sqlalchemyExt.Text)
+    webfinger_address = sqlalchemy.Column(sqlalchemyExt.Text)
     # TODO: index for better performance
 
 class Violation(DatabaseObject):
@@ -112,7 +112,7 @@ class Violation(DatabaseObject):
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
     partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey(partner_table.c.id))
-    description = sqlalchemy.Column(lib.Text)
+    description = sqlalchemy.Column(sqlalchemyExt.Text)
     # TODO: index for better performance?
 
 import threading, os, time
@@ -300,7 +300,7 @@ if __name__=="__main__":
     import optparse, sys
     import getpass
 
-    import lib
+    from lib import scheduler
 
     def read_password():
         while True:
@@ -385,7 +385,7 @@ if __name__=="__main__":
                 try:
                     # check cron pattern format by trying to parse it
                     minute,hour,dom,month,dow = args[4].split()
-                    lib.CronPattern(minute,hour,dom,month,dow)
+                    scheduler.CronPattern(minute,hour,dom,month,dow)
                 except ValueError:
                     print >>sys.stderr, "ERROR: Invalid format of cron line."
                     print >>sys.stderr, "Use 'MINUTE HOUR DAY_OF_MONTH MONTH DAY_OF_WEEK'"

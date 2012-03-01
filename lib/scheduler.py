@@ -1,191 +1,5 @@
 #!/usr/bin/env python
 
-###
-# sqlalchemy extensions
-
-import sqlalchemy, sqlalchemy.orm
-
-class Binary(sqlalchemy.types.TypeDecorator):
-    """ This type allows saving str objects in Binary columns. It converts between
-        str and buffer automatically. """
-
-    impl = sqlalchemy.types.Binary
-
-    def process_bind_param(self, value, dialect):
-        if value is None: return None
-
-        return buffer(value)
-
-    def process_result_value(self, value, dialect):
-        if value is None: return None
-
-        return str(value)
-
-    def copy(self):
-        return Binary(self.impl.length)
-
-class Text(sqlalchemy.types.TypeDecorator):
-    """ This type is a workaround for the fact that sqlite returns only unicode but not
-        str objects. We need str objects to save URLs for example. """
-
-    impl = sqlalchemy.types.UnicodeText
-
-    def process_bind_param(self, value, dialect):
-        if value is None: return None
-
-        return unicode(value, "latin-1")
-
-    def process_result_value(self, value, dialect):
-        if value is None: return None
-
-        return value.encode("latin-1")
-
-    def copy(self):
-        return Text(self.impl.length)
-
-class CalculatedPropertyExtension(sqlalchemy.orm.MapperExtension):
-    """ helper class to get sqlalchemy mappings of calculated properties
-        (see http://stackoverflow.com/questions/3020394/sqlalchemy-how-to-map-against-a-read-only-or-calculated-property) """
-    def __init__(self, properties):
-        self.properties = properties
-
-    def _update_properties(self, instance):
-        for prop, synonym in self.properties.iteritems():
-            value = getattr(instance, prop)
-            setattr(instance, synonym, value)
-
-    def before_insert(self, mapper, connection, instance):
-        self._update_properties(instance)
-
-    def before_update(self, mapper, connection, instance):
-        self._update_properties(instance)
-
-###
-# Authentication functionality
-
-import SocketServer, uuid, hmac, hashlib
-
-def authenticate_socket(sock, username, password):
-    """ Authenticates a socket using the HMAC-SHA512 algorithm. This is the
-        counterpart of AuthenticatingRequestHandler. """
-    f = sock.makefile()
-
-    # make sure method is HMAC with SHA512
-    method = f.readline().strip()
-    if not method=="HMAC-SHA512":
-        # TODO: logging
-        f.close()
-        sock.close()
-        return False
-
-    # send username
-    f.write(username+"\n")
-    f.flush()
-
-    # receive challenge
-    challenge = f.readline().strip()
-
-    # send response
-    response = hmac.new(password, challenge, hashlib.sha512).hexdigest()
-    f.write(response+"\n")
-    f.flush()
-
-    # check answer
-    answer = f.readline().strip()
-    f.close()
-
-    if answer=="ACCEPTED":
-        return True
-    else:
-        sock.close()
-        return False
-
-class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler):
-    """ RequestHandler which checks the credentials transmitted by the other side
-        using the HMAC-SHA512 algorithm.
-        The get_password method must be overridden and return the password for a
-        certain user. If the other side is authenticated, handle_user is called
-        with the username as argument. """
-
-    def handle(self):
-        f = self.request.makefile()
-
-        # send expected authentication method
-        method = "HMAC-SHA512"
-        f.write(method+"\n")
-        f.flush()
-
-        # receive username
-        username = f.readline().strip()
-
-        # send challenge
-        challenge = uuid.uuid4().hex
-        f.write(challenge+"\n")
-        f.flush()
-
-        # receive response
-        response = f.readline().strip()
-
-        # compute response
-        password = self.get_password(username)
-        if password is None:
-            f.write("DENIED\n")
-            f.close()
-            return
-
-        computed_response = hmac.new(password, challenge, hashlib.sha512).hexdigest()
-
-        # check response
-        if not response==computed_response:
-            f.write("INVALID PASSWORD\n")
-            f.close()
-            return
-
-        f.write("ACCEPTED\n")
-        f.close()
-
-        self.handle_user(username)
-
-    def get_password(self, username):
-        raise NotImplementedError, "Override this function in subclasses!"
-
-    def handle_user(self, username):
-        raise NotImplementedError, "Override this function in subclasses!"
-
-###
-# BaseServer
-
-class BaseServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
-    """ a threading TCPServer with allow_reuse_address """
-
-    allow_reuse_address = True
-
-    def __init__(self, address, handler_class):
-        SocketServer.TCPServer.__init__(self, address, handler_class)
-
-    def terminate(self):
-        self.shutdown()
-        self.socket.close()
-
-###
-# signature checking
-
-import base64, paramiko
-
-def signature_valid(public_key_base64, signature, text):
-    data = base64.decodestring(public_key_base64)
-    public_key = paramiko.RSAKey(data=data)
-
-    sig_message = paramiko.Message()
-    sig_message.add_string("ssh-rsa")
-    sig_message.add_string(signature)
-    sig_message.rewind()
-
-    return public_key.verify_ssh_sig(text, sig_message)
-
-###
-# Implementation of a cron-like scheduler
-
 """
 A cron-like job scheduler
 
@@ -317,7 +131,7 @@ class CronPattern(TimePattern):
             if month not in self.month:
                 # go to beginning of next month
                 month += 1
-                
+
                 dom=1
                 hour=0
                 minute=0
@@ -353,7 +167,7 @@ class Job(threading.Thread):
 
         self.callback = callback
         self.args = args
- 
+
         self.last_execution = last_execution
 
         self.finish = threading.Event()
@@ -384,7 +198,7 @@ class Job(threading.Thread):
             interval = clearance - now
             if interval<=0: interval=0
 
-            # wait 
+            # wait
             self.finish.wait(interval)
             if self.finish.is_set(): return
 

@@ -5,7 +5,9 @@ import os, threading, time
 
 from constants import *
 
-import lib
+import lib.sqlalchemyExtensions as sqlalchemyExt
+from lib.signature import signature_valid
+
 from hashtrie import HashTrie
 
 class ValidationFailed(AssertionError):
@@ -79,7 +81,7 @@ class Profile:
             reference_timestamp = time.time()
 
         # validate CAPTCHA signature for given webfinger address
-        assert lib.signature_valid(CAPTCHA_PUBLIC_KEY, self.captcha_signature, webfinger_address),\
+        assert signature_valid(CAPTCHA_PUBLIC_KEY, self.captcha_signature, webfinger_address),\
             InvalidProfileException(str(self), "Invalid captcha signature")
 
         # assert that submission_timestamp is not in future
@@ -257,20 +259,20 @@ metadata = sqlalchemy.MetaData()
 
 state_table = sqlalchemy.Table('states', metadata,
     sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
-    sqlalchemy.Column("hash", lib.Binary, index=True, unique=True),
-    sqlalchemy.Column("webfinger_address", lib.Text(MAX_ADDRESS_LENGTH), index=True, unique=True),
+    sqlalchemy.Column("hash", sqlalchemyExt.Binary, index=True, unique=True),
+    sqlalchemy.Column("webfinger_address", sqlalchemyExt.Text(MAX_ADDRESS_LENGTH), index=True, unique=True),
     sqlalchemy.Column("full_name", sqlalchemy.UnicodeText),
     sqlalchemy.Column("hometown", sqlalchemy.UnicodeText),
-    sqlalchemy.Column("country_code", lib.Text(MAX_COUNTRY_CODE_LENGTH)),
-    sqlalchemy.Column("services", lib.Text(MAX_SERVICES_LENGTH)),
-    sqlalchemy.Column("captcha_signature", lib.Binary),
+    sqlalchemy.Column("country_code", sqlalchemyExt.Text(MAX_COUNTRY_CODE_LENGTH)),
+    sqlalchemy.Column("services", sqlalchemyExt.Text(MAX_SERVICES_LENGTH)),
+    sqlalchemy.Column("captcha_signature", sqlalchemyExt.Binary),
     sqlalchemy.Column("submission_timestamp", sqlalchemy.Integer),
     sqlalchemy.Column("retrieval_timestamp", sqlalchemy.Integer)
 )
 
 ghost_table = sqlalchemy.Table('ghosts', metadata,
     sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
-    sqlalchemy.Column("hash", lib.Binary, index=True, unique=True),
+    sqlalchemy.Column("hash", sqlalchemyExt.Binary, index=True, unique=True),
     sqlalchemy.Column("retrieval_timestamp", sqlalchemy.Integer)
 )
 
@@ -278,7 +280,7 @@ variables_table = sqlalchemy.Table('variables', metadata,
     sqlalchemy.Column("cleanup_timestamp", sqlalchemy.Integer)
 )
 
-sqlalchemy.orm.mapper(State, state_table, extension=lib.CalculatedPropertyExtension({"hash":"_hash"}),
+sqlalchemy.orm.mapper(State, state_table, extension=sqlalchemyExt.CalculatedPropertyExtension({"hash":"_hash"}),
     properties={
         "id": state_table.c.id,
         "hash": sqlalchemy.orm.synonym('_hash', map_column=True),
