@@ -45,6 +45,12 @@ $ make all
 
 This will result in the 'trieserver' executable to be created.
 
+-- Building the docs -----------------
+
+$ aptitude install python-sphinx
+$ cd doc
+$ make html
+
 -- Running the tests -----------------
 
 $ ./test.py

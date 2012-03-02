@@ -2,6 +2,8 @@
 /trieserver/.depend
 /trieserver/prepared
 
+/doc/build/
+
 # log files
 *.log
 
