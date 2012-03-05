@@ -21,3 +21,5 @@ Lower-level classes and functions
 .. autofunction:: parse_field
 
 .. autofunction:: normalize
+
+.. autoclass:: NoMatchingTimestamp

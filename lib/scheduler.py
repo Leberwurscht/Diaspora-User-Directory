@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-This is an implementation of a simple job scheduler. It accepts either a cron-like syntax (:class:`CronPattern`), or executes at a fixed time interval (:class:`IntervalPattern`).
+This is an implementation of a simple job scheduler. It accepts either a cron-like syntax (:class:`CronPattern`), or executes regularly at a fixed time interval (:class:`IntervalPattern`).
 
 Example usage::
 
@@ -153,6 +153,13 @@ def normalize(year, month, dom, hour, minute):
     dow = calendar.weekday(year, month, dom)
     return year, month, dom, hour, minute, dow
 
+class NoMatchingTimestamp(Exception):
+    """ :class:`Exception` which is raised when :meth:`CronPattern.next_clearance` cannot find a matching timestamp """
+
+    def __init__(self):
+        s = "No matching timestamp found in a range of MAX_YEARS. You probably specified an invalid pattern."
+        Exception.__init__(self, s)
+
 MAX_YEARS = 1000
 class CronPattern(TimePattern):
     """ A :class:`TimePattern` which provides a cron-like syntax. """
@@ -179,6 +186,7 @@ class CronPattern(TimePattern):
         self.dow = parse_field(dow, 0, 6)
 
     def next_clearance(self, last_clearance):
+        """ throws a :class:`NoMatchingTimestamp` exception if no timestamp within a range of MAX_YEARS matches. """
         year,month,dom,hour,minute,second,dow,doy,isdst = time.gmtime(last_clearance)
 
         # to avoid an infinite loop if no time matches the pattern
@@ -191,7 +199,7 @@ class CronPattern(TimePattern):
 
         while True:
             if year>stop_year:
-                raise Exception, "No matching timestamp found in a range of MAX_YEARS. You probably specified an invalid pattern."
+                raise NoMatchingTimestamp
 
             if month not in self.month:
                 # go to beginning of next month
