@@ -6,4 +6,5 @@ library with helper classes and functions
 .. toctree::
    :maxdepth: 2
 
+   lib/authentication
    lib/scheduler
