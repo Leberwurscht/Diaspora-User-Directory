@@ -6,14 +6,14 @@ This is an implementation of a simple job scheduler. It accepts either a cron-li
 Example usage::
 
     def callback(*args):
-        ... do work ...
+        # ... do work ...
         return time.time()
 
     pattern = CronPattern("0-30/5", "4,5", "3", "*", "*")
     job = Job(pattern, callback, arguments)
     job.start()
 
-    ... callback(arguments) will be executed regularly ...
+    # ... callback(arguments) will be executed regularly ...
 
     job.terminate()
 

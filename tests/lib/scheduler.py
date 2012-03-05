@@ -4,7 +4,7 @@ from sduds.lib import scheduler
 import calendar, time
 
 class IntervalPattern(unittest.TestCase):
-    def testClearance(self):
+    def test_clearance(self):
         """ IntervalPattern.next_clearance must return the correct timestamp """
 
         # invent some last execution date
@@ -22,7 +22,7 @@ class IntervalPattern(unittest.TestCase):
         self.assertEqual(interval, difference, "IntervalPattern does not return the right clearance time")
 
 class CronPattern(unittest.TestCase):
-    def testClearanceValid(self):
+    def test_clearance_valid(self):
         """ test a valid CronPattern """
 
         # invent some last execution date
@@ -42,7 +42,7 @@ class CronPattern(unittest.TestCase):
 
         self.assertEqual(next_execution, wanted_execution, "CronPattern does not return the right clearance time")
 
-    def testClearanceInvalid(self):
+    def test_clearance_invalid(self):
         """ test of an invalid CronPattern -- next_clearance must raise a NoMatchingTimestamp exception """
 
         # invent some last execution date
@@ -58,7 +58,7 @@ class CronPattern(unittest.TestCase):
             next_execution = pattern.next_clearance(last_execution)
 
 class Job(unittest.TestCase):
-    def testOverdue(self):
+    def test_overdue(self):
         """ Job.overdue must return true if next_clearance <= reference_timestamp """
 
         reference_timestamp = 1000000000
@@ -76,7 +76,7 @@ class Job(unittest.TestCase):
         overdue = job.overdue(reference_timestamp)
         self.assertTrue(overdue)
 
-    def testNotOverdue(self):
+    def test_not_overdue(self):
         """ Job.overdue must return false if next_clearance > reference_timestamp """
 
         reference_timestamp = 1000000000
