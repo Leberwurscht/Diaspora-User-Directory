@@ -1,7 +1,7 @@
 The scheduler module
 ====================
 
-.. automodule:: lib.scheduler
+.. automodule:: sduds.lib.scheduler
 
 .. autoclass:: IntervalPattern
     :members:

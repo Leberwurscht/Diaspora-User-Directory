@@ -1,7 +1,7 @@
 library with helper classes and functions
 =========================================
 
-.. py:module:: lib
+.. py:module:: sduds.lib
 
 .. toctree::
    :maxdepth: 2
