@@ -6,7 +6,7 @@ import socket
 from constants import *
 
 from lib import scheduler, authentication
-from lib.baseserver import BaseServer
+from lib.threadingserver import ThreadingServer
 
 from webserver import WebServer
 from context import Context
@@ -44,7 +44,7 @@ class SynchronizationServer(threading.Thread):
 
         # initialize server
         address = (interface, port)
-        self.server = BaseServer(address, SynchronizationRequestHandler)
+        self.server = ThreadingServer(address, SynchronizationRequestHandler)
 
         # expose context so that the RequestHandler can access it
         self.server.context = context
