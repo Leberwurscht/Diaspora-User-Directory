@@ -29,7 +29,7 @@ class Authentication(unittest.TestCase):
         server_thread = threading.Thread(target=self.server.serve_forever)
         server_thread.start()
         self.addCleanup(server_thread.join)
-        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.socket.close)
         self.addCleanup(self.server.shutdown)
 
         # set up client
