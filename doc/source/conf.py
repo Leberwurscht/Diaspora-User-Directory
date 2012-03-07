@@ -214,3 +214,13 @@ man_pages = [
     ('index', 'sduds', u'sduds Documentation',
      [u'leberwurscht'], 1)
 ]
+
+def setup(app):
+    def process(app, what, name, obj, options, signature, return_annotation):
+        """ remove constructor signature after class names as we document
+            __init__ separately
+        """
+        if what=="class": signature=None
+        return (signature, return_annotation)
+
+    app.connect('autodoc-process-signature', process)
