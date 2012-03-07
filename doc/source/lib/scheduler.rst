@@ -4,19 +4,19 @@ The scheduler module
 .. automodule:: sduds.lib.scheduler
 
 .. autoclass:: IntervalPattern
-    :members:
+    :members: __init__, next_clearance
 
 .. autoclass:: CronPattern
-    :members:
+    :members: __init__, next_clearance
 
 .. autoclass:: Job
-    :members:
+    :members: __init__, overdue, terminate
 
 Lower-level classes and functions
 ---------------------------------
 
 .. autoclass:: TimePattern
-    :members:
+    :members: next_clearance
 
 .. autofunction:: parse_field
 

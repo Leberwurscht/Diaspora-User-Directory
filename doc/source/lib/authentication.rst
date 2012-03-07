@@ -6,4 +6,4 @@ The authentication module
 .. autofunction:: authenticate_socket
 
 .. autoclass:: AuthenticatingRequestHandler
-    :members:
+    :members: get_password, handle_user

@@ -2,4 +2,6 @@ The threadingserver module
 =========================
 
 .. automodule:: sduds.lib.threadingserver
-    :members:
+
+.. autoclass:: ThreadingServer
+    :members: terminate
