@@ -67,15 +67,15 @@ metadata = sqlalchemy.MetaData()
 
 partner_table = sqlalchemy.Table('partners', metadata,
     sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
-    sqlalchemy.Column("name", sqlalchemyExt.Text, unique=True),
-    sqlalchemy.Column("accept_password", sqlalchemyExt.Text),
-    sqlalchemy.Column("base_url", sqlalchemyExt.Text),
+    sqlalchemy.Column("name", sqlalchemyExt.String, unique=True),
+    sqlalchemy.Column("accept_password", sqlalchemyExt.String),
+    sqlalchemy.Column("base_url", sqlalchemyExt.String),
     sqlalchemy.Column("control_probability", sqlalchemy.Float),
     sqlalchemy.Column("last_connection", sqlalchemy.Integer),
     sqlalchemy.Column("kicked", sqlalchemy.Boolean),
-    sqlalchemy.Column("connection_schedule", sqlalchemyExt.Text),
-    sqlalchemy.Column("provide_username", sqlalchemyExt.Text),
-    sqlalchemy.Column("provide_password", sqlalchemyExt.Text)
+    sqlalchemy.Column("connection_schedule", sqlalchemyExt.String),
+    sqlalchemy.Column("provide_username", sqlalchemyExt.String),
+    sqlalchemy.Column("provide_password", sqlalchemyExt.String)
 )
 
 sqlalchemy.orm.mapper(Partner, partner_table,
@@ -103,8 +103,8 @@ class ControlSample(DatabaseObject):
     partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey(partner_table.c.id))
     timestamp = sqlalchemy.Column(sqlalchemy.Integer)
     penalty = sqlalchemy.Column(sqlalchemy.Integer)
-    offense = sqlalchemy.Column(sqlalchemyExt.Text)
-    webfinger_address = sqlalchemy.Column(sqlalchemyExt.Text)
+    offense = sqlalchemy.Column(sqlalchemyExt.String)
+    webfinger_address = sqlalchemy.Column(sqlalchemyExt.String)
     # TODO: index for better performance
 
 class Violation(DatabaseObject):
@@ -112,7 +112,7 @@ class Violation(DatabaseObject):
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
     partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey(partner_table.c.id))
-    description = sqlalchemy.Column(sqlalchemyExt.Text)
+    description = sqlalchemy.Column(sqlalchemyExt.String)
     # TODO: index for better performance?
 
 import threading, os, time

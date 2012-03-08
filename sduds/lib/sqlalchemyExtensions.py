@@ -1,5 +1,41 @@
 #!/usr/bin/env python
 
+"""
+This module defines two custom sqlalchemy types for dealing with strings (:class:`Binary`
+and :class:`String`), and one extension to map calculated properties (:class:`CalculatedPropertyExtension`).
+
+.. _usage:
+
+Usage::
+
+    # define a class with two string properties that will be mapped to Binary
+    # and Unicode columns, and one calculated property
+    class Test(object):
+        bin_data = None
+        str_data = None
+
+        @property
+        def calculated_data(self):
+            return time.time()
+
+    # define table using the two custom types
+    table = sqlalchemy.Table('test', metadata,
+        sqlalchemy.Column("bin_data", Binary),
+        sqlalchemy.Column("str_data", String),
+        sqlalchemy.Column("calculated_data", sqlalchemy.Float)
+    )
+
+    # define mapping using CalculatedPropertyExtension
+    sqlalchemy.orm.mapper(Test, table,
+        extension=CalculatedPropertyExtension({"calculated_data":"_calculated_data"}),
+        properties={
+            "bin_data": table.c.bin_data,
+            "str_data": table.c.str_data,
+            "calculated_data": sqlalchemy.orm.synonym('_calculated_data', map_column=True),
+        }
+    )
+"""
+
 import sqlalchemy, sqlalchemy.orm
 
 class Binary(sqlalchemy.types.TypeDecorator):
@@ -21,9 +57,13 @@ class Binary(sqlalchemy.types.TypeDecorator):
     def copy(self):
         return Binary(self.impl.length)
 
-class Text(sqlalchemy.types.TypeDecorator):
-    """ This type is a workaround for the fact that sqlite returns only unicode but not
-        str objects. We need str objects to save URLs for example. """
+class String(sqlalchemy.types.TypeDecorator):
+    """ This type allows saving str objects in Unicode columns.
+
+        It is a workaround for the fact that sqlite returns only unicode but not
+        str objects, even if ``sqlalchemy.String`` is used. We need str objects to
+        save URLs for example.
+    """
 
     impl = sqlalchemy.types.UnicodeText
 
@@ -38,12 +78,23 @@ class Text(sqlalchemy.types.TypeDecorator):
         return value.encode("latin-1")
 
     def copy(self):
-        return Text(self.impl.length)
+        return String(self.impl.length)
 
 class CalculatedPropertyExtension(sqlalchemy.orm.MapperExtension):
-    """ helper class to get sqlalchemy mappings of calculated properties
-        (see http://stackoverflow.com/questions/3020394/sqlalchemy-how-to-map-against-a-read-only-or-calculated-property) """
+    """ This is a sqlalchemy extension to map calculated properties (``@property`` decorator).
+        See this `stackoverflow question`_.
+
+        To use it, you have to set the respective entry in the properties dictionary of the
+        mapping to ``sqlalchemy.orm.synonym("synonym_name", map_column=True)`` and add an
+        instance of this extension (see `usage`_).
+
+        .. _stackoverflow question: http://stackoverflow.com/questions/3020394/sqlalchemy-how-to-map-against-a-read-only-or-calculated-property
+    """
     def __init__(self, properties):
+        """ :param properties: specifies the respective synonym name for each property
+                               that should be mapped
+            :type properties: dict
+        """
         self.properties = properties
 
     def _update_properties(self, instance):

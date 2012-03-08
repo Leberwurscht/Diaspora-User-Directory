@@ -8,4 +8,5 @@ library with helper classes and functions
 
    lib/authentication
    lib/scheduler
+   lib/sqlalchemyExtensions
    lib/threadingserver
