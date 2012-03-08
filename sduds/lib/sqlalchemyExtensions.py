@@ -20,6 +20,7 @@ Usage::
 
     # define table using the two custom types
     table = sqlalchemy.Table('test', metadata,
+        sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
         sqlalchemy.Column("bin_data", Binary),
         sqlalchemy.Column("str_data", String),
         sqlalchemy.Column("calculated_data", sqlalchemy.Float)
