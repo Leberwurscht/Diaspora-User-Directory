@@ -1,6 +1,6 @@
-/trieserver/Makefile.local
-/trieserver/.depend
-/trieserver/prepared
+/trie_manager/Makefile.local
+/trie_manager/.depend
+/trie_manager/prepared
 
 /doc/build/
 
@@ -26,12 +26,12 @@ partners*.sqlite-journal
 *.bc
 
 # executables
-/trieserver/bdb/ocextr
-/trieserver/cryptokit-1.0/
-/trieserver/lib/
-/trieserver/trieserver
-/trieserver/sks
-/trieserver/sks_add_mail
+/trie_manager/bdb/ocextr
+/trie_manager/cryptokit-1.0/
+/trie_manager/lib/
+/trie_manager/trieserver
+/trie_manager/sks
+/trie_manager/sks_add_mail
 
 # python objects
 *.pyc

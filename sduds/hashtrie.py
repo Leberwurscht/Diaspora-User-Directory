@@ -44,7 +44,7 @@ class HashTrie:
     lock = None
     trieserver = None
 
-    def __init__(self, database_path, erase=False):
+    def __init__(self, database_path, manager_executable="trie_manager/trieserver", erase=False):
         # TODO: logging
         self.database_path = database_path
 
@@ -56,7 +56,7 @@ class HashTrie:
             shutil.rmtree(database_path)
 
         # run trieserver
-        self.trieserver = subprocess.Popen(["./trieserver/trieserver", database_path, logfile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.trieserver = subprocess.Popen([manager_executable, database_path, logfile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
         self.lock = threading.Lock()
 
