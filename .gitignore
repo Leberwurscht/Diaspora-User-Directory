@@ -29,7 +29,7 @@ partners*.sqlite-journal
 /trie_manager/bdb/ocextr
 /trie_manager/cryptokit-1.0/
 /trie_manager/lib/
-/trie_manager/trieserver
+/trie_manager/manager
 /trie_manager/sks
 /trie_manager/sks_add_mail
 

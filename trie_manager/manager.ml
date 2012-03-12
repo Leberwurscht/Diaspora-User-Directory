@@ -21,7 +21,7 @@ let settings = { (* copied from reconserver.ml *)
 	bitquantum = !Settings.bitquantum;
 	treetype = (if !Settings.transactions
 		then `transactional
-		else if !Settings.disk_ptree 
+		else if !Settings.disk_ptree
 		then `ondisk else `inmem);
 	max_nodes = !Settings.max_ptree_nodes;
 	dbdir = databasedir;
@@ -73,7 +73,7 @@ let output_hash cout number =
 	flush cout;;
 
 (* functions for adding/deleting hashes *)
-let rec add_delete_rec operation txn cin = 
+let rec add_delete_rec operation txn cin =
 	let hexhash = input_line cin in
 	let len = String.length hexhash in
 	if (len=32) then (

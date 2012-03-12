@@ -53,7 +53,7 @@ CAMLLIBS=unix.cma str.cma bdb.cma nums.cma bigarray.cma cryptokit.cma threads.cm
 OCAMLFLAGS=$(COMMONCAMLFLAGS) -g $(CAMLLIBS)
 OCAMLOPTFLAGS=$(COMMONCAMLFLAGS) -inline 40 $(CAMLLIBS:.cma=.cmxa) 
 
-EXE=trieserver
+EXE=manager
 ALL=$(EXE)
 ALL.bc=$(EXE:=.bc)
 
@@ -165,11 +165,11 @@ sks: $(LIBS) $(ALLOBJS) sks.cmx
 sks.bc: $(LIBS.bc) $(ALLOBJS.bc) sks.cmo
 	$(OCAMLC) -o sks.bc $(OCAMLFLAGS) $(ALLOBJS.bc) sks.cmo
 
-trieserver: $(LIBS) $(ALLOBJS) trieserver.cmx
-	$(OCAMLOPT) -o trieserver $(OCAMLOPTFLAGS) $(ALLOBJS) trieserver.cmx
+manager: $(LIBS) $(ALLOBJS) manager.cmx
+	$(OCAMLOPT) -o manager $(OCAMLOPTFLAGS) $(ALLOBJS) manager.cmx
 
-trieserver.bc: $(LIBS.bc) $(ALLOBJS.bc) trieserver.cmo
-	$(OCAMLC) -o trieserver.bc $(OCAMLFLAGS) $(ALLOBJS.bc) trieserver.cmo
+manager.bc: $(LIBS.bc) $(ALLOBJS.bc) manager.cmo
+	$(OCAMLC) -o manager.bc $(OCAMLFLAGS) $(ALLOBJS.bc) manager.cmo
 
 nbtest.bc: $(LIBS.bc) $(ALLOBJS.bc) nbtest.cmo 
 	$(OCAMLC) -o nbtest.bc $(OCAMLFLAGS) $(ALLOBJS.bc) nbtest.cmo 

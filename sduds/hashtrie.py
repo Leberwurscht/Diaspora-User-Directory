@@ -44,7 +44,7 @@ class HashTrie:
     lock = None
     trieserver = None
 
-    def __init__(self, database_path, manager_executable="trie_manager/trieserver", erase=False):
+    def __init__(self, database_path, manager_executable="trie_manager/manager", erase=False):
         # TODO: logging
         self.database_path = database_path
 
