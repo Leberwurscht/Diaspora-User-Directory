@@ -16,6 +16,7 @@ Contents:
    :maxdepth: 2
 
    lib
+   trie_manager
 
 Indices and tables
 ==================
