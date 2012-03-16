@@ -34,6 +34,7 @@ consists of a command followed by newline. Possible commands are:
 
 * ADD
 * DELETE
+* EXISTS
 * SYNCHRONIZE_AS_SERVER
 * SYNCHRONIZE_AS_CLIENT
 * EXIT
@@ -57,6 +58,15 @@ The program will respond with ``DONE\n`` when the specified hashes are added/del
 
    You may not add hashes which are already stored, nor may you try to delete
    hashes which are not present in the database.
+
+EXISTS command
+--------------
+
+The ``EXISTS`` command checks whether a certain hash is contained in the database.
+
+After the command, the program expects one 16 byte hash in hexadecimal representation,
+followed by a newline.
+The program reponds either with ``TRUE\n`` or ``FALSE\n``, then with ``DONE\n``.
 
 Synchronization commands
 ------------------------
@@ -105,6 +115,11 @@ In the end, only the hash ``00112233445566778899AABBCCDDEEFF`` is stored.
    > OK
    < 00112233445566778899AABBCCDDEE00
    <
+   > DONE
+   < EXISTS
+   > OK
+   < 00112233445566778899AABBCCDDEEFF
+   > TRUE
    > DONE
    < EXIT
    $

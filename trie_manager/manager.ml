@@ -13,6 +13,7 @@ Common.set_logfile logfile;;
 (* initialize the database *)
 open PTreeDB;;
 module ZSet = ZZp.Set;;
+module Set = PSet.Set;;
 
 let timeout = !Settings.reconciliation_config_timeout;;
 
@@ -72,7 +73,17 @@ let output_hash cout number =
 	output_string cout "\n";
 	flush cout;;
 
-(* functions for adding/deleting hashes *)
+(* a function to check whether database contains a hash; copied and adapted from ptree_mem function in bugscript.ml *)
+let ptree_contains zzs =
+    let zz = ZZp.of_bytes zzs in
+    let rec loop depth =
+      match (PTree.get_node ~sef:true (get_ptree ()) zz depth).PTree.children with
+	  | PTree.Children _ -> loop (depth+1)
+	  | PTree.Leaf elements -> Set.mem (ZZp.to_bytes zz) elements
+    in
+    loop 0;;
+
+(* functions to handle ADD/DELETE commands *)
 let rec add_delete_rec operation txn cin =
 	let hexhash = input_line cin in
 	let len = String.length hexhash in
@@ -92,7 +103,20 @@ let add_delete operation cin_fd =
 	PTree.clean txn (get_ptree ());
 	commit_txnopt txn;;
 
-(* synchronization function *)
+(* function to handle EXISTS command *)
+let exists cin_fd =
+	let cin = Unix.in_channel_of_descr cin_fd in
+	let hexhash = input_line cin in
+	let len = String.length hexhash in
+	if (len=32) then (
+		let binary = KeyHash.dehexify hexhash in
+
+		if ptree_contains binary
+		then print_endline "TRUE"
+		else print_endline "FALSE"
+	);;
+
+(* function to handle synchronization commands *)
 let synchronize handler encoded_cin encoded_cout =
 	(* create a channel decoded_cin that gets the decoded data from stdin *)
 	let cin_read, cin_write = Unix.pipe() in
@@ -138,6 +162,7 @@ while true do (
 	match line with
 	  "ADD" -> print_endline "OK"; add_delete PTree.insert Unix.stdin; print_endline "DONE"
 	| "DELETE" -> print_endline "OK"; add_delete PTree.delete Unix.stdin; print_endline "DONE"
+	| "EXISTS" -> print_endline "OK"; exists Unix.stdin; print_endline "DONE"
 	| "SYNCHRONIZE_AS_SERVER" -> print_endline "OK"; synchronize Server.handle Unix.stdin Unix.stdout; print_endline "DONE"
 	| "SYNCHRONIZE_AS_CLIENT" -> print_endline "OK"; synchronize Client.handle Unix.stdin Unix.stdout; print_endline "DONE"
 	| "EXIT" -> closedb (); Common.plerror 1 "trieserver exited."; exit 0
