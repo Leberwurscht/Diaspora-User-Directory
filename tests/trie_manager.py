@@ -168,6 +168,7 @@ class Synchronization(BaseTestCase):
             hex_number = manager_server.stdout.readline().strip()
             if not hex_number: break
 
+            hex_number = hex_number.upper()
             missing_hashes_of_server.add(hex_number)
 
         response = manager_server.stdout.readline()
@@ -183,6 +184,7 @@ class Synchronization(BaseTestCase):
             hex_number = manager_client.stdout.readline().strip()
             if not hex_number: break
 
+            hex_number = hex_number.upper()
             missing_hashes_of_client.add(hex_number)
 
         response = manager_client.stdout.readline()
