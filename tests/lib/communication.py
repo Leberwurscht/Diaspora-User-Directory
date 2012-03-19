@@ -1,7 +1,9 @@
 import unittest
 
 from sduds.lib import communication
+
 import socket, threading
+from exceptions import IOError
 
 class Test(unittest.TestCase):
     def setUp(self):
@@ -78,7 +80,7 @@ class Test(unittest.TestCase):
         self.sender.sendall(message)
         self.sender.shutdown(socket.SHUT_WR)
 
-        with self.assertRaises(socket.error):
+        with self.assertRaises(IOError):
             communication.recvall(self.receiver, 10)
 
     def test_char(self):

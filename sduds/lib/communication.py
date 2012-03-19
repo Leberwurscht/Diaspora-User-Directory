@@ -6,7 +6,8 @@ function to receive *exactly* the number of bytes one wants to have, and functio
 some built-in types of python.
 """
 
-import socket, struct
+import struct
+from exceptions import IOError
 
 def _recvall_chunks(sock, length):
     received = 0
@@ -14,7 +15,7 @@ def _recvall_chunks(sock, length):
     while received < length:
         chunk = sock.recv(length-received)
         if chunk=="":
-            raise socket.error
+            raise IOError
 
         received += len(chunk)
         yield chunk
@@ -26,7 +27,7 @@ def recvall(sock, length):
         and then use :meth:`file.read`, but according to the python documentation
         this does not work for sockets with a timeout.
 
-        This function raises a :class:`socket.error` if the socket is closed
+        This function raises an :class:`IOError` if the socket is closed
         before as many bytes as specified are received.
 
         :param sock: the network socket
