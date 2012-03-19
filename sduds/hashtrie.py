@@ -46,6 +46,8 @@ class HashTrie:
 
     def __init__(self, database_path, manager_executable="trie_manager/manager", erase=False):
         # TODO: logging
+
+        database_path = os.path.relpath(database_path)
         self.database_path = database_path
 
         assert not database_path.endswith("/")
