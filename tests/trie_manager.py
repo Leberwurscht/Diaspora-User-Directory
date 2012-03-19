@@ -1,22 +1,24 @@
 import unittest
 
-import os, shutil, subprocess
+import os, tempfile, shutil, subprocess
 import struct, threading
 
 executable = "trie_manager/manager"
 
 class BaseTestCase(unittest.TestCase):
     def set_up_manager(self, name):
-        database = name+".bdb"
-        logfile = name
+        directory = tempfile.mkdtemp() # create temporary directory
+        directory = os.path.relpath(directory) # convert to relative path
+
+        database = os.path.join(directory, name+".bdb")
+        logfile = os.path.join(directory, name)
 
         if os.path.exists(database):
             shutil.rmtree(database)
 
         manager = subprocess.Popen([executable, database, logfile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
-        self.addCleanup(os.remove, logfile+".log")
-        self.addCleanup(shutil.rmtree, database)
+        self.addCleanup(shutil.rmtree, directory)
         self.addCleanup(manager.wait)
         self.addCleanup(manager.stdin.flush)
         self.addCleanup(manager.stdin.write, "EXIT\n")
