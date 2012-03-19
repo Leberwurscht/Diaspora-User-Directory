@@ -97,6 +97,7 @@ class HashTrie:
     def _add_delete_common(self, binhashes, command):
         with self.lock:
             self.trieserver.stdin.write(command+"\n")
+            self.trieserver.stdin.flush()
             assert self.trieserver.stdout.readline()=="OK\n"
 
             for binhash in binhashes:
