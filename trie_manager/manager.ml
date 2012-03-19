@@ -48,7 +48,9 @@ let rec tunnel_decode_rec cin cout =
 let rec tunnel_decode in_fd out_fd =
 	let cin = Unix.in_channel_of_descr in_fd in
 	let cout = Unix.out_channel_of_descr out_fd in
-	tunnel_decode_rec cin cout;;
+	tunnel_decode_rec cin cout;
+	(* close cout after zero length message in cin *)
+	close_out cout;;
 
 let rec tunnel_encode_rec cin cout =
 	let data = String.create 255 in
@@ -136,7 +138,7 @@ let synchronize handler encoded_cin encoded_cout =
 	let numbers = handler (get_ptree ()) cin cout in
 
 	(* close tunnels *)
-	close_in decoded_cin;
+	(* decoded_cin already closed in tunnel_decode function *)
 	close_out decoded_cout;
 
 	Thread.join decoding_thread;

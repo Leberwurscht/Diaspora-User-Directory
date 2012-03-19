@@ -119,6 +119,29 @@ def forward_packets(cout, cin):
         # terminate after packet of length 0
         if packet_length==0: return
 
+def forward_garbage(cout, cin):
+    # write garbage to cin
+    packet = "--- GARBAGE ---"
+    announcement = struct.pack("!B", len(packet))
+    cin.write(announcement)
+    cin.write(packet)
+
+    announcement = "\0"
+    cin.write(announcement)
+
+    cin.flush()
+
+    # read from cout
+    while True:
+        # read packet from cout
+        announcement = cout.read(1)
+        packet_length, = struct.unpack("!B", announcement)
+        packet = cout.read(packet_length)
+        assert len(packet)==packet_length # i.e. no EOF
+
+        # terminate after packet of length 0
+        if packet_length==0: return
+
 class Synchronization(BaseTestCase):
     def setUp(self):
         # run two manager instances: server and client
@@ -195,6 +218,60 @@ class Synchronization(BaseTestCase):
         # check missing hashes
         self.assertEqual(missing_hashes_of_server, set([clienthash]))
         self.assertEqual(missing_hashes_of_client, set([serverhash]))
+
+    def test_garbage(self):
+        """ test reaction to transmitted garbage: must still follow the specification """
+
+        manager_server = self.manager_server
+        manager_client = self.manager_client
+
+        # send synchronization commands
+        manager_server.stdin.write("SYNCHRONIZE_AS_SERVER\n")
+        manager_server.stdin.flush()
+        response = manager_server.stdout.readline()
+        assert response=="OK\n"
+
+        manager_client.stdin.write("SYNCHRONIZE_AS_CLIENT\n")
+        manager_client.stdin.flush()
+        response = manager_client.stdout.readline()
+        assert response=="OK\n"
+
+        # establish tunnel between manager instances
+        server2client = threading.Thread(target=forward_garbage, args=(manager_server.stdout, manager_client.stdin))
+        client2server = threading.Thread(target=forward_garbage, args=(manager_client.stdout, manager_server.stdin))
+
+        server2client.start()
+        client2server.start()
+
+        # wait until synchronization is completed and tunnel is closed
+        server2client.join()
+        client2server.join()
+
+        # get missing hashes of the server
+        missing_hashes_of_server = set()
+
+        response = manager_server.stdout.readline()
+        assert response=="NUMBERS\n"
+
+        while True:
+            hex_number = manager_server.stdout.readline().strip()
+            if not hex_number: break
+
+        response = manager_server.stdout.readline()
+        assert response=="DONE\n"
+
+        # get missing hashes of the client
+        missing_hashes_of_client = set()
+
+        response = manager_client.stdout.readline()
+        assert response=="NUMBERS\n"
+
+        while True:
+            hex_number = manager_client.stdout.readline().strip()
+            if not hex_number: break
+
+        response = manager_client.stdout.readline()
+        assert response=="DONE\n"
 
 if __name__ == '__main__':
     unittest.main()
