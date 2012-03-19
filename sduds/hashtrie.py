@@ -6,38 +6,61 @@ import os, binascii
 import subprocess
 import select
 
+from exceptions import IOError
+import socket
+
+from sduds.lib import communication
+
 import shutil
 
-def _forward_messages(partnersocket, cin, cout):
-    """ Forwards messages from a socket to a Popened process. cin and cout are stdin and stdout for the process.
-        A message is built of an one byte announcement containing the message length and then the message itself. """
-    socketfile = partnersocket.makefile()
+def _forward_packets(sock, cin, cout):
+    """ Forwards packets from a socket to a Popened process. cin and cout are stdin and stdout for the process.
+        A packet is built of an one byte announcement containing the packet length and then the payload. """
 
-    channels = [socketfile, cout]
+    channels = [sock, cout]
 
     while channels:
         inputready,outputready,exceptready = select.select(channels,[],[])
 
-        for inputfile in inputready:
-            if inputfile==socketfile:
-                outputfile=cin
-            elif inputfile==cout:
-                outputfile=socketfile
+        for input_channel in inputready:
+            if input_channel==sock:
+                try:
+                    announcement = communication.recvall(sock, 1)
+                    packet_length, = struct.unpack("!B", announcement)
+                    packet = communication.recvall(sock, packet_length)
+                except IOError, socket.timeout:
+                    # TODO: logging
+                    annoucement = "\0"
+                    packet_length = 0
+                    packet = ""
 
-            announcement = inputfile.read(1)
-            message_length = ord(announcement)
+                cin.write(announcement)
+                cin.write(packet)
+                cin.flush()
 
-            message = ""
-            while len(message)<message_length:
-                message += inputfile.read(message_length - len(message))
+                if packet_length==0:
+                    channels.remove(sock)
 
-            outputfile.write(announcement)
-            outputfile.write(message)
-            outputfile.flush()
+            elif input_channel==cout:
+                try:
+                    announcement = cout.read(1)
+                    if len(announcement)==0: raise IOError
 
-            if message_length==0: channels.remove(inputfile)
+                    packet_length, = struct.unpack("!B", announcement)
 
-    socketfile.close()
+                    packet = cout.read(packet_length)
+                    if not len(packet)==packet_length: raise IOError
+                except IOError:
+                    # TODO: logging
+                    annoucement = "\0"
+                    packet_length = 0
+                    packet = ""
+
+                sock.sendall(announcement)
+                sock.sendall(packet)
+
+                if packet_length==0:
+                    channels.remove(cout)
 
 class HashTrie:
     database_path = None
@@ -71,7 +94,8 @@ class HashTrie:
             response = self.trieserver.stdout.readline()
             assert response=="OK\n"
 
-            _forward_messages(partnersocket, self.trieserver.stdin, self.trieserver.stdout)
+            # establish tunnel
+            _forward_packets(partnersocket, self.trieserver.stdin, self.trieserver.stdout)
 
             # get the result of the synchronization
             assert self.trieserver.stdout.readline()=="NUMBERS\n"
