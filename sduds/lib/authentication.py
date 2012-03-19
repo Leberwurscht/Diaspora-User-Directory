@@ -36,6 +36,8 @@ Example usage (client side)::
 
 import SocketServer, uuid, hmac, hashlib
 
+from sduds.lib import communication
+
 def authenticate_socket(sock, username, password):
     """ Authenticates a socket using the HMAC-SHA512 algorithm. This is the
         counterpart of :class:`AuthenticatingRequestHandler`. Returns whether
@@ -43,38 +45,34 @@ def authenticate_socket(sock, username, password):
 
         :param sock: the network socket
         :type sock: `socket.socket`
-        :param username: the username; may not contain newline
+        :param username: the username; must be shorter than 256 bytes
         :type username: string
         :param password: the password
         :type password: string
         :rtype: boolean
     """
-    f = sock.makefile()
 
     # make sure method is HMAC with SHA512
-    method = f.readline().strip()
+    method = communication.recv_short_str(sock)
     if not method=="HMAC-SHA512":
         # TODO: logging
-        f.close()
         sock.close()
         return False
 
     # send username
-    assert not "\n" in username
-    f.write(username+"\n")
-    f.flush()
+    assert len(username)<256
+    communication.send_short_str(sock, username)
 
     # receive challenge
-    challenge = f.readline().strip()
+    challenge = communication.recv_short_str(sock)
 
     # send response
-    response = hmac.new(password, challenge, hashlib.sha512).hexdigest()
-    f.write(response+"\n")
-    f.flush()
+    response = hmac.new(password, challenge, hashlib.sha512).digest()
+    assert len(response)<256
+    communication.send_short_str(sock, response)
 
     # check answer
-    answer = f.readline().strip()
-    f.close()
+    answer = communication.recv_short_str(sock)
 
     if answer=="ACCEPTED":
         return True
@@ -95,41 +93,34 @@ class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler):
     """
 
     def handle(self):
-        f = self.request.makefile()
-
         # send expected authentication method
         method = "HMAC-SHA512"
-        f.write(method+"\n")
-        f.flush()
+        communication.send_short_str(self.request, method)
 
         # receive username
-        username = f.readline().strip()
+        username = communication.recv_short_str(self.request)
 
         # send challenge
-        challenge = uuid.uuid4().hex
-        f.write(challenge+"\n")
-        f.flush()
+        challenge = uuid.uuid4().bytes
+        communication.send_short_str(self.request, challenge)
 
         # receive response
-        response = f.readline().strip()
+        response = communication.recv_short_str(self.request)
 
         # compute response
         password = self.get_password(username)
         if password is None:
-            f.write("DENIED\n")
-            f.close()
+            communication.send_short_str(self.request, "DENIED")
             return
 
-        computed_response = hmac.new(password, challenge, hashlib.sha512).hexdigest()
+        computed_response = hmac.new(password, challenge, hashlib.sha512).digest()
 
         # check response
         if not response==computed_response:
-            f.write("INVALID PASSWORD\n")
-            f.close()
+            communication.send_short_str(self.request, "INVALID PASSWORD")
             return
 
-        f.write("ACCEPTED\n")
-        f.close()
+        communication.send_short_str(self.request, "ACCEPTED")
 
         self.handle_user(username)
 
