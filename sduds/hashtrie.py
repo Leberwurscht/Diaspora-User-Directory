@@ -64,11 +64,12 @@ class HashTrie:
 
     def _synchronize_common(self, partnersocket, command):
         with self.lock:
-            # conduct the synchronization
+            # send command
             self.trieserver.stdin.write(command+"\n")
             self.trieserver.stdin.flush()
 
-            assert self.trieserver.stdout.readline()=="OK\n"
+            response = self.trieserver.stdout.readline()
+            assert response=="OK\n"
 
             _forward_messages(partnersocket, self.trieserver.stdin, self.trieserver.stdout)
 
