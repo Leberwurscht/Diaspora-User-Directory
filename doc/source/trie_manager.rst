@@ -24,6 +24,10 @@ The ``LOG_FILE`` argument must specify the path to the log file without the ``.l
 extension, which is appended automatically. A good practice is to set it to ``DB_DIRECTORY``,
 too.
 
+.. note::
+
+   Both paths must be relative to the current working directory; absolute paths do not work.
+
 .. _BDB: http://en.wikipedia.org/wiki/Berkeley_DB
 
 Overview
