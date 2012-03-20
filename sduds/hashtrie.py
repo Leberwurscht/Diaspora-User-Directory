@@ -63,22 +63,16 @@ def _forward_packets(sock, cin, cout):
                     channels.remove(cout)
 
 class HashTrie:
-    database_path = None
     lock = None
     trieserver = None
 
-    def __init__(self, database_path, manager_executable="trie_manager/manager", erase=False):
+    def __init__(self, database_path, manager_executable="trie_manager/manager"):
         # TODO: logging
 
         database_path = os.path.relpath(database_path)
-        self.database_path = database_path
 
         assert not database_path.endswith("/")
         logfile = database_path # .log is appended automatically by trieserver
-
-        # erase database if requested
-        if erase and os.path.exists(database_path):
-            shutil.rmtree(database_path)
 
         # run trieserver
         self.trieserver = subprocess.Popen([manager_executable, database_path, logfile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -139,7 +133,7 @@ class HashTrie:
     def delete(self, binhashes):
         self._add_delete_common(binhashes, "DELETE")
 
-    def close(self, erase=False):
+    def close(self):
         if not self.trieserver: return
 
         with self.lock:
@@ -148,6 +142,3 @@ class HashTrie:
 
             self.trieserver.wait()
             self.trieserver = None
-
-            if erase and os.path.exists(self.database_path):
-                shutil.rmtree(self.database_path)
