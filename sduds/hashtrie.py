@@ -62,8 +62,17 @@ def _forward_packets(sock, cin, cout):
                 packet = cout.read(packet_length)
                 assert len(packet)==packet_length
 
-                sock.sendall(announcement)
-                sock.sendall(packet)
+                try:
+                    sock.sendall(announcement)
+                    sock.sendall(packet)
+                except (IOError, socket.timeout):
+                    # writing to sock failed, therefore don't read from sock anymore
+                    if sock in channels:
+                        cin.write("\0")
+                        cin.flush()
+
+                        sock.close()
+                        channels.remove(sock)
 
                 if packet_length==0:
                     channels.remove(cout)
