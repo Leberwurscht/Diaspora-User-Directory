@@ -37,7 +37,8 @@ def _forward_packets(sock, cin, cout):
                     announcement = communication.recvall(sock, 1)
                     packet_length, = struct.unpack("!B", announcement)
                     packet = communication.recvall(sock, packet_length)
-                except IOError, socket.timeout:
+                except (IOError, socket.timeout):
+                    # reading from sock failed, therefore don't read from sock anymore
                     # TODO: logging
                     annoucement = "\0"
                     packet_length = 0
