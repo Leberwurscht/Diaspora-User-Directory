@@ -79,7 +79,7 @@ def _forward_packets(sock, cin, cout):
 
 class HashTrie:
     lock = None
-    trieserver = None
+    manager_process = None
 
     def __init__(self, database_path, manager_executable="trie_manager/manager"):
         # TODO: logging
@@ -87,38 +87,41 @@ class HashTrie:
         database_path = os.path.relpath(database_path)
 
         assert not database_path.endswith("/")
-        logfile = database_path # .log is appended automatically by trieserver
+        logfile = database_path # .log is appended automatically by manager
 
-        # run trieserver
-        self.trieserver = subprocess.Popen([manager_executable, database_path, logfile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        # run manager process
+        self.manager_process = subprocess.Popen([manager_executable, database_path, logfile], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
         self.lock = threading.Lock()
 
     def _synchronize_common(self, partnersocket, command):
         with self.lock:
             # send command
-            self.trieserver.stdin.write(command+"\n")
-            self.trieserver.stdin.flush()
+            self.manager_process.stdin.write(command+"\n")
+            self.manager_process.stdin.flush()
 
-            response = self.trieserver.stdout.readline()
+            # read response
+            response = self.manager_process.stdout.readline()
             assert response=="OK\n"
 
             # establish tunnel
-            _forward_packets(partnersocket, self.trieserver.stdin, self.trieserver.stdout)
+            _forward_packets(partnersocket, self.manager_process.stdin, self.manager_process.stdout)
 
             # get the result of the synchronization
-            assert self.trieserver.stdout.readline()=="NUMBERS\n"
+            assert self.manager_process.stdout.readline()=="NUMBERS\n"
 
             binhashes = set()
 
             while True:
-                hexhash = self.trieserver.stdout.readline().strip()
+                hexhash = self.manager_process.stdout.readline().strip()
                 if not hexhash: break
 
                 binhash = binascii.unhexlify(hexhash)
                 binhashes.add(binhash)
 
-            assert self.trieserver.stdout.readline()=="DONE\n"
+            # read DONE
+            response = self.manager_process.stdout.readline()
+            assert response=="DONE\n"
 
             return binhashes
 
@@ -130,17 +133,24 @@ class HashTrie:
 
     def _add_delete_common(self, binhashes, command):
         with self.lock:
-            self.trieserver.stdin.write(command+"\n")
-            self.trieserver.stdin.flush()
-            assert self.trieserver.stdout.readline()=="OK\n"
+            # send command
+            self.manager_process.stdin.write(command+"\n")
+            self.manager_process.stdin.flush()
 
+            # read response
+            response = self.manager_process.stdout.readline()
+            assert response=="OK\n"
+
+            # send list of hashes
             for binhash in binhashes:
                 hexhash = binascii.hexlify(binhash)
-                self.trieserver.stdin.write(hexhash+"\n")
-            self.trieserver.stdin.write("\n")
-            self.trieserver.stdin.flush()
+                self.manager_process.stdin.write(hexhash+"\n")
+            self.manager_process.stdin.write("\n")
+            self.manager_process.stdin.flush()
 
-            assert self.trieserver.stdout.readline()=="DONE\n"
+            # read response
+            response = self.manager_process.stdout.readline()
+            assert response=="DONE\n"
 
     def add(self, binhashes):
         self._add_delete_common(binhashes, "ADD")
@@ -149,11 +159,11 @@ class HashTrie:
         self._add_delete_common(binhashes, "DELETE")
 
     def close(self):
-        if not self.trieserver: return
+        if not self.manager_process: return
 
         with self.lock:
-            self.trieserver.stdin.write("EXIT\n")
-            self.trieserver.stdin.flush()
+            self.manager_process.stdin.write("EXIT\n")
+            self.manager_process.stdin.flush()
 
-            self.trieserver.wait()
-            self.trieserver = None
+            self.manager_process.wait()
+            self.manager_process = None
