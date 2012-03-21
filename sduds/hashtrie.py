@@ -4,10 +4,9 @@ import threading
 import os, binascii
 
 import subprocess
-import select
 
+import select, socket, struct
 from exceptions import IOError
-import socket
 
 from sduds.lib import communication
 
