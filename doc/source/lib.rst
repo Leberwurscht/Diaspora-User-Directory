@@ -5,7 +5,7 @@ library with helper classes and functions
 
 This package contains some small auxiliary classes and functions that can be separated well from all the rest. This is where they are used:
 
-* The :mod:`~sduds.lib.communication` module is used by the :mod:`~sduds.lib.authentication` module. It contains functions to send and receive some built-in types of python over the network.
+* The :mod:`~sduds.lib.communication` module is used by the :mod:`~sduds.lib.authentication` module and the synchronization methods of :class:`~sduds.hashtrie.HashTrie`: It contains functions to send and receive some built-in types of python over the network.
 
 * The :mod:`~sduds.lib.authentication` module is used in the :meth:`Application.synchronize_with_partner() <sduds.application.Application.synchronize_with_partner>` method and the :class:`~sduds.application.SynchronizationRequestHandler` class: When one server wants to synchronize with another, it must authenticate to it. This module implements server and client side of authentication with a simple interface.
 
