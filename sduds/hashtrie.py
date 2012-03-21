@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import threading
-import os, binascii
+import os, shutil, binascii
 
 import subprocess
 
@@ -9,8 +9,6 @@ import select, socket, struct
 from exceptions import IOError
 
 from sduds.lib import communication
-
-import shutil
 
 def _forward_packets(sock, cin, cout):
     """ Forwards packets from a socket to a Popened process. cin and cout are stdin and stdout for the process.
