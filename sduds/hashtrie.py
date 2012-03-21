@@ -19,8 +19,20 @@ def _forward_packets(sock, cin, cout):
 
     channels = [sock, cout]
 
+    # take socket timeout also for select
+    timeout = sock.gettimeout()
+
     while channels:
-        inputready,outputready,exceptready = select.select(channels,[],[])
+        inputready,outputready,exceptready = select.select(channels,[],[], timeout)
+
+        if not inputready:
+            # select timed out due to socket, therefore don't read from sock anymore
+            # TODO: logging
+            cin.write("\0")
+            cin.flush()
+
+            sock.close()
+            channels.remove(sock)
 
         for input_channel in inputready:
             if input_channel==sock:
