@@ -17,6 +17,7 @@ Contents:
 
    lib
    trie_manager
+   hashtrie
 
 Indices and tables
 ==================
