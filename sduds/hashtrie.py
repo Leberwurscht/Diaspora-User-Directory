@@ -158,6 +158,41 @@ class HashTrie:
     def delete(self, binhashes):
         self._add_delete_common(binhashes, "DELETE")
 
+    def contains(self, binhash):
+        """ Returns whether a hash is contained in the database.
+
+            :param binhash: raw 16-byte hash
+            :type binhash: string
+            :rtype: boolean
+        """
+
+        # send command
+        self.manager_process.stdin.write("EXISTS\n")
+        self.manager_process.stdin.flush()
+
+        # read response
+        response = self.manager_process.stdout.readline()
+        assert response=="OK\n"
+
+        # send hash
+        hexhash = binascii.hexlify(binhash)
+        self.manager_process.stdin.write(hexhash+"\n")
+        self.manager_process.stdin.flush()
+
+        # read response
+        response = self.manager_process.stdout.readline()
+        if response=="TRUE\n":
+            contained = True
+        elif response=="FALSE\n":
+            contained = False
+
+        # read DONE
+        response = self.manager_process.stdout.readline()
+        assert response=="DONE\n"
+
+        # return result
+        return contained
+
     def close(self):
         if not self.manager_process: return
 
