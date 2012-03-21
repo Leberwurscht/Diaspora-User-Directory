@@ -54,19 +54,13 @@ def _forward_packets(sock, cin, cout):
                         channels.remove(sock)
 
             elif input_channel==cout:
-                try:
-                    announcement = cout.read(1)
-                    if len(announcement)==0: raise IOError
+                announcement = cout.read(1)
+                assert len(announcement)==1
 
-                    packet_length, = struct.unpack("!B", announcement)
+                packet_length, = struct.unpack("!B", announcement)
 
-                    packet = cout.read(packet_length)
-                    if not len(packet)==packet_length: raise IOError
-                except IOError:
-                    # TODO: logging
-                    annoucement = "\0"
-                    packet_length = 0
-                    packet = ""
+                packet = cout.read(packet_length)
+                assert len(packet)==packet_length
 
                 sock.sendall(announcement)
                 sock.sendall(packet)
