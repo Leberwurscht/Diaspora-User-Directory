@@ -40,16 +40,18 @@ def _forward_packets(sock, cin, cout):
                 except (IOError, socket.timeout):
                     # reading from sock failed, therefore don't read from sock anymore
                     # TODO: logging
-                    annoucement = "\0"
-                    packet_length = 0
-                    packet = ""
+                    cin.write("\0")
+                    cin.flush()
 
-                cin.write(announcement)
-                cin.write(packet)
-                cin.flush()
-
-                if packet_length==0:
+                    sock.close()
                     channels.remove(sock)
+                else:
+                    cin.write(announcement)
+                    cin.write(packet)
+                    cin.flush()
+
+                    if packet_length==0:
+                        channels.remove(sock)
 
             elif input_channel==cout:
                 try:
