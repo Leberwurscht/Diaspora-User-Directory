@@ -145,7 +145,7 @@ class PartnerDatabase:
 
             reference_time = time.time()
             age = reference_time - ControlSample.timestamp
-            outdated = session.query(ControlSample).filter(age > OFFENSE_LIFETIME)
+            outdated = session.query(ControlSample).filter(age > CONTROL_SAMPLE_LIFETIME)
             outdated.delete()
 
             session.commit()
@@ -227,7 +227,7 @@ class PartnerDatabase:
             aggregator = sqlalchemy.sql.functions.max(ControlSample.penalty)
             subquery = session.query(aggregator.label("worst_penalty"))
             subquery = subquery.filter(not ControlSample.penalty==None)
-            subquery = subquery.filter(age < OFFENSE_LIFETIME)
+            subquery = subquery.filter(age < CONTROL_SAMPLE_LIFETIME)
             subquery = subquery.group_by(ControlSample.webfinger_address)
 
             # calculate average worst penalty

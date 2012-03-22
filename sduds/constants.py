@@ -12,11 +12,11 @@ EXPIRY_GRACE_PERIOD = 3600*24*3 # if states transmitted by a partner are
 MIN_RESUBMISSION_INTERVAL = 3600*24*3
 STATE_LIFETIME = 3600*24*365
 
-OFFENSE_LIFETIME = 3600*24*14
+CONTROL_SAMPLE_LIFETIME = 3600*24*14
 MAX_OFFENSE_PERCENTAGE = 20
 SIGNIFICANCE_THRESHOLD = 30
 # Caution: a partner can continually introduce bogus states with a rate
-# SIGNIFICANCE_THRESHOLD/control_probability/OFFENSE_LIFETIME with hardly any obstacle,
+# SIGNIFICANCE_THRESHOLD/control_probability/CONTROL_SAMPLE_LIFETIME with hardly any obstacle,
 # but a too low value of SIGNIFICANCE_THRESHOLD will create too much false positives.
 # TODO: make MAX_OFFENSE_PERCENTAGE dependent on the number of samples in a way that the false positive
 # probability is kept below some bound using the cumulative binomial distribution.
