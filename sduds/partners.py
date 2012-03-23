@@ -138,7 +138,7 @@ class PartnerDatabase:
         with self.lock:
             session = self.Session()
 
-            reference_time = time.time()
+            reference_time = int(time.time())
             age = reference_time - ControlSample.timestamp
             outdated = session.query(ControlSample).filter(age > CONTROL_SAMPLE_LIFETIME)
             outdated.delete()
