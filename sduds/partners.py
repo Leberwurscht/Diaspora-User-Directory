@@ -118,16 +118,11 @@ class Violation(DatabaseObject):
 import threading, os, time
 
 class PartnerDatabase:
-    database_path = None # for erasing when closing
     Session = None
     lock = None
 
-    def __init__(self, database_path, erase=False):
-        self.database_path = database_path
+    def __init__(self, database_path):
         self.lock = threading.Lock()
-
-        if erase and os.path.exists(database_path):
-            os.remove(database_path)
 
         engine = sqlalchemy.create_engine("sqlite:///"+database_path)
 
@@ -286,11 +281,8 @@ class PartnerDatabase:
 
             return True
 
-    def close(self, erase=False):
+    def close(self):
         with self.lock:
             if self.Session is not None:
                 self.Session.close_all()
                 self.Session = None
-
-            if erase and os.path.exists(self.database_path):
-                os.remove(self.database_path)
