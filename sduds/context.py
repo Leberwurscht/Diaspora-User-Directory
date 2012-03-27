@@ -52,20 +52,26 @@ class Claim:
             else:
                 retrieved_state = State.retrieve(self.state.address)
 
-                offense = None
-                if not self.state==retrieved_state:
-                    offense = "Claimed state:\n"+\
-                              "================\n"+\
-                              str(self.state)+"\n"+\
-                              "\n"+\
-                              "Retrieved state:\n"+\
-                              "================\n"+\
-                              str(retrieved_state)
+                reference_timestamp = int(time.time())
+
+                if self.state==retrieved_state:
+                    failed_address = None
+                else:
+                    failed_address = self.state.address
+
+                    log_message = "Claimed state:\n"+\
+                                  "==============\n"+\
+                                  str(self.state)+"%s\n"+\
+                                  "\n"+\
+                                  "Retrieved state:\n"+\
+                                  "================\n"+\
+                                  str(retrieved_state)
+                    # TODO: logging
 
                     trusted_state = retrieved_state
                     partner_name = None
 
-                partnerdb.register_control_sample(partner_name, self.state.address, offense)
+                partnerdb.register_control_sample(partner_name, reference_timestamp, failed_address)
 
         try:
             trusted_state.assert_validity(self.timestamp)
