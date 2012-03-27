@@ -26,6 +26,7 @@ class Partner(object):
         self.connection_schedule = connection_schedule
         self.provide_username = provide_username
         self.provide_password = provide_password
+        self.kicked = False
 
     def get_synchronization_address(self):
         assert self.base_url.endswith("/")
