@@ -139,9 +139,9 @@ class FailedSample(DatabaseObject):
     #: :class:`Partner` instance gets an ID from the sqlalchemy mapping).
     partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey(partner_table.c.id))
 
-    #: Too old control samples must expire, therefore we need to save the timestamp (integer) of the
-    #: time the control sample was taken.
-    timestamp = sqlalchemy.Column(sqlalchemy.Integer)
+    #: The number of the time interval. Time intervals are enumerated the following way:
+    #: Timestamp ``n*SAMPLE_SUMMARY_INTERVAL`` is the start of interval ``n``.
+    interval = sqlalchemy.Column(sqlalchemy.Integer)
 
     #: The webfinger address of the :class:`~sduds.states.Profile` for which the
     #: :class:`~sduds.context.Claim` was made. This is needed because only one failed control sample
@@ -151,130 +151,239 @@ class FailedSample(DatabaseObject):
 
     # TODO: index for better performance
 
-    def __init__(self, partner_id, webfinger_address, timestamp):
+    def __init__(self, partner_id, interval, webfinger_address):
         DatabaseObject.__init__(self)
 
         self.partner_id = partner_id
+        self.interval = interval
         self.webfinger_address = webfinger_address
-        self.timestamp = timestamp
 
-class SuccessfulSamplesCache:
-    """ If for each successful control sample the counter in the database would be updated
-        immediately, there would be a lot of writes to the database which would be very
-        slow. Therefore this class maintains a cache which collects control samples and
-        commits them only before closing the database or if the time interval of the current
-        :class:`SuccessfulSamplesSummary` lies in the past.
-    """
-
+class ControlSamplesCache:
     Session = None
-    cache_dict = None
 
-    def __init__(self, Session):
+    window_end = None
+    successful_cache = None
+    successful_stored_count = None
+    failed_cache = None
+    failed_update_count = None
+    failed_stored_count = None
+
+    def __init__(self, Session, window_end):
         self.Session = Session
-        self.cache_dict = {}
 
-    def add(self, partner_id, interval):
-        # read cached summary or create new one
-        default = interval, 0
-        cached_interval, cached_samples = self.cache_dict.get(partner_id, default)
+        self.reinitialize_cache(window_end)
 
-        if interval==cached_interval:
-            # update cached summary if its interval is the current interval
-            cached_samples += 1
-        else:
-            # commit cached summary and create new one if not
-            self.commit(partner_id)
-
-            cached_interval = interval
-            cached_samples = 1
-
-        # update cache
-        self.cache_dict[partner_id] = cached_interval, cached_samples
-
-    def count(self, partner_id, start_interval):
-        # calculate number of non-expired successful samples from database
-        session = self.Session()
-        aggregator = sqlalchemy.sql.functions.sum(SuccessfulSamplesSummary.samples)
-        query = session.query(aggregator)
-        query = query.filter_by(partner_id=partner_id)
-        query = query.filter(SuccessfulSamplesSummary.time_interval>=start_interval)
-        database_samples = query.scalar()
-        session.close()
-
-        if database_samples==None:
-            # no successful samples for partner_id in database
-            database_samples=0
-
-        # read number of non-expired successful samples from cache
-        default = start_interval, 0
-        cached_interval, cached_samples = self.cache_dict.get(partner_id, default)
-        if cached_interval>=start_interval:
-            cache_samples = cached_samples
-        else:
-            cache_samples = 0
-
-        # calculate total number of non-expired successful samples
-        total_samples = database_samples + cache_samples
-
-        return total_samples
-
-    def commit(self, partner_id):
-        if not partner_id in self.cache_dict: return
-        cached_interval, cached_samples = self.cache_dict[partner_id]
-
+    def commit_successful_cache(self):
         session = self.Session()
 
-        try:
-            # get summary from database
+        for partner_id in self.successful_cache:
+            # get stored summary, is present
             query = session.query(SuccessfulSamplesSummary)
             query = query.filter_by(partner_id=partner_id)
-            query = query.filter_by(time_interval=cached_interval)
-            summary = query.one()
+            query = query.filter_by(interval=self.window_end)
+            summary = query.scalar()
 
-        except (KeyError, sqlalchemy.orm.exc.NoResultFound):
-            # if not found in database, create new summary
-            summary = SuccessfulSamplesSummary(partner_id, cached_interval)
+            # if not present, create new summary
+            if summary is None:
+                summary = SuccessfulSamplesSummary(partner_id, self.window_end)
 
-        # save summary in database
-        summary.samples += cached_samples
-        cached_samples = 0
+            # update summary
+            summary.samples += self.successful_cache[partner_id]
 
-        session.add(summary)
+            # save summary to database
+            session.add(summary)
+
         session.commit()
         session.close()
 
-        # update cache
-        self.cache_dict[partner_id] = cached_interval, cached_samples
+    def commit_failed_cache(self):
+        session = self.Session()
 
-    def cleanup(self, start_interval):
-        # clean up cache
-        for partner_id in self.cache_dict.keys():
-            cached_interval, cached_samples = self.cache_dict[partner_id]
-            if cached_interval<start_interval:
-                del self.cache_dict[partner_id]
+        for partner_id in self.failed_cache:
+            samples_dict = self.failed_cache[partner_id]
+            for failedsample in samples_dict.itervalues():
+                session.add(failedsample)
+
+        session.commit()
+        session.close()
+
+    def reinitialize_cache(self, window_end):
+        self.window_end = window_end
+
+        self.successful_cache = {}
+        self.failed_cache = {}
+
+        self.successful_stored_count = {}
+        self.failed_update_count = {}
+        self.failed_stored_count = {}
+
+    def move_forward_to(self, interval):
+        self.commit_successful_cache()
+        self.commit_failed_cache()
+        self.reinitialize_cache(interval)
+
+    def add_successful_sample(self, partner_id, interval):
+        assert interval>=self.window_end, "interval must be monotonously increasing"
+
+        # move window forward if necessary
+        if not interval==self.window_end:
+            self.move_forward_to(interval)
+
+        # add sample to cache
+        self.successful_cache.setdefault(partner_id, 0)
+        self.successful_cache[partner_id] += 1
+
+    def count_successful_samples(self, partner_id, interval):
+        assert interval>=self.window_end, "interval must be monotonously increasing"
+
+        # move window forward if necessary
+        if not interval==self.window_end:
+            self.move_forward_to(interval)
+
+        # get number of failed samples that are stored in the database
+        stored_samples = self.successful_stored_count.get(partner_id, None)
+        if stored_samples is None:
+            window_start = interval - CONTROL_SAMPLE_WINDOW + 1
+
+            session = self.Session()
+            aggregator = sqlalchemy.sql.functions.sum(SuccessfulSamplesSummary.samples)
+            query = session.query(aggregator)
+            query = query.filter_by(partner_id=partner_id)
+            query = query.filter(SuccessfulSamplesSummary.interval>=window_start)
+            stored_samples = query.scalar()
+            session.close()
+
+            if stored_samples is None:
+                # no successful samples found
+                stored_samples = 0
+
+            self.successful_stored_count[partner_id] = stored_samples
+
+        # get number of cached samples
+        self.successful_cache.setdefault(partner_id, 0)
+        cached_samples = self.successful_cache[partner_id]
+
+        # calculate total number of failed samples within window
+        successful_samples = stored_samples + cached_samples
+
+        return successful_samples
+
+    def add_failed_sample(self, partner_id, interval, webfinger_address):
+        assert interval>=self.window_end, "interval must be monotonously increasing"
+
+        # move window forward if necessary
+        if not interval==self.window_end:
+            self.move_forward_to(interval)
+
+        # get stored FailedSample for this address, if present
+        window_start = interval - CONTROL_SAMPLE_WINDOW + 1
+
+        session = self.Session()
+        query = session.query(FailedSample)
+        query = query.filter_by(partner_id=partner_id)
+        query = query.filter_by(webfinger_address=webfinger_address)
+        query = query.filter(FailedSample.interval>=window_start)
+        failedsample = query.scalar()
+        session.close()
+
+        if failedsample is None:
+            # if not present, create new FailedSample
+            failedsample = FailedSample(partner_id, interval, webfinger_address)
+        else:
+            # if present, increase update counter to be able to subtract it in count_failed_samples()
+            self.failed_update_count.setdefault(partner_id, 0)
+            self.failed_update_count[partner_id] += 1
+
+            failedsample.expunge()
+
+        # write failed sample to cache
+        self.failed_cache.setdefault(partner_id, {})
+        self.failed_cache[partner_id][webfinger_address] = failedsample
+
+    def count_failed_samples(self, partner_id, interval):
+        assert interval>=self.window_end, "interval must be monotonously increasing"
+
+        # move window forward if necessary
+        if not interval==self.window_end:
+            self.move_forward_to(interval)
+
+        # get number of failed samples that are stored in the database
+        stored_samples = self.failed_stored_count.get(partner_id, None)
+        if stored_samples is None:
+            window_start = interval - CONTROL_SAMPLE_WINDOW + 1
+
+            session = self.Session()
+            query = session.query(FailedSample)
+            query = query.filter_by(partner_id=partner_id)
+            query = query.filter(FailedSample.interval>=window_start)
+            stored_samples = query.count()
+            session.close()
+
+            self.failed_stored_count[partner_id] = stored_samples
+
+        # get number of cached samples
+        self.failed_cache.setdefault(partner_id, {})
+        cached_samples = len(self.failed_cache[partner_id])
+
+        # get number of updated samples
+        self.failed_update_count.setdefault(partner_id, 0)
+        updated_samples = self.failed_update_count[partner_id]
+
+        # calculate total number of failed samples within window
+        failed_samples = stored_samples + cached_samples - updated_samples
+
+        return failed_samples
+
+    def cleanup(self, interval):
+        assert interval>=self.window_end, "interval must be monotonously increasing"
+
+        # empty caches
+        self.commit_successful_cache()
+        self.commit_failed_cache()
+
+        # move window forward if necessary
+        if not interval==self.window_end:
+            self.move_forward_to(interval)
 
         # clean up database
+        window_start = interval - CONTROL_SAMPLE_WINDOW + 1
+
         session = self.Session()
+
         query = session.query(SuccessfulSamplesSummary)
-        query = query.filter(SuccessfulSamplesSummary.time_interval<start_interval)
+        query = query.filter(SuccessfulSamplesSummary.interval<window_start)
         query.delete()
+
+        query = session.query(FailedSample)
+        query = query.filter(FailedSample.interval<window_start)
+        query.delete()
+
         session.commit()
 
     def clear(self, partner_id):
         # clear cache
-        if partner_id in self.cache_dict:
-            del self.cache_dict[partner_id]
+        if partner_id in self.successful_cache:
+            del self.successful_cache[partner_id]
+
+        if partner_id in self.failed_cache:
+            del self.failed_cache[partner_id]
 
         # clear database
         session = self.Session()
+
         query = session.query(SuccessfulSamplesSummary)
         query = query.filter_by(partner_id=partner_id)
         query.delete()
+
+        query = session.query(FailedSample)
+        query = query.filter_by(partner_id=partner_id)
+        query.delete()
+
         session.commit()
 
     def close(self):
-        for partner_id in self.cache_dict.iterkeys():
-            self.commit(partner_id)
+        self.commit_successful_cache()
+        self.commit_failed_cache()
 
 class Violation(DatabaseObject):
     __tablename__ = "violations"
@@ -289,7 +398,7 @@ import threading, os, time
 class PartnerDatabase:
     Session = None
     lock = None
-    successful_samples_cache = None
+    samples_cache = None
 
     def __init__(self, database_path):
         self.lock = threading.Lock()
@@ -305,29 +414,18 @@ class PartnerDatabase:
         self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
 
         # initialize cache for successful control samples
-        self.successful_samples_cache = SuccessfulSamplesCache(self.Session)
+        timestamp = time.time()
+        window_end = int(timestamp/SAMPLE_SUMMARY_INTERVAL)
+        self.samples_cache = ControlSamplesCache(self.Session, window_end)
 
     def cleanup(self, reference_timestamp=None):
         with self.lock:
             if reference_timestamp is None:
                 reference_timestamp = time.time()
 
-            start_timestamp = reference_timestamp - CONTROL_SAMPLE_LIFETIME
-            start_interval = int(start_timestamp/SAMPLE_SUMMARY_INTERVAL)
-
-            # remove expired successful control sample summaries
-            self.successful_samples_cache.cleanup(start_interval)
-
-            # remove expired failed control samples
-            session = self.Session()
-
-            reference_time = int(time.time())
-            query = session.query(FailedSample)
-            query = query.filter(FailedSample.timestamp<start_timestamp)
-            query.delete()
-
-            session.commit()
-            session.close()
+            # remove expired control samples
+            interval = int(reference_timestamp/SAMPLE_SUMMARY_INTERVAL)
+            self.samples_cache.cleanup(interval)
 
         return reference_timestamp
 
@@ -375,52 +473,34 @@ class PartnerDatabase:
             partner_id = query.scalar()
             session.close()
 
+            # calculate current interval
+            interval = int(reference_timestamp/SAMPLE_SUMMARY_INTERVAL)
+
             if failed_address:
-                session = self.Session()
-
-                # delete old failed sample with same address if necessary
-                query = session.query(FailedSample)
-                query = query.filter_by(partner_id=partner_id)
-                query = query.filter_by(webfinger_address=failed_address)
-                query.delete()
-                session.flush()
-
-                # write failed sample to database
-                sample = FailedSample(partner_id, failed_address, reference_timestamp)
-                session.add(sample)
-                session.commit()
-
-                # calculate start timestamp and interval
-                start_timestamp = reference_timestamp - CONTROL_SAMPLE_LIFETIME
-                start_interval = int(start_timestamp/SAMPLE_SUMMARY_INTERVAL)
+                # write the failed sample to the cache
+                self.samples_cache.add_failed_sample(partner_id, interval, failed_address)
 
                 # count failed samples
-                query = session.query(FailedSample)
-                query = query.filter_by(partner_id=partner_id)
-                query = query.filter(FailedSample.timestamp>=start_timestamp)
-                failed_samples = query.count()
+                failed_samples = self.samples_cache.count_failed_samples(partner_id, interval)
 
                 # count successful samples
-                successful_samples = self.successful_samples_cache.count(partner_id, start_interval)
+                successful_samples = self.samples_cache.count_successful_samples(partner_id, interval)
 
                 # kick partner if necessary
                 sample_count = failed_samples + successful_samples
                 failed_percentage = 100.*failed_samples
 
                 if sample_count>=SIGNIFICANCE_THRESHOLD and failed_percentage>MAX_FAILED_PERCENTAGE:
+                    session = self.Session()
                     query = session.query(Partner)
                     query = query.filter_by(name=partner_name)
                     query.update({Partner.kicked: True})
                     session.commit()
-
-                session.close()
+                    session.close()
 
             else:
-                # calculate current interval
-                interval = int(reference_timestamp/SAMPLE_SUMMARY_INTERVAL)
-
                 # write the successful sample to the cache
-                self.successful_samples_cache.add(partner_id, interval)
+                self.samples_cache.add_successful_sample(partner_id, interval)
 
 
             session.close()
@@ -468,6 +548,6 @@ class PartnerDatabase:
     def close(self):
         with self.lock:
             if not self.Session: return
-            self.successful_samples_cache.close()
+            self.samples_cache.close()
             self.Session.close_all()
             self.Session = None
