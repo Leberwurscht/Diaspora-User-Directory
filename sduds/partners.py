@@ -463,7 +463,7 @@ class PartnerDatabase:
     def save_partner(self, partner):
         with self.lock:
             session = self.Session()
-            session.add(partner)
+            session.merge(partner)
             session.commit()
             session.close()
 
