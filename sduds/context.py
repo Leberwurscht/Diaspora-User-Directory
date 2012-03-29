@@ -78,7 +78,8 @@ class Claim:
             trusted_state.assert_validity(self.timestamp)
         except states.ValidationFailed, e:
             if partner_name:
-                partnerdb.register_violation(partner_name, str(e))
+                partnerdb.register_malformed_state(partner_name)
+                logger.warning(str(e))
             return None
         except states.RecentlyExpiredStateException:
             # TODO: log

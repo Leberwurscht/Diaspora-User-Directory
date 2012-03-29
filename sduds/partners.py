@@ -397,13 +397,6 @@ class ControlSamplesCache:
         self._commit_successful_cache()
         self._commit_failed_cache()
 
-class Violation(DatabaseObject):
-    __tablename__ = "violations"
-
-    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    partner_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey(partner_table.c.id))
-    description = sqlalchemy.Column(sqlalchemyExt.String)
-    # TODO: index for better performance?
 
 import threading, os, time
 
@@ -534,30 +527,14 @@ class PartnerDatabase:
 
             return timestamp
 
-    def register_violation(self, partner_name, description):
+    def register_malformed_state(self, partner_name):
         with self.lock:
             session = self.Session()
-
-            query = session.query(Partner).filter_by(name=partner_name)
-            partner = query.scalar()
-
-            if partner is None:
-                # TODO: logging
-                return False
-
-            timestamp = time.time()
-
-            violation = Violation(partner_id=partner.id, timestamp=timestamp,
-                                  description=description)
-            session.add(violation)
-
-            partner.kicked = True
-            session.add(partner)
-
+            query = session.query(Partner)
+            query = query.filter_by(name=partner_name)
+            query.update({Partner.kicked: True})
             session.commit()
             session.close()
-
-            return True
 
     def close(self):
         with self.lock:
