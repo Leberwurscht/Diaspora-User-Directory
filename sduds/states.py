@@ -308,7 +308,7 @@ class StateDatabase:
 
     def __init__(self, hashtrie_path, statedb_path, erase=False):
         self.database_path = statedb_path
-        self.hashtrie = HashTrie(hashtrie_path, erase=erase)
+        self.hashtrie = HashTrie(hashtrie_path)
         self.lock = threading.Lock()
 
         if erase and os.path.exists(statedb_path):
@@ -498,4 +498,4 @@ class StateDatabase:
             if erase and os.path.exists(self.database_path):
                 os.remove(self.database_path)
 
-            self.hashtrie.close(erase=erase)
+            self.hashtrie.close()
