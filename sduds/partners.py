@@ -158,7 +158,7 @@ class FailedSample(DatabaseObject):
         self.interval = interval
         self.webfinger_address = webfinger_address
 
-class ControlSamplesCache:
+class ControlSampleCache:
     Session = None
 
     window_end = None
@@ -422,7 +422,7 @@ class PartnerDatabase:
         # initialize cache for successful control samples
         timestamp = time.time()
         window_end = int(timestamp/SAMPLE_SUMMARY_INTERVAL)
-        self.samples_cache = ControlSamplesCache(self.Session, window_end)
+        self.samples_cache = ControlSampleCache(self.Session, window_end)
 
     def cleanup(self, reference_timestamp=None):
         with self.lock:
