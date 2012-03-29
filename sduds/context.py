@@ -39,11 +39,12 @@ class Claim:
         # earlier claims have higher priority
         return not self.timestamp<other.timestamp
 
-    def validate(self, partnerdb):
+    def validate(self, partnerdb, logger):
         if self.partner_name is None:
             trusted_state = self.state
         else:
             partner = partnerdb.get_partner(self.partner_name)
+            logger = logger.getChild(partner_name)
 
             if partner.kicked: return None
 
@@ -66,7 +67,7 @@ class Claim:
                                   "Retrieved state:\n"+\
                                   "================\n"+\
                                   str(retrieved_state)
-                    # TODO: logging
+                    logger.warning(log_message)
 
                     trusted_state = retrieved_state
                     partner_name = None
@@ -252,7 +253,7 @@ class Context:
 
             self.logger.debug("Got claim(%s, %s) from validation queue." % (claim.state.address, claim.partner_name))
 
-            validated_state = claim.validate(self.partnerdb)
+            validated_state = claim.validate(self.partnerdb, self.logger)
             if validated_state:
                 self.assimilation_queue.put(validated_state, True)
                 self.logger.debug("Validated claim(%s, %s) and submitted state to assimilation queue." % (claim.state.address, claim.partner_name))
