@@ -397,6 +397,7 @@ class ControlSamplesCache:
         self._commit_successful_cache()
         self._commit_failed_cache()
 
+        self.window_end = None
 
 import threading, os, time
 
