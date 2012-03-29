@@ -464,12 +464,19 @@ class PartnerDatabase:
     def delete_partner(self, partner_name):
         with self.lock:
             session = self.Session()
-            partner = session.query(Partner).filter_by(name=partner_name)
-            partner.delete()
+
+            # fetch partner
+            partner = session.query(Partner).filter_by(name=partner_name).scalar()
+            if partner is None: return
+
+            # delete successful control samples
+            self.samples_cache.clear(partner.id)
+
+            # delete partner
+            session.delete(partner)
+
             session.commit()
             session.close()
-            # TODO: delete control samples and violations for this partner
-
 
     def register_control_sample(self, partner_name, reference_timestamp, failed_address=None):
         with self.lock:
