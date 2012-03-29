@@ -18,6 +18,7 @@ Contents:
    lib
    trie_manager
    hashtrie
+   partners
 
 Indices and tables
 ==================

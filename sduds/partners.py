@@ -1,24 +1,55 @@
 #!/usr/bin/env python
 
+"""
+This module provides the functionality to manage the synchronization partners.
+
+It implements a :class:`Partner` class representing a synchronization partner,
+and a :class:`PartnerDatabase` class which saves Partner instances in a sqlite
+database using a sqlalchemy mapping.
+
+To be able to kick unreliable synchronization partners, PartnerDatabase provides
+methods to register :meth:`control samples <PartnerDatabase.register_control_sample>`
+and :meth:`malformed states <PartnerDatabase.register_malformed_state>`.
+"""
+
 import random
 import urllib, json
 
 from constants import *
 
 class Partner(object):
-    name = None             # may not contain newline
-    accept_password = None  # may not contain newline
+    """ This class represents a synchronization partner. Instances can be stored in the :class:`PartnerDatabase`. """
 
+    #: The name this partner uses to authenticate to us (string).
+    #: Must be shorter than 256 bytes.
+    name = None
+    #: The password this partner uses to authenticate to us (string).
+    accept_password = None
+
+    #: The URL at which the partner provides its web interface (string). Must end with '``/``'.
     base_url = None
+    #: The fraction of :class:`Claims <sduds.context.Claim>` from this partner that should be checked (float in the range 0.0--1.0).
     control_probability = None
+    #: The timestamp of the last attempt to connect to this partner (integer). May be ``None`` if no connection was made yet.
     last_connection = None
+    #: Whether :class:`Claims <sduds.context.Claim>` of this partner should be rejected (boolean).
+    #: This is set to ``True`` if too many control samples fail or the partner transmits malformed :class:`States <sduds.states.State>`.
     kicked = None
 
+    #: The schedule to connect to the partner, in cron-like syntax (the five arguments of the
+    #: :meth:`CronPattern constructor <sduds.lib.scheduler.CronPattern.__init__>` constructor separated by whitespace).
+    #: May be ``None`` if no connections should be initiated.
     connection_schedule = None
-    provide_username = None # may not contain newline
-    provide_password = None # may not contain newline
+    #: The name used to authenticate to the partner (string, shorter than 256 bytes).
+    #: May be ``None`` if no connections should be initiated.
+    provide_username = None
+    #: The password used to authenticate to the partner (string).
+    #: May be ``None`` if no connections should be initiated.
+    provide_password = None
 
     def __init__(self, name, accept_password, base_url, control_probability, connection_schedule=None, provide_username=None, provide_password=None):
+        """ For a description of the arguments see the documentation of the attributes of this class. """
+
         self.name = name
         self.accept_password = accept_password
         self.base_url = base_url
@@ -29,6 +60,16 @@ class Partner(object):
         self.kicked = False
 
     def get_synchronization_address(self):
+        """ Gets the host and port on which the partner can be contacted for synchronization by
+            retrieving ``http://partner_base_url/synchronization_address``.
+            This site should return a json document of the following form::
+
+                ["www.example.org", 20000]
+
+
+            :rtype: (string, integer)-tuple
+        """
+
         assert self.base_url.endswith("/")
         address_url = self.base_url+"synchronization_address"
 
@@ -39,9 +80,15 @@ class Partner(object):
         assert type(host)==str
         assert type(control_port)==int
 
-        return (host, control_port)
+        return host, control_port
 
     def control_sample(self):
+        """ Used to determine whether a control sample should be taken or not.
+            Returns ``True`` with probability :attr:`control_probability` using a random number generator.
+
+            :rtype: boolean
+        """
+
         return random.random()<self.control_probability
 
     def __str__(self):
@@ -98,9 +145,8 @@ sqlalchemy.orm.mapper(Partner, partner_table,
 DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
 
 class SuccessfulSamplesSummary(DatabaseObject):
-    """ Successful control samples must be stored in a way that we can determine the total
-        number of them in a certain time range. This is achieved by summarizing all control
-        samples in a shorter time intervals for each partner.
+    """ Represents a summary of all successful control samples by a certain partner in a certain
+        interval.
     """
 
     __tablename__ = "successful_samples"
@@ -121,6 +167,8 @@ class SuccessfulSamplesSummary(DatabaseObject):
     # TODO: index for better performance
 
     def __init__(self, partner_id, interval):
+        """ For a description of the arguments see the documentation of the attributes of this class. """
+
         DatabaseObject.__init__(self)
 
         self.partner_id = partner_id
@@ -128,8 +176,7 @@ class SuccessfulSamplesSummary(DatabaseObject):
         self.samples = 0
 
 class FailedSample(DatabaseObject):
-    """ Represents a failed control sample.
-    """
+    """ Represents one failed control sample. """
 
     __tablename__ = "failed_samples"
 
@@ -145,13 +192,15 @@ class FailedSample(DatabaseObject):
 
     #: The webfinger address of the :class:`~sduds.states.Profile` for which the
     #: :class:`~sduds.context.Claim` was made. This is needed because only one failed control sample
-    #: per address may be counted, otherwise a single profile owner could get a server kicked by his
+    #: per address may be counted, otherwise a single profile owner could get a server kicked from his
     #: partners by changing his profile frequently.
     webfinger_address = sqlalchemy.Column(sqlalchemyExt.String, unique=True)
 
     # TODO: index for better performance
 
     def __init__(self, partner_id, interval, webfinger_address):
+        """ For a description of the arguments see the documentation of the attributes of this class. """
+
         DatabaseObject.__init__(self)
 
         self.partner_id = partner_id
@@ -159,6 +208,21 @@ class FailedSample(DatabaseObject):
         self.webfinger_address = webfinger_address
 
 class ControlSampleCache:
+    """ This class is used by the :meth:`PartnerDatabase.register_control_sample` method to save the
+        control samples in an efficient manner. As control samples are registered very often, it would
+        slow down the application if they would be written to the database immediately each time.
+        Therefore the newly added control samples are cached.
+
+        For caching, the time scale is divided into equally large intervals of SAMPLE_SUMMARY_SIZE seconds,
+        starting at unix timestamp ``0``.
+        Control samples expire after a certain time, so only samples from a certain time window must be
+        considered. This time window ends at the present interval and has a length of CONTROL_SAMPLE_WINDOW
+        intervals. As long as the current time does not exceed the border of an interval, this window stays
+        at the same position, and no database write is performed except the cache grows too big.
+        If current time does exceed a border, the window moves forward, and all control samples are commited
+        to the database.
+    """
+
     Session = None
 
     window_end = None
@@ -171,6 +235,14 @@ class ControlSampleCache:
     max_cache_size_failed = None
 
     def __init__(self, Session, window_end, max_cache_size_failed=500):
+        """ :param Session: the sqlalchemy :class:`Session`
+            :param window_end: the initial end of the window (interval number)
+            :type window_end: integer
+            :param max_cache_size_failed: the maximal number of failed control samples that should be cached
+                                          before the cache is commited to the database (optional)
+            :type max_cache_size_failed: integer
+        """
+
         self.Session = Session
         self.max_cache_size_failed = max_cache_size_failed
 
@@ -180,7 +252,7 @@ class ControlSampleCache:
         session = self.Session()
 
         for partner_id in self.successful_cache:
-            # get stored summary, is present
+            # get stored summary, if present
             query = session.query(SuccessfulSamplesSummary)
             query = query.filter_by(partner_id=partner_id)
             query = query.filter_by(interval=self.window_end)
@@ -226,6 +298,16 @@ class ControlSampleCache:
         self._reinitialize_cache(interval)
 
     def add_successful_sample(self, partner_id, interval):
+        """ Saves a successful control sample by increasing an interval counter. If the window
+            is moved, this counter is used to update the corresponding :class:`SuccessfulSamplesSummary`
+            in the database. This method moves the window automatically if necessary.
+
+            :param partner_id: the id of the :class:`Partner` from the database mapping
+            :type partner_id: integer
+            :param interval: the interval number corresponding to the time the control sample was taken
+            :type interval: integer
+        """
+
         assert interval>=self.window_end, "interval must be monotonously increasing"
 
         # move window forward if necessary
@@ -237,6 +319,16 @@ class ControlSampleCache:
         self.successful_cache[partner_id] += 1
 
     def count_successful_samples(self, partner_id, interval):
+        """ Returns the number of successful control samples in the window ending
+            at the specified interval.
+
+            :param partner_id: the id of the :class:`Partner` from the database mapping
+            :type partner_id: integer
+            :param interval: the interval number
+            :type interval: integer
+            :rtype: integer
+        """
+
         assert interval>=self.window_end, "interval must be monotonously increasing"
 
         # move window forward if necessary
@@ -272,6 +364,18 @@ class ControlSampleCache:
         return successful_samples
 
     def add_failed_sample(self, partner_id, interval, webfinger_address):
+        """ Saves a failed control sample to an internal cache using the :class:`FailedSample` class.
+            If the window is moved, this cache is commited to the database. This method moves the window
+            automatically if necessary.
+
+            :param partner_id: the id of the :class:`Partner` from the database mapping
+            :type partner_id: integer
+            :param interval: the interval number corresponding to the time the control sample was taken
+            :type interval: integer
+            :param webfinger_address: the address of profile for which the control sample failed
+            :type webfinger_address: string
+        """
+
         assert interval>=self.window_end, "interval must be monotonously increasing"
 
         # move window forward if necessary
@@ -313,6 +417,16 @@ class ControlSampleCache:
             self._move_forward_to(interval)
 
     def count_failed_samples(self, partner_id, interval):
+        """ Returns the number of failed control samples in the window ending
+            at the specified interval.
+
+            :param partner_id: the id of the :class:`Partner` from the database mapping
+            :type partner_id: integer
+            :param interval: the interval number
+            :type interval: integer
+            :rtype: integer
+        """
+
         assert interval>=self.window_end, "interval must be monotonously increasing"
 
         # move window forward if necessary
@@ -347,6 +461,13 @@ class ControlSampleCache:
         return failed_samples
 
     def cleanup(self, interval):
+        """ Deletes all control samples which are too old too reside in the window ending
+            at the specified interval.
+
+            :param interval: the interval number
+            :type interval: integer
+        """
+
         assert interval>=self.window_end, "interval must be monotonously increasing"
 
         # empty caches
@@ -373,6 +494,13 @@ class ControlSampleCache:
         session.commit()
 
     def clear(self, partner_id):
+        """ Remove all cached and stored control samples for a given :class:`Partner`.
+            Used if a partner is deleted.
+
+            :param partner_id: the id of the :class:`Partner` from the database mapping
+            :type partner_id: integer
+        """
+
         # clear cache
         if partner_id in self.successful_cache:
             del self.successful_cache[partner_id]
@@ -394,6 +522,9 @@ class ControlSampleCache:
         session.commit()
 
     def close(self):
+        """ Commits the cache to the database. May not be called more than one time.
+        """
+
         self._commit_successful_cache()
         self._commit_failed_cache()
 
@@ -402,11 +533,20 @@ class ControlSampleCache:
 import threading, os, time
 
 class PartnerDatabase:
+    """ This class is used to save :class:`Partner`, :class:`ControlSample` and :class:`Violation` instances
+        to a sqlite database.
+    """
+
     Session = None
     lock = None
     samples_cache = None
 
     def __init__(self, database_path):
+        """ :param database_path: The path to the sqlite database file. Will be
+                                  created automatically if it doesn't exist.
+            :type database_path: string
+        """
+
         self.lock = threading.Lock()
 
         engine = sqlalchemy.create_engine("sqlite:///"+database_path)
@@ -425,6 +565,13 @@ class PartnerDatabase:
         self.samples_cache = ControlSampleCache(self.Session, window_end)
 
     def cleanup(self, reference_timestamp=None):
+        """ Deletes expired control samples. Returns the current timestamp,
+            so that this method can be used directly as a callback for the
+            :class:`~sduds.lib.scheduler.Job` scheduler.
+
+            :rtype: integer
+        """
+
         with self.lock:
             if reference_timestamp is None:
                 reference_timestamp = time.time()
@@ -436,6 +583,11 @@ class PartnerDatabase:
         return reference_timestamp
 
     def get_partners(self):
+        """ This method lists all synchronization partners.
+
+            :rtype: python ``generator`` of :class:`Partner` instances
+        """
+
         with self.lock:
             session = self.Session()
             query = session.query(Partner)
@@ -446,6 +598,15 @@ class PartnerDatabase:
             session.close()
 
     def get_partner(self, partner_name):
+        """ Gets the corresponding :class:`Partner` instance to a given
+            :attr:`Partner.name` from the database and returns it.
+            Returns ``None`` if no such instance exists.
+
+            :param partner_name: the name of the partner
+            :type partner_name: string
+            :rtype: :class:`Partner` or NoneType
+        """
+
         with self.lock:
             session = self.Session()
             query = session.query(Partner).filter(Partner.name==partner_name)
@@ -455,6 +616,11 @@ class PartnerDatabase:
             return partner
 
     def save_partner(self, partner):
+        """ Saves a :class:`Partner` instance to the database.
+
+            :param partner: the :class:`Partner` instance
+        """
+
         with self.lock:
             session = self.Session()
             session.merge(partner)
@@ -462,6 +628,13 @@ class PartnerDatabase:
             session.close()
 
     def delete_partner(self, partner_name):
+        """ Deletes the :class:`Partner` with the given :attr:`~Partner.name` from
+            the database. Does nothing if specified partner does not exist.
+
+            :param partner_name: the name of the partner which should be deleted
+            :type partner_name: string
+        """
+
         with self.lock:
             session = self.Session()
 
@@ -479,6 +652,19 @@ class PartnerDatabase:
             session.close()
 
     def register_control_sample(self, partner_name, reference_timestamp, failed_address=None):
+        """ Saves a control sample using the :class:`ControlSampleCache` class. Returns ``False``
+            if the specified partner was not found.
+
+            :param partner_name: the name of the partner which should be deleted
+            :type partner_name: string
+            :param reference_timestamp: The timestamp for which the sample should be registered
+            :type reference_timestamp: integer
+            :param failed_address: if the control sample failed, the webfinger address of the profile, otherwise ``None``
+            :type failed_address: string or NoneType
+
+            :rtype: boolean
+        """
+
         with self.lock:
             # get partner id
             session = self.Session()
@@ -522,6 +708,21 @@ class PartnerDatabase:
             return True
 
     def register_connection(self, partner_name):
+        """ When a connection to a synchronization partner is initiated, this
+            method is called. It saves the current time to the database
+            (:attr:`Partner.last_connection`), so that the :class:`~sduds.lib.scheduler.Job`
+            scheduler knows when to synchronize next even when the application
+            is restarted.  If no :class:`Partner` for the given name is in the
+            database, this method won't throw an exception or indicate this in
+            the return value.
+
+            Returns the timestamp that was saved.
+
+            :param partner_name: the :attr:`~Partner.name` of the partner
+            :type partner_name: string
+            :rtype: integer
+        """
+
         with self.lock:
             session = self.Session()
 
@@ -536,6 +737,15 @@ class PartnerDatabase:
             return timestamp
 
     def register_malformed_state(self, partner_name):
+        """ This method is called when a synchronization partner transmits a malformed
+            :class:`~sduds.states.State`. It kicks the partner by setting the
+            :attr:`~Partner.kicked` attribute to ``True``. Does nothing if partner name
+            is invalid.
+
+            :param partner_name: the :attr:`~Partner.name` of the partner which transmitted the malformed state
+            :type partner_name: string
+        """
+
         with self.lock:
             session = self.Session()
             query = session.query(Partner)
@@ -545,6 +755,8 @@ class PartnerDatabase:
             session.close()
 
     def close(self):
+        """ Closes the database. Must not be called more than one time. """
+
         with self.lock:
             if not self.Session: return
             self.samples_cache.close()
