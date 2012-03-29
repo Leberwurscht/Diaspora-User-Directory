@@ -758,7 +758,6 @@ class PartnerDatabase:
         """ Closes the database. Must not be called more than one time. """
 
         with self.lock:
-            if not self.Session: return
             self.samples_cache.close()
             self.Session.close_all()
             self.Session = None
