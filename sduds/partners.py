@@ -485,6 +485,10 @@ class PartnerDatabase:
             partner_id = query.scalar()
             session.close()
 
+            # return False if partner name was not found
+            if partner_id is None:
+                return False
+
             # calculate current interval
             interval = int(reference_timestamp/SAMPLE_SUMMARY_INTERVAL)
 
