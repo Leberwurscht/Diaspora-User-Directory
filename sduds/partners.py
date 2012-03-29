@@ -171,9 +171,9 @@ class ControlSamplesCache:
     def __init__(self, Session, window_end):
         self.Session = Session
 
-        self.reinitialize_cache(window_end)
+        self._reinitialize_cache(window_end)
 
-    def commit_successful_cache(self):
+    def _commit_successful_cache(self):
         session = self.Session()
 
         for partner_id in self.successful_cache:
@@ -196,7 +196,7 @@ class ControlSamplesCache:
         session.commit()
         session.close()
 
-    def commit_failed_cache(self):
+    def _commit_failed_cache(self):
         session = self.Session()
 
         for partner_id in self.failed_cache:
@@ -207,7 +207,7 @@ class ControlSamplesCache:
         session.commit()
         session.close()
 
-    def reinitialize_cache(self, window_end):
+    def _reinitialize_cache(self, window_end):
         self.window_end = window_end
 
         self.successful_cache = {}
@@ -217,17 +217,17 @@ class ControlSamplesCache:
         self.failed_update_count = {}
         self.failed_stored_count = {}
 
-    def move_forward_to(self, interval):
-        self.commit_successful_cache()
-        self.commit_failed_cache()
-        self.reinitialize_cache(interval)
+    def _move_forward_to(self, interval):
+        self._commit_successful_cache()
+        self._commit_failed_cache()
+        self._reinitialize_cache(interval)
 
     def add_successful_sample(self, partner_id, interval):
         assert interval>=self.window_end, "interval must be monotonously increasing"
 
         # move window forward if necessary
         if not interval==self.window_end:
-            self.move_forward_to(interval)
+            self._move_forward_to(interval)
 
         # add sample to cache
         self.successful_cache.setdefault(partner_id, 0)
@@ -238,7 +238,7 @@ class ControlSamplesCache:
 
         # move window forward if necessary
         if not interval==self.window_end:
-            self.move_forward_to(interval)
+            self._move_forward_to(interval)
 
         # get number of failed samples that are stored in the database
         stored_samples = self.successful_stored_count.get(partner_id, None)
@@ -273,7 +273,7 @@ class ControlSamplesCache:
 
         # move window forward if necessary
         if not interval==self.window_end:
-            self.move_forward_to(interval)
+            self._move_forward_to(interval)
 
         # get stored FailedSample for this address, if present
         window_start = interval - CONTROL_SAMPLE_WINDOW + 1
@@ -305,7 +305,7 @@ class ControlSamplesCache:
 
         # move window forward if necessary
         if not interval==self.window_end:
-            self.move_forward_to(interval)
+            self._move_forward_to(interval)
 
         # get number of failed samples that are stored in the database
         stored_samples = self.failed_stored_count.get(partner_id, None)
@@ -338,12 +338,12 @@ class ControlSamplesCache:
         assert interval>=self.window_end, "interval must be monotonously increasing"
 
         # empty caches
-        self.commit_successful_cache()
-        self.commit_failed_cache()
+        self._commit_successful_cache()
+        self._commit_failed_cache()
 
         # move window forward if necessary
         if not interval==self.window_end:
-            self.move_forward_to(interval)
+            self._move_forward_to(interval)
 
         # clean up database
         window_start = interval - CONTROL_SAMPLE_WINDOW + 1
@@ -382,8 +382,8 @@ class ControlSamplesCache:
         session.commit()
 
     def close(self):
-        self.commit_successful_cache()
-        self.commit_failed_cache()
+        self._commit_successful_cache()
+        self._commit_failed_cache()
 
 class Violation(DatabaseObject):
     __tablename__ = "violations"
