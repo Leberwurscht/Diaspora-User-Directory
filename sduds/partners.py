@@ -168,8 +168,11 @@ class ControlSamplesCache:
     failed_update_count = None
     failed_stored_count = None
 
-    def __init__(self, Session, window_end):
+    max_cache_size_failed = None
+
+    def __init__(self, Session, window_end, max_cache_size_failed=500):
         self.Session = Session
+        self.max_cache_size_failed = max_cache_size_failed
 
         self._reinitialize_cache(window_end)
 
@@ -299,6 +302,15 @@ class ControlSamplesCache:
         # write failed sample to cache
         self.failed_cache.setdefault(partner_id, {})
         self.failed_cache[partner_id][webfinger_address] = failedsample
+
+        # check if cache for failed samples has grown too big
+        cache_size = 0
+        for cache_dict in self.failed_cache.itervalues():
+            cache_size += len(cache_dict)
+
+        if cache_size>self.max_cache_size_failed:
+            # if this is the case, write cache to database
+            self._move_forward_to(interval)
 
     def count_failed_samples(self, partner_id, interval):
         assert interval>=self.window_end, "interval must be monotonously increasing"
