@@ -113,7 +113,7 @@ class SuccessfulSamplesSummary(DatabaseObject):
 
     #: The number of the time interval. Time intervals are enumerated the following way:
     #: Timestamp ``n*SAMPLE_SUMMARY_INTERVAL`` is the start of interval ``n``.
-    time_interval = sqlalchemy.Column(sqlalchemy.Integer)
+    interval = sqlalchemy.Column(sqlalchemy.Integer)
 
     #: The number of successful control samples by the specified partner in the specified time interval.
     samples = sqlalchemy.Column(sqlalchemy.Integer)
@@ -124,7 +124,7 @@ class SuccessfulSamplesSummary(DatabaseObject):
         DatabaseObject.__init__(self)
 
         self.partner_id = partner_id
-        self.time_interval = interval
+        self.interval = interval
         self.samples = 0
 
 class FailedSample(DatabaseObject):
