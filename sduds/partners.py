@@ -514,8 +514,6 @@ class PartnerDatabase:
                 # write the successful sample to the cache
                 self.samples_cache.add_successful_sample(partner_id, interval)
 
-
-            session.close()
             return True
 
     def register_connection(self, partner_name):
