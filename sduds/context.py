@@ -117,12 +117,7 @@ class Context:
         if partnerdb:
             self.partnerdb = partnerdb
         else:
-            if "erase_partnerdb" in kwargs:
-                erase = kwargs["erase_partnerdb"]
-            else:
-                erase = False
-
-            self.partnerdb = PartnerDatabase(kwargs["partnerdb_path"], erase=erase)
+            self.partnerdb = PartnerDatabase(kwargs["partnerdb_path"])
 
         self.submission_queue = Queue.Queue(submission_queue_size)
         self.validation_queue = Queue.PriorityQueue(validation_queue_size)
@@ -139,7 +134,7 @@ class Context:
         self.assimilation_queue.join()
 
         self.statedb.close(erase=erase)
-        self.partnerdb.close(erase=erase)
+        self.partnerdb.close()
 
     def submit_address(self, webfinger_address):
         try:
