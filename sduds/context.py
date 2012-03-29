@@ -81,8 +81,8 @@ class Claim:
                 partnerdb.register_malformed_state(partner_name)
                 logger.warning(str(e))
             return None
-        except states.RecentlyExpiredStateException:
-            # TODO: log
+        except states.RecentlyExpiredStateException, e:
+            logger.warning(str(e))
             return None
         else:
             return trusted_state

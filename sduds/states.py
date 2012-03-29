@@ -38,10 +38,17 @@ class RecentlyExpiredStateException(Exception):
     info = None
 
     def __init__(self, info, reference_timestamp):
-        message = "State recently expired (reference timestamp: %d" % reference_timestamp
+        message = "State recently expired (reference timestamp: %d)" % reference_timestamp
         Exception.__init__(self, message)
 
         self.info = info
+
+    def __str__(self):
+        r = self.message+"\n"
+        r += "\n"
+        r += "Info:\n"
+        r += self.info
+        return r
 
 class Profile:
     full_name = None # unicode
