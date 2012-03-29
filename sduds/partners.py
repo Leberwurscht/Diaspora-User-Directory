@@ -68,7 +68,7 @@ metadata = sqlalchemy.MetaData()
 
 partner_table = sqlalchemy.Table('partners', metadata,
     sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
-    sqlalchemy.Column("name", sqlalchemyExt.String, unique=True),
+    sqlalchemy.Column("name", sqlalchemyExt.String, index=True, unique=True),
     sqlalchemy.Column("accept_password", sqlalchemyExt.String),
     sqlalchemy.Column("base_url", sqlalchemyExt.String),
     sqlalchemy.Column("control_probability", sqlalchemy.Float),
