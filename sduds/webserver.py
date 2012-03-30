@@ -88,7 +88,7 @@ class WebServer(threading.Thread):
         for state in self.context.statedb.search(words):
             yield str(state)
             yield "\n"
-        
+
     def synchronization_address(self, environment, start_response):
         try:
             fqdn_best, port = self.context.synchronization_address

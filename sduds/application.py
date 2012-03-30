@@ -182,7 +182,7 @@ class Application:
         # start submission workers
         for worker in self.submission_workers:
             worker.start()
-        
+
         # start validation workers
         for worker in self.validation_workers:
             worker.start()
@@ -205,7 +205,7 @@ class Application:
             self.context.validation_queue.put(None)
 
         for worker in self.validation_workers:
-            worker.join() 
+            worker.join()
 
         self.validation_workers = []
 
@@ -290,7 +290,7 @@ class Application:
 
         # register synchronization attempt
         timestamp = self.context.partnerdb.register_connection(partner_name)
-        
+
         # no need to synchronize if partner is kicked: states will be rejected anyhow
         if partner.kicked:
             self.context.logger.warning("Will not synchronize with kicked partner %s" % partner_name)
