@@ -397,11 +397,12 @@ class ControlSampleCache:
             # if not present, create new FailedSample
             failedsample = FailedSample(partner_id, interval, webfinger_address)
         else:
-            # if present, increase update counter to be able to subtract it in count_failed_samples()
+            # if present, update this sample
+            failedsample.interval = interval
+
+            # increase update counter to be able to subtract it in count_failed_samples()
             self.failed_update_count.setdefault(partner_id, 0)
             self.failed_update_count[partner_id] += 1
-
-            failedsample.expunge()
 
         # write failed sample to cache
         self.failed_cache.setdefault(partner_id, {})
