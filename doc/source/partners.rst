@@ -14,6 +14,10 @@ partners module
 lower-level classes
 -------------------
 
+.. autodata:: DatabaseObject
+
+   sqlalchemy declarative base for :class:`SuccessfulSamplesSummary` and :class:`FailedSample`
+
 .. autoclass:: SuccessfulSamplesSummary
    :members: partner_id, interval, samples,
              __init__
