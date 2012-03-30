@@ -1,3 +1,5 @@
+.. _trie_manager:
+
 trie_manager program
 ====================
 
