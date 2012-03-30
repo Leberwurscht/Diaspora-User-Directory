@@ -220,18 +220,34 @@ class PartnerDatabase(unittest.TestCase):
 
         ## successful ones
         for i in xrange(successful):
-            self.database.register_control_sample(name, reference_timestamp)
+            success = self.database.register_control_sample(name, reference_timestamp)
+            self.assertEqual(success, True)
 
         ## failed ones
         for i in xrange(failed):
             webfinger_address = "johndoe%d@example.org" % i
-            self.database.register_control_sample(name, reference_timestamp, webfinger_address)
+            success = self.database.register_control_sample(name, reference_timestamp, webfinger_address)
+            self.assertEqual(success, True)
 
         # load partner
         partner = self.database.get_partner(name)
 
         # check kicked attribute
         self.assertEqual(partner.kicked, True)
+
+    def test_register_control_sample_invalid(self):
+        """ register_control_sample must return False if partner name is invalid """
+
+        reference_timestamp = 1000000000
+
+        # successful one
+        success = self.database.register_control_sample(name, reference_timestamp)
+        self.assertEqual(success, False)
+
+        # failed one
+        address = "johndoe@example.org"
+        success = self.database.register_control_sample(name, reference_timestamp, address)
+        self.assertEqual(success, False)
 
     def test_one_address_failed_samples(self):
         """ failed samples produced by one webfinger address may not get the partner kicked """
