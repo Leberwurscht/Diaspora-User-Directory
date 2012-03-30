@@ -141,7 +141,7 @@ sqlalchemy.orm.mapper(Partner, partner_table,
     }
 )
 
-# control sample and violation classes with mapping
+# control sample classes with mapping
 DatabaseObject = sqlalchemy.ext.declarative.declarative_base()
 
 class SuccessfulSamplesSummary(DatabaseObject):
@@ -533,8 +533,8 @@ class ControlSampleCache:
 import threading, os, time
 
 class PartnerDatabase:
-    """ This class is used to save :class:`Partner`, :class:`ControlSample` and :class:`Violation` instances
-        to a sqlite database.
+    """ This class is used to save :class:`Partner` instances to a sqlite database, and to keep
+        track of whether the partners are reliable.
     """
 
     Session = None
@@ -554,7 +554,7 @@ class PartnerDatabase:
         # create partners table if it doesn't exist
         metadata.create_all(engine)
 
-        # create tables for control samples and violations if they don't exist
+        # create tables for control samples if they don't exist
         DatabaseObject.metadata.create_all(engine)
 
         self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
