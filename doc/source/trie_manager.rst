@@ -3,12 +3,12 @@
 trie_manager program
 ====================
 
-The ``trie_manager/manager`` program manages a set of 16 byte hashes in a manner that
+The ``trie_manager/manager`` program manages a large set of 16 byte hashes in a manner that
 efficient synchronization of these hashes between two servers is possible. It is not meant
 to be called manually; it requires some higher-level program which calls it and forwards
 the synchronization traffic over the network to other machines.
 
-This program is derived from the OpenPGP key server `SKS`_.
+This program is derived from the OpenPGP key server `SKS`_ and therefore written in OCaml.
 
 .. _SKS: http://code.google.com/p/sks-keyserver/
 
