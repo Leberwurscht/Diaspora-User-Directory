@@ -261,7 +261,7 @@ class PartnerDatabase(unittest.TestCase):
         # register control samples
         reference_timestamp = 1000000000
         for i in xrange(SIGNIFICANCE_THRESHOLD):
-            self.database.register_control_sample(name, reference_timestamp, "johndoe@example.com")
+            self.database.register_control_sample(name, reference_timestamp, "johndoe@example.org")
 
         # load partner
         partner = self.database.get_partner(name)
