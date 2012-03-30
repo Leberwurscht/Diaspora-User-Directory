@@ -1,5 +1,6 @@
 -- Diaspora* user directory ----------------
 
+TODO: update this section
 This is an attempt to build a decentralised directory of diaspora* users.
 As this problem has a lot in common with the problem of having a
 decentralized PGP public key directory, which is already solved by the
@@ -30,38 +31,63 @@ Executables:
 
 -- Requirements for Ubuntu -----------
 
-$ aptitude install ocaml libdb4.7-dev zlib1g-dev
-$ aptitude install python-paramiko python-sqlalchemy
+# apt-get install ocaml libdb4.7-dev zlib1g-dev
+# apt-get install python-paramiko python-sqlalchemy
 
 Go to https://github.com/jcarbaugh/python-webfinger and install it.
 
 -- Building --------------------------
 
+$ cd trie_manager
 $ cp Makefile.local.unused Makefile.local
 $ make dep
 $ make all
 
-(tested with Ubuntu 10.04 - Lucid Lynx)
+(tested with Ubuntu 10.04 - Lucid Lynx, and 11.10 - Oneiric Ocelot)
 
-This will result in the 'trieserver' executable to be created.
+This will result in the 'trie_manager/manager' executable to be created.
 
 -- Building the docs -----------------
 
-$ aptitude install python-sphinx
+Install sphinx documentation generator:
+
+# apt-get install python-sphinx
+
+For UML diagrams:
+
+# apt-get install python-setuptools
+# easy_install sphinxcontrib-plantuml
+
+Download plantuml.jar from http://plantuml.sourceforge.net/download.html,
+create wrapper script plantuml as described at http://pypi.python.org/pypi/sphinxcontrib-plantuml.
+
+Build documentation:
+
 $ cd doc
 $ make html
 
 -- Running the tests -----------------
 
+Run all tests:
+
 $ ./test.py
+
+Run one test module:
+
+$ python tests/partners.py
+
+Run one test case:
+
+$ python -m unittest tests.partners.ControlSampleCache
 
 -- Trying it out manually ------------
 
+TODO: update this section
 Make two copies, compile each.
 
 For one copy, do:
 
-$ ./partners.py -a -c http://localhost:20100/ sduds2 sduds1
+$ ./partners.py -e sduds2 "http://localhost:20020/" 1.0 sduds1
  ... type passwords ...
         (Adds the second instance of the program, which will
          run on port 20002, as a client named "sduds2", and
@@ -69,9 +95,9 @@ $ ./partners.py -a -c http://localhost:20100/ sduds2 sduds1
          it.)
 $ ./testing/add_entry.py
 	(Will create a database entry for an example user.)
-$ ./sduds.py -p 20000
-        (Will run a webserver on port 20000 and the
-         synchronization server on port 20001.)
+$ ./sduds.py -p 20010
+        (Will run a webserver on port 20010 and the
+         synchronization server on port 20011.)
 
 For the other copy, do:
 
