@@ -461,7 +461,7 @@ class ControlSampleCache:
         return failed_samples
 
     def cleanup(self, interval):
-        """ Deletes all control samples which are too old too reside in the window ending
+        """ Deletes all control samples which are too old to reside in the window ending
             at the specified interval.
 
             :param interval: the interval number
