@@ -13,7 +13,7 @@ Welcome to sduds's documentation!
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    lib
    trie_manager
