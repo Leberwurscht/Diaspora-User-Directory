@@ -86,7 +86,8 @@ class PartnerDatabase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, directory)
 
         self.database_path = os.path.join(directory, "partners.sqlite")
-        self.database = partners.PartnerDatabase(self.database_path)
+        reference_timestamp = 1000000000
+        self.database = partners.PartnerDatabase(self.database_path, reference_timestamp)
         self.addCleanup(lambda: self.database.close)
 
     def test_save_get(self):
@@ -215,7 +216,7 @@ class PartnerDatabase(unittest.TestCase):
         failed = int(math.ceil(SIGNIFICANCE_THRESHOLD*MAX_FAILED_PERCENTAGE/100.)) + 1
         successful = SIGNIFICANCE_THRESHOLD - failed
 
-        reference_timestamp = int(time.time())
+        reference_timestamp = 1000000000
 
         ## successful ones
         for i in xrange(successful):
@@ -242,7 +243,7 @@ class PartnerDatabase(unittest.TestCase):
         self.database.save_partner(partner)
 
         # register control samples
-        reference_timestamp = int(time.time())
+        reference_timestamp = 1000000000
         for i in xrange(SIGNIFICANCE_THRESHOLD):
             self.database.register_control_sample(name, reference_timestamp, "johndoe@example.com")
 

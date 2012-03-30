@@ -542,7 +542,7 @@ class PartnerDatabase:
     lock = None
     samples_cache = None
 
-    def __init__(self, database_path):
+    def __init__(self, database_path, reference_timestamp=None):
         """ :param database_path: The path to the sqlite database file. Will be
                                   created automatically if it doesn't exist.
             :type database_path: string
@@ -561,8 +561,9 @@ class PartnerDatabase:
         self.Session = sqlalchemy.orm.sessionmaker(bind=engine)
 
         # initialize cache for successful control samples
-        timestamp = time.time()
-        window_end = int(timestamp/SAMPLE_SUMMARY_INTERVAL)
+        if reference_timestamp is None:
+            reference_timestamp = time.time()
+        window_end = int(reference_timestamp/SAMPLE_SUMMARY_INTERVAL)
         self.samples_cache = ControlSampleCache(self.Session, window_end)
 
     def cleanup(self, reference_timestamp=None):
