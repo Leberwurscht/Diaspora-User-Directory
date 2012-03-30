@@ -17,11 +17,8 @@ This package contains some small auxiliary classes and functions that can be sep
 
 * The :mod:`~sduds.lib.threadingserver` module is used by the :class:`~sduds.application.SynchronizationServer` class, which is just a :class:`threading.Thread` that wraps around the :class:`~sduds.lib.threadingserver.ThreadingServer` class defined in this module.
 
-List of submodules
-------------------
-
 .. toctree::
-   :maxdepth: 1
+   :hidden:
 
    lib/authentication
    lib/communication
