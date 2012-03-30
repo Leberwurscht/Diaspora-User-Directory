@@ -105,9 +105,9 @@ class WebServer(threading.Thread):
             start_response("404 Not Found", [("Content-type", "text/plain")])
             yield "Synchronization disabled."
         else:
-            start_response("200 OK", [('Content-Type','text/plain')])
+            start_response("200 OK", [("Content-type","application/json")])
             yield json.dumps((fqdn, port))
-        
+
     def not_found(self, environment, start_response):
         start_response("404 Not Found", [("Content-type", "text/plain")])
         yield "%s not found." % environment["PATH_INFO"]
