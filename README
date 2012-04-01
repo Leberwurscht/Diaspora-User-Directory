@@ -75,10 +75,16 @@ $ ./test.py
 Run one test module:
 
 $ python tests/partners.py
+(`cd tests && python partners.py` will not work because the the current
+ working directory must contain the necessary modules)
 
 Run one test case:
 
 $ python -m unittest tests.partners.ControlSampleCache
+
+Run an indiviual test:
+
+$ python -m unittest tests.partners.ControlSampleCache.test_failed
 
 -- Trying it out manually ------------
 
