@@ -496,7 +496,7 @@ class ControlSampleCache:
 
     def clear(self, partner_id):
         """ Remove all cached and stored control samples for a given :class:`Partner`.
-            Used if a partner is deleted.
+            Used if a partner is deleted or unkicked.
 
             :param partner_id: the id of the :class:`Partner` from the database mapping
             :type partner_id: integer
@@ -755,6 +755,38 @@ class PartnerDatabase:
             query.update({Partner.kicked: True})
             session.commit()
             session.close()
+
+    def unkick_partner(self, partner_name, delete_control_samples=False):
+        """ This method sets the :attr:`~Partner.kicked` attribute of the specified partner to ``False`` so that
+            synchronization with the partner is possible again. It also deletes all control samples for the partner
+            if the ``delete_control_samples`` argument is set to ``True``, so that a further failed control sample
+            will not get the partner kicked again immediately.
+
+            Returns ``False`` if partner name is invalid.
+
+            :param partner_name: the :attr:`~Partner.name` of the partner which should be unkicked
+            :type partner_name: string
+            :param delete_control_samples: whether associated control samples should be deleted
+            :type delete_control_samples: boolean
+            :rtype: boolean
+        """
+
+        with self.lock:
+            session = self.Session()
+            query = session.query(Partner)
+            query = query.filter_by(name=partner_name)
+            partner = query.scalar()
+            if partner is None: return False
+
+            if delete_control_samples:
+                self.samples_cache.clear(partner.id)
+
+            partner.kicked = False
+            session.add(partner)
+            session.commit()
+            session.close()
+
+            return True
 
     def close(self):
         """ Closes the database. Must not be called more than one time. """

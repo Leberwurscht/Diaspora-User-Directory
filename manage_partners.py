@@ -19,7 +19,7 @@ if __name__=="__main__":
                 print >>sys.stderr, "ERROR: Passwords do not match."
 
     parser = optparse.OptionParser(
-        usage = "%prog [-p PATH] -e PARTNER_NAME ...\nOr: %prog [-p PATH] -d PARTNER_NAME\nOr: %prog [-p PATH] -l\nOr: %prog [-p PATH] -c\nArguments for editing: BASE_URL CONTROL_PROBABILITY\nand optionally PROVIDE_USERNAME [CONNECTION_SCHEDULE]",
+        usage = "%prog [-p PATH] -e PARTNER_NAME ...\nOr: %prog [-p PATH] -u|U PARTNER_NAME\nOr: %prog [-p PATH] -d PARTNER_NAME\nOr: %prog [-p PATH] -l\nOr: %prog [-p PATH] -c\nArguments for editing: BASE_URL CONTROL_PROBABILITY\nand optionally PROVIDE_USERNAME [CONNECTION_SCHEDULE]",
         description="manage the synchronization partners list"
     )
 
@@ -28,6 +28,8 @@ if __name__=="__main__":
     parser.add_option( "-c", "--cleanup", action="store_true", dest="cleanup", help="delete outdated control samples")
     parser.add_option( "-e", "--edit", action="store_true", dest="edit", help="add or edit a partner")
     parser.add_option( "-d", "--delete", action="store_true", dest="delete", help="delete a partner")
+    parser.add_option( "-u", "--unkick", action="store_true", dest="unkick", help="unkick a partner")
+    parser.add_option( "-U", "--unkick-clear", action="store_true", dest="unkick_clear", help="unkick a partner and delete control samples")
 
     (options, args) = parser.parse_args()
 
@@ -121,6 +123,20 @@ if __name__=="__main__":
             partner = Partner(partner_name, accept_password, base_url, control_probability, connection_schedule, provide_username, provide_password)
 
         database.save_partner(partner)
+
+    elif options.unkick or options.unkick_clear:
+        try:
+            partner_name, = args
+        except ValueError:
+            print >>sys.stderr, "ERROR: Need partner name."
+            sys.exit(1)
+
+        success = database.unkick_partner(partner_name, options.unkick_clear)
+
+        if success:
+            print "Unkicked partner \"%s\"." % partner_name
+        else:
+            print "No partner named \"%s\"." % partner_name
 
     elif options.delete:
         try:

@@ -287,6 +287,79 @@ class PartnerDatabase(unittest.TestCase):
         # check kicked attribute
         self.assertEqual(partner.kicked, True)
 
+    def test_unkick_noclear(self):
+        """ kicked attribute must be set to False after unkick with the delete_control_samples
+            argument set to False, but control samples must be preserved """
+
+        # save partner
+        partner = partners.Partner(name, accept_password, base_url, control_probability,
+                                   connection_schedule, provide_username, provide_password)
+        self.database.save_partner(partner)
+
+        # register many failed control samples to get the partner kicked
+        reference_timestamp = 1000000000
+        for i in xrange(SIGNIFICANCE_THRESHOLD):
+            webfinger_address = "johndoe%d@example.org" % i
+            self.database.register_control_sample(name, reference_timestamp, webfinger_address)
+
+        # load partner and make sure it is kicked
+        partner = self.database.get_partner(name)
+        self.assertEqual(partner.kicked, True)
+
+        # unkick partner with delete_control_samples set to True
+        success = self.database.unkick_partner(name, False)
+        self.assertEqual(success, True)
+
+        # make sure partner is not kicked anymore
+        partner = self.database.get_partner(name)
+        self.assertEqual(partner.kicked, False)
+
+        # register one more failed control sample to check if old ones were preserved
+        webfinger_address = "one_more_johndoe@example.org"
+        self.database.register_control_sample(name, reference_timestamp, webfinger_address)
+
+        # make sure partner was kicked again
+        partner = self.database.get_partner(name)
+        self.assertEqual(partner.kicked, True)
+
+    def test_unkick_clear(self):
+        """ one more failed control sample may not get the partner kicked again after unkick
+            with the delete_control_samples argument set to True """
+
+        # save partner
+        partner = partners.Partner(name, accept_password, base_url, control_probability,
+                                   connection_schedule, provide_username, provide_password)
+        self.database.save_partner(partner)
+
+        # register many failed control samples to get the partner kicked
+        reference_timestamp = 1000000000
+        for i in xrange(SIGNIFICANCE_THRESHOLD):
+            webfinger_address = "johndoe%d@example.org" % i
+            self.database.register_control_sample(name, reference_timestamp, webfinger_address)
+
+        # load partner and make sure it is kicked
+        partner = self.database.get_partner(name)
+        self.assertEqual(partner.kicked, True)
+
+        # unkick partner with delete_control_samples set to True
+        success = self.database.unkick_partner(name, True)
+        self.assertEqual(success, True)
+
+        # register one more failed control sample
+        assert SIGNIFICANCE_THRESHOLD>0, "test fails if significance threshold is too small"
+        webfinger_address = "one_more_johndoe@example.org"
+        self.database.register_control_sample(name, reference_timestamp, webfinger_address)
+
+        # make sure partner was not kicked
+        partner = self.database.get_partner(name)
+        self.assertEqual(partner.kicked, False)
+
+    def test_unkick_invalid(self):
+        """ unkick_partner must return False if partner name is invalid """
+
+        success = self.database.unkick_partner("nonexistant", True)
+        self.assertEqual(success, False)
+
 import sqlalchemy
 
 class ControlSampleCache(unittest.TestCase):

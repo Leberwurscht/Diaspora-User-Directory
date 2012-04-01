@@ -9,7 +9,7 @@ partners module
 
 .. autoclass:: PartnerDatabase
    :members: __init__, cleanup, get_partners, get_partner, save_partner, delete_partner,
-             register_connection, register_control_sample, register_malformed_state, close
+             register_connection, register_control_sample, register_malformed_state, unkick_partner, close
 
 lower-level classes
 -------------------
