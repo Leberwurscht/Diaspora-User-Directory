@@ -521,6 +521,7 @@ class ControlSampleCache:
         query.delete()
 
         session.commit()
+        session.close()
 
     def close(self):
         """ Commits the cache to the database. May not be called more than one time.
