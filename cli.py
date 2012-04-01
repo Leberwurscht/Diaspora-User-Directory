@@ -85,6 +85,7 @@ if __name__=="__main__":
         def exit_function():
             global sduds
             sduds.terminate()
+            sys.exitfunc = lambda: 0
             sys.exit(0)
 
         sys.exitfunc = exit_function
