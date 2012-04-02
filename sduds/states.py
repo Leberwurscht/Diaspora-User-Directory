@@ -5,6 +5,9 @@ import urllib2, json, pywebfinger, binascii, hashlib, time
 from constants import *
 from lib.signature import signature_valid
 
+class RetrievalFailed(Exception):
+    """ Raised by :meth:`Profile.retrieve` if the profile is invalid. """
+    pass
 
 class ValidationFailed(AssertionError):
     info = None
@@ -116,23 +119,39 @@ class Profile:
 
     @classmethod
     def retrieve(cls, address):
-        wf = pywebfinger.finger(address)
 
-        sduds_uri = wf.find_link("http://hoegners.de/sduds/spec", attr="href")
+        try:
+            wf = pywebfinger.finger(address)
+            sduds_uri = wf.find_link("http://hoegners.de/sduds/spec", attr="href")
+        except IOError:
+            raise
+        except Exception, e:
+            raise RetrievalFailed("Could not get the sduds URL from the webfinger profile: %s" % str(e))
 
-        f = urllib.urlopen(sduds_uri)
-        json_string = f.read()
-        f.close()
+        try:
+            f = urllib2.urlopen(sduds_uri)
+            json_string = f.read()
+            f.close()
 
-        json_dict = json.loads(json_string)
+            json_dict = json.loads(json_string)
+        except IOError:
+            raise
+        except Exception, e:
+            raise RetrievalFailed("Could not load the sduds document specified in the profile: %s" % str(e))
 
-        full_name = json_dict["full_name"]
-        hometown = json_dict["hometown"]
-        country_code = json_dict["country_code"].encode("utf8")
-        services = json_dict["services"].encode("utf8")
-        captcha_signature = binascii.unhexlify(json_dict["captcha_signature"])
+        specified_address = json_dict["webfinger_address"]
+        assert specified_address==address, RetrievalFailed("Profile does not contain the specified address.")
 
-        submission_timestamp = int(json_dict["submission_timestamp"])
+        try:
+            full_name = json_dict["full_name"]
+            hometown = json_dict["hometown"]
+            country_code = json_dict["country_code"].encode("utf8")
+            services = json_dict["services"].encode("utf8")
+            captcha_signature = binascii.unhexlify(json_dict["captcha_signature"])
+
+            submission_timestamp = int(json_dict["submission_timestamp"])
+        except Exception, e:
+            raise RetrievalFailed("Unable to extract profile information: %s" % str(e))
 
         profile = cls(
             full_name,
