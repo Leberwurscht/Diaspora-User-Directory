@@ -35,7 +35,7 @@ class TimePattern:
             :param last_clearance: unix time stamp of last execution
             :type last_clearance: integer
             :rtype: unix time stamp as integer """
-        raise NotImplementedError, "override this function"
+        raise NotImplementedError("override this function")
 
 class IntervalPattern(TimePattern):
     """ This :class:`TimePattern` is for regular execution with fixed time intervals. """

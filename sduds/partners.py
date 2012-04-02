@@ -544,8 +544,8 @@ class PartnerDatabase:
     samples_cache = None
 
     def __init__(self, database_path, reference_timestamp=None):
-        """ :param database_path: The path to the sqlite database file. Will be
-                                  created automatically if it doesn't exist.
+        """ :param database_path: the path to the sqlite database file -- will be
+                                  created automatically if it doesn't exist
             :type database_path: string
         """
 

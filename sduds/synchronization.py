@@ -77,7 +77,7 @@ class Message:
         """ The write method sends an serialized version of the object to the
             file-like object f. """
 
-        raise NotImplementedError, "override this function in subclasses!"
+        raise NotImplementedError("override this function in subclasses!")
 
     @classmethod
     def read(cls, f):
@@ -86,7 +86,7 @@ class Message:
             If the transmitted message type does not match, None is returned.
         """
 
-        raise NotImplementedError, "override this function in subclasses!"
+        raise NotImplementedError("override this function in subclasses!")
 
 class Terminator(Message):
     """ The terminator message is used to signalize the end of a stream of

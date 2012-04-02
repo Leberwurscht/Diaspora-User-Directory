@@ -135,7 +135,7 @@ class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler):
             :type username: string
             :rtype: string or NoneType
         """
-        raise NotImplementedError, "Override this function in subclasses!"
+        raise NotImplementedError("Override this function in subclasses!")
 
     def handle_user(self, username):
         """ Must be overridden in subclasses.
@@ -146,4 +146,4 @@ class AuthenticatingRequestHandler(SocketServer.BaseRequestHandler):
             :param username: username the client uses
             :type username: string
         """
-        raise NotImplementedError, "Override this function in subclasses!"
+        raise NotImplementedError("Override this function in subclasses!")
