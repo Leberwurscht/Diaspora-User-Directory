@@ -81,7 +81,7 @@ class Profile:
             too long. """
 
         if reference_timestamp is None:
-            reference_timestamp = time.time()
+            reference_timestamp = int(time.time())
 
         # validate CAPTCHA signature for given webfinger address
         assert signature_valid(CAPTCHA_PUBLIC_KEY, self.captcha_signature, webfinger_address),\
