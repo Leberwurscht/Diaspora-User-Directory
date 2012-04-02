@@ -20,12 +20,12 @@ class ValidationFailed(AssertionError):
         r += self.info
         return r
 
-class InvalidProfileException(ValidationFailed):
+class MalformedProfileException(ValidationFailed):
     def __str__(self):
         r = ValidationFailed.__str__(self)
         r = "Profile invalid: "+r
 
-class InvalidStateException(ValidationFailed):
+class MalformedStateException(ValidationFailed):
     def __str__(self):
         r = ValidationFailed.__str__(self)
         r = "State invalid: "+r
@@ -85,32 +85,32 @@ class Profile:
 
         # validate CAPTCHA signature for given webfinger address
         assert signature_valid(CAPTCHA_PUBLIC_KEY, self.captcha_signature, webfinger_address),\
-            InvalidProfileException(str(self), "Invalid captcha signature")
+            MalformedProfileException(str(self), "Invalid captcha signature")
 
         # assert that submission_timestamp is not in future
         assert self.submission_timestamp <= reference_timestamp,\
-            InvalidProfileException(str(self), "Submitted in future (reference timestamp: %d)" % reference_timestamp)
+            MalformedProfileException(str(self), "Submitted in future (reference timestamp: %d)" % reference_timestamp)
 
         # check lengths of webfinger address
         assert len(webfinger_address)<=MAX_ADDRESS_LENGTH,\
-            InvalidProfileException(str(self), "Address too long")
+            MalformedProfileException(str(self), "Address too long")
 
         # check lengths of profile fields
         assert len(self.full_name.encode("utf8"))<=MAX_NAME_LENGTH,\
-            InvalidProfileException(str(self), "Full name too long")
+            MalformedProfileException(str(self), "Full name too long")
 
         assert len(self.hometown.encode("utf8"))<=MAX_HOMETOWN_LENTGTH,\
-            InvalidProfileException(str(self), "Hometown too long")
+            MalformedProfileException(str(self), "Hometown too long")
 
         assert len(self.country_code)<=MAX_COUNTRY_CODE_LENGTH,\
-            InvalidProfileException(str(self), "Country code too long")
+            MalformedProfileException(str(self), "Country code too long")
 
         assert len(self.services)<=MAX_SERVICES_LENGTH,\
-            InvalidProfileException(str(self), "Services list too long")
+            MalformedProfileException(str(self), "Services list too long")
 
         for service in self.services.split(","):
             assert len(service)<=MAX_SERVICE_LENGTH,\
-                InvalidProfileException(str(self), "Service %s too long" % service)
+                MalformedProfileException(str(self), "Service %s too long" % service)
 
         return True
 
@@ -190,22 +190,22 @@ class State(object):
             reference_timestamp = time.time()
 
         assert self.retrieval_timestamp <= reference_timestamp,\
-            InvalidStateException(str(self), "Retrieved in future (reference_timestamp: %d)" % reference_timestamp)
+            MalformedStateException(str(self), "Retrieved in future (reference_timestamp: %d)" % reference_timestamp)
 
         assert self.retrieval_timestamp >= reference_timestamp - MAX_AGE,\
-            InvalidStateException(str(self), "Not up to date (reference timestamp: %d)" % reference_timestamp)
+            MalformedStateException(str(self), "Not up to date (reference timestamp: %d)" % reference_timestamp)
 
         if self.profile:
             self.profile.assert_validity(self.address, reference_timestamp)
 
             assert self.retrieval_timestamp>=self.profile.submission_timestamp,\
-                InvalidStateException(str(self), "Retrieval time lies before submission time")
+                MalformedStateException(str(self), "Retrieval time lies before submission time")
 
             expiry_date = self.profile.submission_timestamp + STATE_LIFETIME
 
             if reference_timestamp>expiry_date:
                 assert reference_timestamp < expiry_date + EXPIRY_GRACE_PERIOD,\
-                    InvalidStateException(str(self), "State expired (reference timestamp: %d" % reference_timestamp)
+                    MalformedStateException(str(self), "State expired (reference timestamp: %d" % reference_timestamp)
 
                 raise RecentlyExpiredStateException(str(self), reference_timestamp)
 
