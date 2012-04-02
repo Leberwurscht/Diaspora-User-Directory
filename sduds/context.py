@@ -2,7 +2,8 @@
 
 import logging, time, Queue
 
-from states import State, StateDatabase
+from states import State
+from statedatabase.sqlite import StateDatabase
 from partners import PartnerDatabase
 from synchronization import Synchronization
 
