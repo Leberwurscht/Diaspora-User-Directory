@@ -33,11 +33,11 @@ class MalformedStateException(ValidationFailed):
         s = ValidationFailed.__str__(self)
         return "State invalid: %s" % s
 
-class RecentlyExpiredStateException(Exception):
+class RecentlyExpiredProfileException(Exception):
     info = None
 
     def __init__(self, info, reference_timestamp):
-        message = "State recently expired (reference timestamp: %d)" % reference_timestamp
+        message = "Profile recently expired (reference timestamp: %d)" % reference_timestamp
         Exception.__init__(self, message)
 
         self.info = info
@@ -93,6 +93,15 @@ class Profile:
         # assert that submission_timestamp is not in future
         assert self.submission_timestamp <= reference_timestamp,\
             MalformedProfileException(str(self), "Submitted in future (reference timestamp: %d)" % reference_timestamp)
+
+        # assert that profile is not expired
+        expiry_date = self.submission_timestamp + PROFILE_LIFETIME
+
+        if reference_timestamp>expiry_date:
+            assert reference_timestamp < expiry_date + EXPIRY_GRACE_PERIOD,\
+                MalformedProfileException(str(self), "Profile expired (reference timestamp: %d)" % reference_timestamp)
+
+            raise RecentlyExpiredProfileException(str(self), reference_timestamp)
 
         # check lengths of webfinger address
         assert len(webfinger_address)<=MAX_ADDRESS_LENGTH,\
@@ -219,14 +228,6 @@ class State(object):
 
             assert self.retrieval_timestamp>=self.profile.submission_timestamp,\
                 MalformedStateException(str(self), "Retrieval time lies before submission time")
-
-            expiry_date = self.profile.submission_timestamp + STATE_LIFETIME
-
-            if reference_timestamp>expiry_date:
-                assert reference_timestamp < expiry_date + EXPIRY_GRACE_PERIOD,\
-                    MalformedStateException(str(self), "State expired (reference timestamp: %d" % reference_timestamp)
-
-                raise RecentlyExpiredStateException(str(self), reference_timestamp)
 
         return True
 

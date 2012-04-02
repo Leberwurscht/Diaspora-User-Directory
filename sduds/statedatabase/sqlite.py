@@ -95,7 +95,7 @@ class StateDatabase:
 
             now = time.time()
             age = now - state_table.c.submission_timestamp
-            query = session.query(State).filter(age > STATE_LIFETIME)
+            query = session.query(State).filter(age > PROFILE_LIFETIME)
 
             delete_hashes = []
             for state in query:

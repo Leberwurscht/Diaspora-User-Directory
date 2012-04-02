@@ -10,7 +10,7 @@ EXPIRY_GRACE_PERIOD = 3600*24*3 # if states transmitted by a partner are
                                 # period is over.
 
 MIN_RESUBMISSION_INTERVAL = 3600*24*3
-STATE_LIFETIME = 3600*24*365
+PROFILE_LIFETIME = 3600*24*365
 
 SAMPLE_SUMMARY_INTERVAL = 3600*24
 CONTROL_SAMPLE_WINDOW = 14
