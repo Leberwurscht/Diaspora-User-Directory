@@ -22,13 +22,13 @@ class ValidationFailed(AssertionError):
 
 class MalformedProfileException(ValidationFailed):
     def __str__(self):
-        r = ValidationFailed.__str__(self)
-        r = "Profile invalid: "+r
+        s = ValidationFailed.__str__(self)
+        return "Profile invalid: %s" % s
 
 class MalformedStateException(ValidationFailed):
     def __str__(self):
-        r = ValidationFailed.__str__(self)
-        r = "State invalid: "+r
+        s = ValidationFailed.__str__(self)
+        return "State invalid: %s" % s
 
 class RecentlyExpiredStateException(Exception):
     info = None
