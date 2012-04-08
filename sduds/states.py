@@ -130,10 +130,10 @@ class Profile:
         return True
 
     @classmethod
-    def retrieve(cls, address):
+    def retrieve(cls, address, timeout=None):
 
         try:
-            wf = pywebfinger.finger(address)
+            wf = pywebfinger.finger(address, timeout=timeout)
             sduds_uri = wf.find_link("http://hoegners.de/sduds/spec", attr="href")
         except IOError:
             raise
@@ -141,7 +141,7 @@ class Profile:
             raise RetrievalFailed("Could not get the sduds URL from the webfinger profile: %s" % str(e))
 
         try:
-            f = urllib2.urlopen(sduds_uri)
+            f = urllib2.urlopen(sduds_uri, timeout=timeout)
             json_string = f.read()
             f.close()
 
@@ -235,9 +235,9 @@ class State(object):
         return True
 
     @classmethod
-    def retrieve(cls, address):
+    def retrieve(cls, address, timeout=None):
         try:
-            profile = Profile.retrieve(address)
+            profile = Profile.retrieve(address, timeout)
         except: # TODO: which exceptions?
             profile = None
 
