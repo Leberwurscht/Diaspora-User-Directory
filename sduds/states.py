@@ -253,6 +253,8 @@ class State(object):
 
     @property
     def hash(self):
+        assert self.profile is not None
+
         combinedhash = hashlib.sha1()
 
         relevant_data = [self.address, self.profile.full_name,
