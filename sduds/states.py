@@ -151,7 +151,10 @@ class Profile:
         except Exception, e:
             raise RetrievalFailed("Could not load the sduds document specified in the profile: %s" % str(e))
 
-        specified_address = json_dict["webfinger_address"]
+        try:
+            specified_address = json_dict["webfinger_address"]
+        except KeyError:
+            raise RetrievalFailed("Document does not contain a webfinger_address field.")
         assert specified_address==address, RetrievalFailed("Profile does not contain the specified address.")
 
         try:
