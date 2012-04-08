@@ -111,7 +111,7 @@ class Profile:
         assert len(self.full_name.encode("utf8"))<=MAX_NAME_LENGTH,\
             MalformedProfileException(str(self), "Full name too long")
 
-        assert len(self.hometown.encode("utf8"))<=MAX_HOMETOWN_LENTGTH,\
+        assert len(self.hometown.encode("utf8"))<=MAX_HOMETOWN_LENGTH,\
             MalformedProfileException(str(self), "Hometown too long")
 
         assert len(self.country_code)<=MAX_COUNTRY_CODE_LENGTH,\
