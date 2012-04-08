@@ -147,7 +147,10 @@ class PartnerDatabase(unittest.TestCase):
     def test_delete_partner_invalid(self):
         """ delete_partner must not fail if partner_name is invalid """
 
-        self.database.delete_partner("nonexistant")
+        try:
+            self.database.delete_partner("nonexistant")
+        except Exception, e:
+            self.fail(str(e))
 
     def test_get_partners(self):
         """ get_partners must yield all stored partners """
@@ -201,7 +204,10 @@ class PartnerDatabase(unittest.TestCase):
     def test_register_connection_invalid(self):
         """ register_connection must not throw exception if partner_name is invalid """
 
-        self.database.register_connection("nonexistant")
+        try:
+            self.database.register_connection("nonexistant")
+        except Exception, e:
+            self.fail(str(e))
 
     def test_register_control_sample(self):
         """ kicked attribute must be set after too many failed control samples """
