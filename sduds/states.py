@@ -241,7 +241,8 @@ class State(object):
     def retrieve(cls, address, timeout=None):
         try:
             profile = Profile.retrieve(address, timeout)
-        except: # TODO: which exceptions?
+        except (RetrievalFailed, IOError), e:
+            # TODO: logging
             profile = None
 
         retrieval_timestamp = int(time.time())
