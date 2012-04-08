@@ -78,7 +78,7 @@ class Profile:
 
         return s
 
-    def assert_validity(self, webfinger_address, reference_timestamp=None):
+    def assert_validity(self, webfinger_address, reference_timestamp=None, public_key=None):
         """ Validates the profile against a certain webfinger address. Checks CAPTCHA signature,
             submission_timestamp, and field lengths. Also checks whether webfinger address is
             too long. """
@@ -86,8 +86,11 @@ class Profile:
         if reference_timestamp is None:
             reference_timestamp = int(time.time())
 
+        if public_key is None:
+            public_key = CAPTCHA_PUBLIC_KEY
+
         # validate CAPTCHA signature for given webfinger address
-        assert signature_valid(CAPTCHA_PUBLIC_KEY, self.captcha_signature, webfinger_address),\
+        assert signature_valid(public_key, self.captcha_signature, webfinger_address),\
             MalformedProfileException(str(self), "Invalid captcha signature")
 
         # assert that submission_timestamp is not in future
