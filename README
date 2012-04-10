@@ -33,8 +33,7 @@ Executables:
 
 # apt-get install ocaml libdb-dev zlib1g-dev
 # apt-get install python-paramiko python-sqlalchemy
-
-Go to https://github.com/jcarbaugh/python-webfinger and install it.
+# apt-get install python-setuptools && easy_install python-webfinger
 
 -- Building --------------------------
 
