@@ -91,42 +91,42 @@ class Profile:
             public_key = CAPTCHA_PUBLIC_KEY
 
         # validate CAPTCHA signature for given webfinger address
-        assert signature_valid(public_key, self.captcha_signature, webfinger_address),\
-            MalformedProfileException(str(self), "Invalid captcha signature")
+        if not signature_valid(public_key, self.captcha_signature, webfinger_address):
+            raise MalformedProfileException(str(self), "Invalid captcha signature")
 
-        # assert that submission_timestamp is not in future
-        assert self.submission_timestamp <= reference_timestamp,\
-            MalformedProfileException(str(self), "Submitted in future (reference timestamp: %d)" % reference_timestamp)
+        # make sure that submission_timestamp is not in future
+        if not self.submission_timestamp <= reference_timestamp:
+            raise MalformedProfileException(str(self), "Submitted in future (reference timestamp: %d)" % reference_timestamp)
 
-        # assert that profile is not expired
+        # make sure that profile is not expired
         expiry_date = self.submission_timestamp + PROFILE_LIFETIME
 
         if reference_timestamp>expiry_date:
-            assert reference_timestamp < expiry_date + EXPIRY_GRACE_PERIOD,\
-                MalformedProfileException(str(self), "Profile expired (reference timestamp: %d)" % reference_timestamp)
+            if not reference_timestamp < expiry_date + EXPIRY_GRACE_PERIOD:
+                raise MalformedProfileException(str(self), "Profile expired (reference timestamp: %d)" % reference_timestamp)
 
             raise RecentlyExpiredProfileException(str(self), reference_timestamp)
 
         # check lengths of webfinger address
-        assert len(webfinger_address)<=MAX_ADDRESS_LENGTH,\
-            MalformedProfileException(str(self), "Address too long")
+        if not len(webfinger_address)<=MAX_ADDRESS_LENGTH:
+            raise MalformedProfileException(str(self), "Address too long")
 
         # check lengths of profile fields
-        assert len(self.full_name.encode("utf8"))<=MAX_NAME_LENGTH,\
-            MalformedProfileException(str(self), "Full name too long")
+        if not len(self.full_name.encode("utf8"))<=MAX_NAME_LENGTH:
+            raise MalformedProfileException(str(self), "Full name too long")
 
-        assert len(self.hometown.encode("utf8"))<=MAX_HOMETOWN_LENGTH,\
-            MalformedProfileException(str(self), "Hometown too long")
+        if not len(self.hometown.encode("utf8"))<=MAX_HOMETOWN_LENGTH:
+            raise MalformedProfileException(str(self), "Hometown too long")
 
-        assert len(self.country_code)<=MAX_COUNTRY_CODE_LENGTH,\
-            MalformedProfileException(str(self), "Country code too long")
+        if not len(self.country_code)<=MAX_COUNTRY_CODE_LENGTH:
+            raise MalformedProfileException(str(self), "Country code too long")
 
-        assert len(self.services)<=MAX_SERVICES_LENGTH,\
-            MalformedProfileException(str(self), "Services list too long")
+        if not len(self.services)<=MAX_SERVICES_LENGTH:
+            raise MalformedProfileException(str(self), "Services list too long")
 
         for service in self.services.split(","):
-            assert len(service)<=MAX_SERVICE_LENGTH,\
-                MalformedProfileException(str(self), "Service %s too long" % service)
+            if not len(service)<=MAX_SERVICE_LENGTH:
+                raise MalformedProfileException(str(self), "Service %s too long" % service)
 
         return True
 
@@ -156,7 +156,9 @@ class Profile:
             specified_address = json_dict["webfinger_address"]
         except KeyError:
             raise RetrievalFailed("Document does not contain a webfinger_address field.")
-        assert specified_address==address, RetrievalFailed("Profile does not contain the specified address.")
+
+        if not specified_address==address:
+            raise RetrievalFailed("Profile does not contain the specified address.")
 
         try:
             full_name = json_dict["full_name"]
@@ -224,18 +226,21 @@ class State(object):
         if reference_timestamp is None:
             reference_timestamp = time.time()
 
-        assert self.retrieval_timestamp <= reference_timestamp,\
-            MalformedStateException(str(self), "Retrieved in future (reference_timestamp: %d)" % reference_timestamp)
+        # make sure retrieval timestamp is not in future
+        if not self.retrieval_timestamp <= reference_timestamp:
+            raise MalformedStateException(str(self), "Retrieved in future (reference_timestamp: %d)" % reference_timestamp)
 
-        assert self.retrieval_timestamp >= reference_timestamp - MAX_AGE,\
-            MalformedStateException(str(self), "Not up to date (reference timestamp: %d)" % reference_timestamp)
+        # make sure retrieval_timestamp is up-to-date
+        if not self.retrieval_timestamp >= reference_timestamp - MAX_AGE:
+            raise MalformedStateException(str(self), "Not up to date (reference timestamp: %d)" % reference_timestamp)
 
         if self.profile:
             # check profile for valid-up-to-date states
             self.profile.check(self.address, reference_timestamp)
 
-            assert self.retrieval_timestamp>=self.profile.submission_timestamp,\
-                MalformedStateException(str(self), "Retrieval time lies before submission time")
+            # make sure retrieval_timestamp is not before submission timestamp
+            if not self.retrieval_timestamp>=self.profile.submission_timestamp:
+                raise MalformedStateException(str(self), "Retrieval time lies before submission time")
 
         return True
 
