@@ -10,11 +10,11 @@ class RetrievalFailed(Exception):
         connection problems. """
     pass
 
-class CheckFailed(AssertionError):
+class CheckFailed(Exception):
     info = None
 
     def __init__(self, info, message):
-        AssertionError.__init__(self, message)
+        Exception.__init__(self, message)
         self.info = info
 
     def __str__(self):
