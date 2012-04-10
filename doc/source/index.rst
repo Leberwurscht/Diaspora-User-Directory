@@ -19,6 +19,7 @@ Contents:
    trie_manager
    hashtrie
    partners
+   states
 
 Indices and tables
 ==================
