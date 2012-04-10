@@ -6,10 +6,11 @@ from constants import *
 from lib.signature import signature_valid
 
 class RetrievalFailed(Exception):
-    """ Raised by :meth:`Profile.retrieve` if the profile is invalid. """
+    """ Raised by :meth:`Profile.retrieve` if the profile retrieval fails for other reasons than
+        connection problems. """
     pass
 
-class ValidationFailed(AssertionError):
+class CheckFailed(AssertionError):
     info = None
 
     def __init__(self, info, message):
@@ -23,15 +24,15 @@ class ValidationFailed(AssertionError):
         r += self.info
         return r
 
-class MalformedProfileException(ValidationFailed):
+class MalformedProfileException(CheckFailed):
     def __str__(self):
-        s = ValidationFailed.__str__(self)
-        return "Profile invalid: %s" % s
+        s = CheckFailed.__str__(self)
+        return "Profile malformed: %s" % s
 
-class MalformedStateException(ValidationFailed):
+class MalformedStateException(CheckFailed):
     def __str__(self):
-        s = ValidationFailed.__str__(self)
-        return "State invalid: %s" % s
+        s = CheckFailed.__str__(self)
+        return "State malformed: %s" % s
 
 class RecentlyExpiredProfileException(Exception):
     info = None
@@ -78,7 +79,7 @@ class Profile:
 
         return s
 
-    def assert_validity(self, webfinger_address, reference_timestamp=None, public_key=None):
+    def check(self, webfinger_address, reference_timestamp=None, public_key=None):
         """ Validates the profile against a certain webfinger address. Checks CAPTCHA signature,
             submission_timestamp, and field lengths. Also checks whether webfinger address is
             too long. """
@@ -214,7 +215,7 @@ class State(object):
 
         return s
 
-    def assert_validity(self, reference_timestamp=None):
+    def check(self, reference_timestamp=None):
         """ Checks if a state was valid at a given time. Returns True if it was, raises
             an exception otherwise. """
 
@@ -230,7 +231,8 @@ class State(object):
             MalformedStateException(str(self), "Not up to date (reference timestamp: %d)" % reference_timestamp)
 
         if self.profile:
-            self.profile.assert_validity(self.address, reference_timestamp)
+            # check profile for valid-up-to-date states
+            self.profile.check(self.address, reference_timestamp)
 
             assert self.retrieval_timestamp>=self.profile.submission_timestamp,\
                 MalformedStateException(str(self), "Retrieval time lies before submission time")

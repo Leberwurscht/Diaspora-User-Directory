@@ -76,8 +76,8 @@ class Claim:
                 partnerdb.register_control_sample(partner_name, reference_timestamp, failed_address)
 
         try:
-            trusted_state.assert_validity(self.timestamp)
-        except states.ValidationFailed, e:
+            trusted_state.check(self.timestamp)
+        except states.CheckFailed, e:
             if partner_name:
                 partnerdb.register_malformed_state(partner_name)
                 logger.warning(str(e))
